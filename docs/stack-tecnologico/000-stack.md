@@ -13,7 +13,6 @@ Cody usa la misma plataforma que `dent-intec`. Las versiones de este documento s
 | Servidor de aplicación | Gunicorn + WhiteNoise | Gunicorn **26.2.0**, WhiteNoise **6.12.0** |
 | Cliente HTTP | Dio, con cookie de sesión y CSRF | Dio **5.11.1**, `cookie_jar` **4.0.8**, `dio_cookie_manager` **3.2.0** |
 | Estado y rutas | Riverpod y GoRouter | `flutter_riverpod` **3.4.3**, `go_router` **18.1.1** |
-| Asistente | LangGraph sobre LangChain | `langgraph` **1.0.3**, `langchain-core` **1.0.2**, `langchain-openai` **1.0.2**, `langchain-ollama` **1.0.0** |
 | Cobros | API de pey | `https://api.pey.mx`, contrato en [docs.pey.mx](https://docs.pey.mx) |
 | Pruebas de UI | `flutter_test` + `flutter_lints` | `flutter_lints` **^6.0.0** |
 | Zona horaria | `America/Mexico_City`, idioma `es` | — |
@@ -57,14 +56,13 @@ Dependencias de la app de referencia que forman el cliente:
 | `url_launcher` | 6.3.3 | Abrir enlaces |
 | `share_plus` | 10.1.4 | Compartir |
 | `qr_flutter` | ^4.1.0 | QR (en Cody, el cobro CoDi) |
-| `record` / `audioplayers` | 6.0.0 / 6.4.0 | Grabar y reproducir si se prende la voz |
 | `clock` | 1.1.3 | Reloj inyectable en pruebas |
 
 Lint: `analysis_options.yaml` incluye `package:flutter_lints/flutter.yaml` y excluye `build/**`, `web/**` y `android/**`. El análisis es `flutter analyze`.
 
 Android: `minSdk` 21, iconos con `flutter_launcher_icons` **^0.14.4**. iOS no entra. El build web de release usa `--base-href /app/` cuando hay una landing en `/`; si Cody no tiene landing, el estático puede vivir en `/`.
 
-El cliente arma Dio con `Accept: application/json`, `connectTimeout` de 10 s y `sendTimeout` de 30 s. El `receiveTimeout` no tiene tope global porque una vuelta del modelo puede tardar; cada llamada acotada lo fija ella. En web, sin `API_BASE_URL`, la base es el origen de la página. Un `--dart-define=API_BASE_URL=...` lo pisa (útil en Android).
+El cliente arma Dio con `Accept: application/json`, `connectTimeout` de 10 s y `sendTimeout` de 30 s. El `receiveTimeout` es de 30 s; la espera del pago no usa una conexión larga sino consultas cortas repetidas. En web, sin `API_BASE_URL`, la base es el origen de la página. Un `--dart-define=API_BASE_URL=...` lo pisa (útil en Android).
 
 ## Backend
 
@@ -76,10 +74,6 @@ djangorestframework==3.18.3
 psycopg[binary]==3.3.6
 gunicorn==26.2.0
 whitenoise==6.12.0
-langgraph==1.0.3
-langchain-core==1.0.2
-langchain-openai==1.0.2
-langchain-ollama==1.0.0
 phonenumbers==9.0.42
 cryptography==50.0.2
 boto3==1.43.123
@@ -88,7 +82,7 @@ reportlab==5.1.0
 requests==2.34.2
 ```
 
-`phonenumbers`, `boto3`, `lxml` y `reportlab` están en dent-intec por WhatsApp, R2 y CFDI. Cody los incluye solo si una feature los necesita. El núcleo que sí entra desde el primer scaffold es Django, DRF, `psycopg`, Gunicorn, WhiteNoise, LangChain/LangGraph y `requests`. `cryptography` entra si hay un secreto que cifrar en reposo.
+`phonenumbers`, `boto3`, `lxml` y `reportlab` están en dent-intec por WhatsApp, R2 y CFDI. Cody los incluye solo si una feature los necesita. El núcleo que sí entra desde el primer scaffold es Django, DRF, `psycopg`, Gunicorn, WhiteNoise y `requests`, más `standardwebhooks` para verificar la firma de los webhooks de pey (no está en la referencia; se fija la versión al instalarla). `cryptography` entra si hay un secreto que cifrar en reposo.
 
 Apps de Django que sí se copian como base: `admin`, `auth`, `contenttypes`, `sessions`, `messages`, `staticfiles`, `postgres` y `rest_framework`.
 
@@ -133,7 +127,7 @@ El ámbito (clínica allá, comercio aquí) lo pone el servidor a partir de la m
 
 ## Cobros (API de pey)
 
-La capa de cobro habla con la API pública de pey. Autenticación: `Authorization: Bearer` con `PEY_API_KEY`. Base: `https://api.pey.mx`. El detalle de cada cuerpo está en [docs.pey.mx](https://docs.pey.mx).
+La capa de cobro habla con la API pública de pey. Autenticación: `Authorization: Bearer` con `PEY_API_KEY`. Base: `https://api.pey.mx` (producción). El índice de la documentación también menciona `https://api.dev.pey.mx` y llaves `test` en `portal.dev.mipey.mx`, pero la portada dice que el ambiente de pruebas llega "próximamente"; en el hackatón se usa producción. Contrato tomado de [docs.pey.mx](https://docs.pey.mx) y de su [openapi.json](https://docs.pey.mx/openapi.json) (versión `2026-10-20`), revisado el 7 de noviembre de 2026.
 
 | Uso en Cody | Llamada |
 |---|---|
@@ -141,35 +135,97 @@ La capa de cobro habla con la API pública de pey. Autenticación: `Authorizatio
 | Cobro al celular del cliente | `POST /codi/pn` |
 | Pago de un QR | webhook `codi.qr.payment_received` |
 | Pago de una notificación | webhook `codi.pn.payment_received` |
+| Respaldo del estado de una notificación | `GET /transaction/{id}` |
+| Respaldo de los pagos de un QR | `GET /transaction/codi/qr/{id}` |
 
-El QR de una venta lleva monto y, si el vendedor los captura, concepto y referencia (`concept`, `numRef` en el ejemplo de la documentación, junto con `expiration`). El QR general es el que se publica en el establecimiento para que el cliente teclee el monto. El NFC lo hace la app bancaria del cliente sobre ese cobro; pey no expone un endpoint de NFC.
+El NFC lo hace la app bancaria del cliente sobre ese cobro; pey no expone un endpoint de NFC.
 
-Se prueba en producción con montos de **$0.01**. Una API key tiene un solo webhook, firmado con Standard Webhooks.
+### `POST /codi/qr`
 
-## Asistente
-
-LangGraph corre dentro del request de Gunicorn. No hay worker aparte para el chat.
-
-`LLM_SERVER` elige el proveedor:
-
-| Valor | Variables |
-|---|---|
-| `ollama` (default de la referencia) | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_CTX` |
-| `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` (default de la referencia `gpt-4.1-mini`), `OPENAI_REASONING_EFFORT` (default `none`), `OPENAI_MAX_TOKENS` |
-
-El modelo no arma llamadas externas a mano: el grafo expone herramientas y el servidor las ejecuta. En Cody el agente propone las agregaciones del tablero a partir de los conceptos de texto libre. El cobro en sí lo hace el servidor contra la API de pey (`POST /codi/qr`, `POST /codi/pn`). Los webhooks `codi.qr.payment_received` y `codi.pn.payment_received` entran por una ruta pública, igual que el webhook de la referencia: responden pronto y el trabajo pesado no bloquea al emisor si hace falta una cola.
-
-## Voz (opcional)
-
-Mismo mecanismo que la referencia, en `requirements-voz.txt`, instalado solo si se prende:
-
-| Pieza | Pin | Notas |
+| Campo | Tipo | Regla |
 |---|---|---|
-| STT | `faster-whisper==1.1.1`, `numpy==2.2.4` | CPU. Exige **ffmpeg** en `PATH` y Python 3.12 (`ctranslate2` no tiene wheel estable para 3.14) |
-| TTS Kokoro | `kokoro-onnx>=0.4.9` | Exige **espeak-ng** y los pesos en disco |
-| TTS Piper | binario y voz en el host | El deploy no pisa ese directorio |
+| `amount` | number, **obligatorio** | `>= 0`. **`0` deja que el pagador teclee el monto** |
+| `concept` | string | Lo que ve el pagador. Sin largo máximo documentado |
+| `expiration` | integer, segundos | `0` = sin expiración (default). Si se fija, mínimo **360** |
+| `numRef` | string | Solo dígitos, **1 a 7** (`^[0-9]{1,7}$`). Default `"0"` |
+| `generateImage` | boolean | Default `false`. Si es `true`, regresa `qrImage` en PNG base64 (más lento) |
+| `bankAccountId` | string (ULID) | Cuenta `codiStatus: ACTIVE`. Sin él, abona a la cuenta ligada a la API key |
+| `metadata` | object | Hasta 50 pares; llaves de hasta 40 caracteres, valores de hasta 500; todo se regresa como string |
 
-`STT_HABILITADO=1` abre el endpoint de audio. `TTS_HABILITADO=1` más `TTS_MOTOR` (`piper` o `kokoro`) prende la síntesis. En el hackatón la voz sigue siendo opcional: el cobro tiene que poder armarse por texto.
+Respuesta **201**: `id` (IDC de Banxico), `qrString` (lo que se codifica en el QR) y `qrImage` (solo con `generateImage`). Cody pinta el QR desde `qrString` con `qr_flutter`, sin pedir la imagen.
+
+Uso en Cody:
+
+- **QR general:** `amount: 0`, `expiration: 0`, `concept: "Transferencia"`. Se crea una vez por comercio y se guarda. La documentación no dice "QR reutilizable", pero `GET /transaction/codi/qr/{id}` lista varias transacciones por QR, así que un mismo QR recibe varios pagos. **Confirmar con un segundo pago de $0.01.**
+- **QR por venta:** monto capturado, `expiration` de 360 o más, `concept` capturado o "Transferencia" si viene vacío. La **referencia del vendedor tiene que ser numérica de hasta 7 dígitos**: la pantalla la valida así.
+
+### `POST /codi/pn`
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `amount` | number, **obligatorio** | `> 0` y `<= 1,000,000`. Aquí no hay monto abierto |
+| `phoneNumber` | string, **obligatorio** | 10 dígitos, sin lada de país (`^[0-9]{10}$`) |
+| `concept` | string | Igual que en el QR; "Transferencia" si viene vacío |
+| `expiration` | integer, segundos | Mínimo y default **360** |
+| `numRef`, `bankAccountId`, `metadata` | | Mismas reglas que en el QR |
+
+Respuesta **200**: `transactionId` (ULID, con él se sigue el pago) y `codiId` (folio de Banxico de 20 dígitos).
+
+Errores de las dos llamadas: `400` con `{error: {message, type, requestId}}` (`INVALID_REQUEST`, `INVALID_AMOUNT`, `INVALID_PARAMETER`, `INVALID_STATE`, …), `500` y `503`. Cody guarda `requestId` para preguntarle a pey.
+
+### Webhooks
+
+Campos de `codi.qr.payment_received`: `type`, `amount`, `concept`, `numRef`, `datePaid` (unix, segundos), `transactionId` (ULID), `codiQrId` (IDC), `apiKeyId`, `metadata` y `bankAccountId` (solo si se mandó al crear el QR).
+
+`codi.pn.payment_received` trae los mismos campos **sin `codiQrId`**.
+
+Cómo se liga el pago al cobro de Cody:
+
+| Canal | Llave |
+|---|---|
+| QR (general o por venta) | `codiQrId` del webhook = `id` de la respuesta de `POST /codi/qr` |
+| Notificación | `transactionId` del webhook = `transactionId` de la respuesta de `POST /codi/pn` (inferido de la documentación; confirmar con el primer cobro) |
+
+En el QR general, cada webhook crea un movimiento nuevo (un pago por `transactionId`) colgado del mismo QR. El `amount` del webhook es el monto que tecleó el cliente.
+
+No ligar por `numRef`: la documentación lo describe como "asignado a Banxico" y el ejemplo del webhook no repite el valor del ejemplo de creación.
+
+No hay eventos de rechazo ni de expiración. Si el cliente rechaza o el cobro vence, no llega nada: Cody marca el cobro como **vencido** cuando pasa su `expiration`.
+
+Configuración y firma:
+
+- La URL se registra en [portal.mipey.mx/developers](https://portal.mipey.mx/developers): engrane de la API key → webhook. **Una API key tiene un solo webhook**, así que la misma ruta recibe los dos eventos y despacha por `type`.
+- Al crearlo, el portal muestra el secreto (`whsec_...`) una sola vez. Se puede rotar desde el mismo engrane. Va en `PEY_WEBHOOK_SECRET`.
+- pey firma con [Standard Webhooks](https://www.standardwebhooks.com/). Se verifica con `standardwebhooks.Webhook(secret).verify(cuerpo_crudo, headers)` sobre el **cuerpo crudo**, no sobre el JSON parseado.
+- `webhook-id` es la llave de idempotencia: Cody guarda cada uno y descarta repetidos.
+- La política de reintentos no está documentada. El portal tiene "Webhook Logs" para ver entregas. La ruta responde 200 pronto y marca el cobro dentro de la misma transacción de base de datos.
+
+La ruta del webhook es pública (fuera del middleware de sesión) y solo acepta peticiones con firma válida.
+
+### Espera del pago en pantalla
+
+La app consulta a Django cada 2 s mientras muestra un cobro. Django responde con el estado guardado (pendiente, pagado, vencido). Si el webhook no ha llegado, Django puede preguntar a pey como respaldo:
+
+- Notificación: `GET /transaction/{transactionId}`, con `status` `PENDING` o `PAID`.
+- QR: `GET /transaction/codi/qr/{id}`, hasta 20 transacciones, la más nueva primero.
+
+No hay límite de peticiones documentado; el respaldo se usa con moderación.
+
+### Concepto editable
+
+El concepto que manda Cody a pey (y que ve el pagador) se guarda tal cual. Aparte, cada movimiento tiene un **concepto visible** que empieza igual ("Transferencia" si no había) y el vendedor puede cambiar, como en una app bancaria. El tablero agrupa por el concepto visible, normalizado (minúsculas, sin espacios sobrantes). El cambio no se manda a pey.
+
+### Pruebas
+
+Se prueba en producción con montos de **$0.01**; lo pagado no se devuelve. Para activar al momento, la documentación ofrece una cuenta de pruebas (CLABE `012180015826225713`). Una cuenta propia registrada por API tarda hasta 5 días hábiles en quedar `ACTIVE`.
+
+### Lo que la documentación no dice
+
+- Si un QR con `amount: 0` y `expiration: 0` acepta pagos sin límite (se infiere que sí).
+- Reintentos, tiempo de espera y códigos esperados del webhook.
+- Largo máximo de `concept`.
+- Si `metadata` enviada regresa igual en el webhook.
+- Límite de peticiones.
 
 ## Datos y secretos
 
@@ -177,7 +233,7 @@ Postgres 17 en Docker. En local el compose de la referencia publica **5433** en 
 
 Variables de conexión: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`.
 
-Cobro: `PEY_API_KEY` (Bearer contra `https://api.pey.mx`) y `WEBHOOK_BASE_URL` para que pey entregue `codi.qr.payment_received` y `codi.pn.payment_received`.
+Cobro: `PEY_API_KEY` (Bearer contra `https://api.pey.mx`), `PEY_WEBHOOK_SECRET` (secreto `whsec_...` del portal) y `WEBHOOK_BASE_URL` para que pey entregue `codi.qr.payment_received` y `codi.pn.payment_received`.
 
 El `.env` no se commitea. En el VPS de la referencia lo instala el pipeline desde una variable File de GitLab. Cody sigue esa regla en cuanto haya remoto y despliegue.
 

@@ -4,9 +4,9 @@
 
 Proyecto para el **DevDay Exchange Community Hackathon CDMX** (7 de noviembre de 2026, UTOPÍA Elena Poniatowska, Coyoacán). Organizan AI Builders México, UTOPÍAS, SEDECO y pey.
 
-Reto: construir con OpenAI y CoDi usando la API abierta de pey. Documentación: [https://docs.pey.mx](https://docs.pey.mx). Base: `https://api.pey.mx`.
+Reto: construir con CoDi usando la API abierta de pey. Documentación: [https://docs.pey.mx](https://docs.pey.mx). Base: `https://api.pey.mx`.
 
-> **Estado: propuesta, sin implementar.** Este repositorio solo contiene este README. No hay aplicación, endpoints, agente ni resultados. Lo descrito abajo es el plan del día. Donde algo aún no existe, está marcado como **pendiente**.
+> **Estado: propuesta, sin implementar.** Este repositorio solo contiene documentación. No hay aplicación, endpoints ni resultados. Lo descrito abajo es el plan del día. Donde algo aún no existe, está marcado como **pendiente**.
 
 Nombre tentativo: **Cody**. Se puede cambiar durante el hackatón.
 
@@ -42,9 +42,16 @@ pey confirma el abono con webhooks:
 - `codi.qr.payment_received`
 - `codi.pn.payment_received`
 
-Con esos cobros, Cody arma un **resumen de ventas** y un **tablero**. El concepto es texto libre: la app determina las agregaciones posibles a partir de lo que el vendedor escribió (conceptos parecidos, día, canal). Esa lectura la propone el agente de OpenAI.
+Con esos cobros, Cody arma un **resumen de ventas** y un **tablero** que agrupa lo cobrado por concepto, día y canal (QR general, QR por venta, notificación).
 
-La voz queda como **opcional y pendiente**: el vendedor podría dictar monto, concepto o referencia, con el mismo mecanismo de dent-intec (faster-whisper y Kokoro o Piper).
+### Concepto por defecto: "Transferencia"
+
+Todo cobro sin concepto queda como **"Transferencia"**:
+
+- El QR general siempre lleva "Transferencia", porque el vendedor no arma esa venta.
+- En un QR por venta o una notificación, si el vendedor deja el concepto vacío, Cody manda "Transferencia".
+
+Como en una app bancaria, el vendedor puede **renombrar el concepto de un movimiento** después de cobrado (por ejemplo, "Transferencia" → "Tortas"). El cambio vive solo en Cody: el concepto que vio el pagador y que registró pey no cambia. El tablero agrupa con el concepto vigente.
 
 ## Flujo de usuario
 
@@ -54,9 +61,10 @@ La voz queda como **opcional y pendiente**: el vendedor podría dictar monto, co
 2. Muestra el QR general ya publicado, o arma una venta: monto obligatorio, concepto y referencia opcionales.
 3. En la venta, el cliente paga de una de estas formas: lee el QR con su app, acerca el teléfono (NFC) o recibe una notificación en el número que dio el vendedor.
 4. pey avisa a Cody con `codi.qr.payment_received` o `codi.pn.payment_received`.
-5. El resumen lista la venta y el tablero actualiza las agregaciones de conceptos.
+5. El resumen lista el movimiento con su concepto ("Transferencia" si no tenía) y el tablero actualiza los totales.
+6. Si quiere, el vendedor abre el movimiento y cambia el concepto.
 
-Si el pago no llega, la pantalla se queda en espera. No hay lógica de reintento, cancelación ni conciliación: eso está **pendiente**.
+Si el pago no llega, la pantalla se queda en espera hasta que el cobro expira. No hay lógica de reintento, cancelación ni conciliación: eso está **pendiente**.
 
 ## Arquitectura
 
@@ -67,7 +75,7 @@ Vendedor (QR general o venta: monto, concepto, referencia)
         │
         ▼
 Cody
-  ├── QR general publicado en el local
+  ├── QR general publicado en el local   (POST /codi/qr, amount 0, sin expiración)
   ├── POST /codi/qr   → QR de esa venta (el cliente lo lee o lo acepta por NFC)
   └── POST /codi/pn   → cobro al número del cliente
         │
@@ -78,18 +86,17 @@ pey  ──webhooks──►  Cody
         │
         ▼
 Resumen de ventas y tablero
-  el agente propone agregaciones de los conceptos capturados
+  agrupado por concepto (editable), día y canal
 ```
 
-- **Cobro:** la app llama la API de pey (`https://api.pey.mx`). `POST /codi/qr` arma el QR de la venta y el QR general. `POST /codi/pn` manda la notificación al celular. El NFC lo resuelve la app bancaria del cliente sobre ese mismo cobro; pey no tiene un endpoint de NFC. El contrato de cada llamada se toma de [docs.pey.mx](https://docs.pey.mx); este README no lo reproduce.
-- **Webhooks:** un endpoint propio (**pendiente**) recibe `codi.qr.payment_received` y `codi.pn.payment_received` y actualiza el estado del cobro.
-- **Tablero:** LangGraph dentro de Django propone cómo agrupar los conceptos de texto libre. El proveedor del modelo es Ollama u OpenAI (`LLM_SERVER`). El modelo no arma el mensaje CoDi a mano.
-
-La voz, si se alcanza, usa el mismo camino opcional que dent-intec (faster-whisper y Kokoro o Piper). No cambia los endpoints de pey.
+- **Cobro:** la app llama la API de pey (`https://api.pey.mx`). `POST /codi/qr` arma el QR de la venta y el QR general. `POST /codi/pn` manda la notificación al celular. El NFC lo resuelve la app bancaria del cliente sobre ese mismo cobro; pey no tiene un endpoint de NFC. El contrato verificado está en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md#cobros-api-de-pey).
+- **Webhooks:** un endpoint propio (**pendiente**) recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado.
+- **Espera en pantalla:** la app consulta a Django cada pocos segundos; Django responde con lo que llegó por webhook y, como respaldo, con `GET /transaction/...` de pey.
+- **Tablero:** suma por concepto normalizado (minúsculas, sin espacios sobrantes), día y canal. Es una consulta a Postgres.
 
 ## Stack
 
-Cody usa la misma plataforma que dent-intec: Flutter (web y Android), Django 6 + DRF, Postgres 17, sesión por cookie, Gunicorn y LangGraph, más la API de pey para el cobro. El detalle y las versiones están en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md). BMAD no entra.
+Cody usa la misma plataforma que dent-intec: Flutter (web y Android), Django 6 + DRF, Postgres 17, sesión por cookie y Gunicorn, más la API de pey para el cobro. El detalle y las versiones están en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md). BMAD no entra.
 
 Nada de eso está instalado en este repositorio todavía.
 
@@ -98,33 +105,32 @@ Nada de eso está instalado en este repositorio todavía.
 | App | Flutter (web y Android) |
 | API | Django 6 + Django REST Framework, Python 3.12 |
 | Datos | PostgreSQL 17 |
-| Agente | LangGraph (`LLM_SERVER=ollama` o `openai`), con herramientas |
-| Voz (opcional) | faster-whisper y Kokoro o Piper, como en dent-intec |
 | Cobros | API de pey (`https://api.pey.mx`: `POST /codi/qr`, `POST /codi/pn`) |
-| Confirmación | Webhook en el mismo Django |
+| Confirmación | Webhook en el mismo Django, firmado con Standard Webhooks |
 
 ## Cómo correrlo
 
-**Pendiente.** Aún no hay código, `package.json` ni servidor. Cuando exista la app, el arranque previsto es:
+**Pendiente.** Aún no hay código ni servidor. Cuando exista la app, el arranque previsto es:
 
 1. Clonar este repositorio e instalar dependencias (**pendiente**: aún no hay `backend/requirements.txt` ni `frontend/pubspec.yaml`; el stack ya está fijado en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md)).
 2. Crear un archivo `backend/.env` (no se incluye en el repo) con:
 
 ```bash
 PEY_API_KEY=tu_llave_de_pey
-LLM_SERVER=openai
-OPENAI_API_KEY=tu_llave_de_openai
+# Secreto que da el portal de pey al crear el webhook (whsec_...).
+PEY_WEBHOOK_SECRET=tu_secreto_de_webhook
 # URL pública para que pey entregue los webhooks. Pendiente de definir.
 WEBHOOK_BASE_URL=https://tu-tunel-o-dominio.example
 ```
 
 3. Levantar la app en local (**pendiente**: no hay comando de arranque definido) y exponer la ruta de webhooks con un túnel si pey debe alcanzar la máquina.
+4. Registrar esa URL en [portal.mipey.mx/developers](https://portal.mipey.mx/developers) (engrane de la API key → webhook) y guardar el secreto.
 
 Sustituye los placeholders por llaves reales. No subas esas llaves al repositorio.
 
 ## Nota de pruebas
 
-pey se prueba en **producción**. Usar montos de **$0.01**.
+pey se prueba en **producción** (el ambiente de pruebas de pey todavía no está disponible). Usar montos de **$0.01**; lo que se paga no se devuelve.
 
 No hay suite de pruebas, cobros de ejemplo ni registro de pagos de este proyecto: **pendiente**.
 
@@ -134,14 +140,13 @@ Plan del 7 de noviembre de 2026. Ningún bloque está hecho.
 
 | Bloque | Qué se busca | Estado |
 | --- | --- | --- |
-| 1 | Llaves, lectura de [docs.pey.mx](https://docs.pey.mx) y un `POST /codi/qr` de $0.01 | Pendiente |
-| 2 | QR general para publicar en el local, con el monto tecleado por el cliente | Pendiente |
+| 1 | Llaves, túnel, webhook registrado en el portal y un `POST /codi/qr` de $0.01 | Pendiente |
+| 2 | QR general para publicar en el local (`amount: 0`, concepto "Transferencia") | Pendiente |
 | 3 | QR por venta: monto, concepto y referencia opcionales | Pendiente |
 | 4 | `POST /codi/pn` al número del cliente, y espera del pago (QR, NFC o notificación) | Pendiente |
-| 5 | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` | Pendiente |
-| 6 | Resumen de ventas y tablero con agregaciones de conceptos | Pendiente |
-| 7 | Voz con faster-whisper (opcional) | Pendiente |
-| 8 | Demo de punta a punta con un cobro de $0.01 | Pendiente |
+| 5 | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Pendiente |
+| 6 | Resumen de ventas, edición del concepto y tablero por concepto, día y canal | Pendiente |
+| 7 | Demo de punta a punta con un cobro de $0.01 | Pendiente |
 
 ## Equipo
 
