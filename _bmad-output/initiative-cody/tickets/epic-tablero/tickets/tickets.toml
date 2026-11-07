@@ -1,0 +1,45 @@
+# next_id = 5
+
+[[entry]]
+id = 1
+type = "story"
+title = "Resumen lista movimientos del comercio"
+description = "API y pantalla listan movimientos con concepto visible y canal."
+verify = "Test API fixtures tres canales."
+covers = ["R6"]
+after = ["1.3"]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Tablero agrupa por concepto día y canal"
+description = "Suma America/Mexico_City; normaliza concepto; no mezcla canales."
+verify = "Tests agrupación y C6."
+covers = ["R6"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Renombrar concepto visible tras cobro"
+description = "PATCH concepto visible; tablero nuevo; enviado inmutable."
+verify = "Test renombrar agrupación y concepto_enviado."
+covers = ["R5"]
+after = [2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Tablero con datos fixture sin esperar pey"
+description = "UI con movimientos sembrados adaptador dev; sin pey."
+verify = "flutter test tablero fixture."
+covers = ["R6"]
+after = [3]
+hitl = false
+risk = "low"

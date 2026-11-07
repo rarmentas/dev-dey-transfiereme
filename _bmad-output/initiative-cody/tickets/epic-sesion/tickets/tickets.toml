@@ -1,0 +1,158 @@
+# Orden: 9 historias transversales (contrato + gates), luego 5 de acceso.
+# next_id = 15
+
+[[entry]]
+id = 1
+type = "story"
+title = "Scaffold local Flutter Django Postgres"
+description = "Arranca compose, backend y frontend según el stack companion; un healthcheck confirma Postgres y Django."
+verify = "dev-start deja API y app en un origen local sin secretos de pey en el repo."
+covers = []
+after = []
+hitl = true
+risk = "medium"
+plan_checkpoint = true
+
+[[entry]]
+id = 2
+type = "story"
+title = "Comercio y ámbito en el servidor"
+description = "El servidor resuelve el comercio por membresía; ningún endpoint de cobro acepta comercio en el cuerpo."
+verify = "manage.py test del módulo de ámbito pasa con dos comercios y un usuario por comercio."
+covers = ["R7"]
+after = [1]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Modelo y persistencia de movimiento"
+description = "Movimiento con comercio, monto, conceptos, canal (qr_general, qr_venta, notificacion), estado (pendiente, pagado, vencido) y origen_pey u origen_desarrollo (contrato transversal stack)."
+verify = "Tests crean movimientos en los tres canales y rechazan transiciones inválidas de estado."
+covers = ["R6"]
+after = [2]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Contrato de correlación de avisos"
+description = "Cada cobro guarda peyQrId o peyTransactionId según canal; el aplicador resuelve comercio solo por el cobro ya persistido; el aviso exige coincidencia de ids."
+verify = "Tests rechazan aviso con id ajeno y aceptan el id correcto; comercio sale del cobro, no del payload."
+covers = ["R4"]
+after = [3]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Puerto webhook firma e idempotencia"
+description = "Interfaz Standard Webhooks sobre cuerpo crudo; idempotencia por webhook-id y por transactionId; duplicados no duplican monto."
+verify = "Tests: firma inválida 401; mismo webhook-id o mismo transactionId no crea segundo movimiento pagado."
+covers = ["R4"]
+after = [4]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Puerto pey y cuenta ACTIVE con adaptador desarrollo"
+description = "Cliente pey inyectable: adaptador desarrollo sin red; adaptador producción consulta pey y no usa flags de semilla dev."
+verify = "Tests dev sin HTTP; tests contrato producción ignoran campo semilla_active_dev."
+covers = []
+after = [5]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 7
+type = "story"
+title = "Gate acceso real y aislamiento verificado"
+description = "Persona confirma sesión real, 403 sin sesión y 404 entre comercios sin atajos de fixture de sesión."
+verify = "Checklist firmado en notas: prueba manual dos comercios."
+covers = ["R7"]
+after = [6]
+hitl = true
+risk = "high"
+
+[[entry]]
+id = 8
+type = "story"
+title = "Gate cuenta ACTIVE real en pey"
+description = "Persona confirma codiStatus ACTIVE en pey para la CLABE del vendedor; la semilla dev no cuenta."
+verify = "Evidencia en notas: consulta pey o portal sin API key en cliente."
+covers = []
+after = [7]
+hitl = true
+risk = "high"
+unknown = "¿CLABE de prueba Banxico 012180015826225713 o cuenta propia del equipo?"
+
+[[entry]]
+id = 9
+type = "story"
+title = "Gate avisos firmados e idempotencia en URL pública"
+description = "Webhook en portal pey; firma e idempotencia probadas con evento real o log del portal."
+verify = "Checklist: secreto fuera del repo; webhook-id y transactionId repetidos sin doble movimiento."
+covers = []
+after = [8]
+hitl = true
+risk = "high"
+
+[[entry]]
+id = 10
+type = "story"
+title = "API de sesión entrar salir estado"
+description = "POST entrar y salir, GET estado con SessionAuthentication y permisos DRF."
+verify = "Tests: credenciales válidas crean sesión; salir invalida; estado refleja usuario."
+covers = ["R7"]
+after = [2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 11
+type = "story"
+title = "Middleware cierra API sin sesión"
+description = "403 en /api/ sin usuario salvo rutas de sesión y webhooks documentadas."
+verify = "Test sin cookie recibe 403 en recurso protegido."
+covers = ["R7"]
+after = [10]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 12
+type = "story"
+title = "Listado de movimientos solo del comercio"
+description = "GET movimientos del comercio de la sesión; otro comercio responde 404."
+verify = "Test dos comercios: cobro de B no visible con sesión de A."
+covers = ["R7"]
+after = [3, 11]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 13
+type = "story"
+title = "Login Flutter con cookie de sesión"
+description = "Pantalla de entrada, Dio con CSRF en web, redirección al perder sesión."
+verify = "flutter test login con mock API pasa."
+covers = ["R7"]
+after = [10]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 14
+type = "story"
+title = "Semilla manual de vendedor y comercio"
+description = "Sembra vendedor demo; bandera semilla_active_dev solo para adaptador desarrollo, no para gate ACTIVE real."
+verify = "Hitl: entrar lista cero movimientos; producción no lee semilla_active_dev como ACTIVE."
+covers = []
+after = [11, 12]
+hitl = true
+risk = "low"

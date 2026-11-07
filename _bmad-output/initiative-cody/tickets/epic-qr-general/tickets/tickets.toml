@@ -1,0 +1,57 @@
+# next_id = 6
+
+[[entry]]
+id = 1
+type = "story"
+title = "Alta QR general con adaptador desarrollo"
+description = "POST interno crea QR general amount 0 sin expiración cuando adaptador dev marca cuenta ACTIVE simulada."
+verify = "Test adaptador dev: ACTIVE simulado obtiene qrString; inactivo error sin movimiento pagado."
+covers = ["R1"]
+after = ["1.6"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Ruta webhook QR con puerto de firma"
+description = "Endpoint público codi.qr.payment_received usando puerto de idempotencia; comercio por cobro persistido."
+verify = "Test fixture: primer aviso pagado; repetido transactionId sin segundo movimiento."
+covers = ["R1", "R4"]
+after = ["1.5", 1]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Segundo pago QR general en adaptador desarrollo"
+description = "Dos avisos distintos transactionId mismo QR: dos movimientos; mismo transactionId: uno solo."
+verify = "Test dos transactionId distintos dos filas; mismo transactionId una fila pagada."
+covers = ["R1"]
+after = [2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Pantalla QR general impreso en Flutter"
+description = "Muestra qrString con qr_flutter; sin espera ni vencimiento."
+verify = "Widget test renderiza QR desde qrString mock."
+covers = ["R1"]
+after = [1]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Integración real cobro QR general cero uno"
+description = "Adaptador producción; cobro 0.01 real solo tras gates 1.7–1.9."
+verify = "Hitl: movimiento 0.01 y evidencia webhook; segundo pago opcional para R1."
+covers = ["R1"]
+after = ["1.7", "1.8", "1.9", 3, 4]
+hitl = true
+risk = "high"
+plan_checkpoint = true
