@@ -66,8 +66,8 @@ Fuera de esta iniciativa: inventario, ticket, caja, iOS, reintento, cancelación
 
 Recorrido que une las capas: el QR impreso del local cobra sin abrir transfiereme. Para una venta, el vendedor abre la app y arma un solo canal. El cliente paga, pey avisa y el tablero se actualiza.
 
-- Touch point: API de pey (`https://api.pey.mx`) — alta de QR, notificación, consulta de respaldo, avisos de pago y la CLABE hasta que pey la marca ACTIVE; owner: sin epic todavía
-- Touch point: portal de pey — una persona registra la URL del webhook y guarda el secreto; owner: sin epic todavía
+- Touch point: API de pey (`https://api.pey.mx`) — alta de QR y aviso `codi.qr.payment_received`; owner: epic-qr-general. La notificación, su aviso y la consulta de respaldo los agrega epic-venta. La CLABE, hasta ACTIVE, la escribe epic-clabe.
+- Touch point: portal de pey — una persona registra https://transfiereme.asware.com.mx y guarda el secreto; owner: epic-qr-general
 - Touch point: app bancaria del cliente — leer el QR, el acercamiento y la autorización; owner: no se construye
 
 ## References
