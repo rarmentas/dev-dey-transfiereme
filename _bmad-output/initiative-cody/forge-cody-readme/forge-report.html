@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cody — idea forjada</title>
+<style>
+  :root { --ink: #102033; --wax: #8f1d1d; --paper: #e7eef2; --rule: #b7c6d1; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #243140; color: var(--ink); font: 17px/1.45 Georgia, "Iowan Old Style", serif; }
+  main { max-width: 42rem; margin: 2.5rem auto; padding: 2.5rem 2.2rem 3rem; background: var(--paper); box-shadow: 0 12px 40px rgba(40, 24, 12, 0.12); }
+  h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 0.2rem; }
+  h2 { font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 2rem 0 0.6rem; }
+  p, li { margin: 0.35rem 0; }
+  ul { padding-left: 1.15rem; }
+  .lede { color: #2c455c; }
+  .seal { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; }
+  .row { display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.35rem 0.7rem; padding: 0.45rem 0; border-top: 1px solid var(--rule); }
+  .row b { font-family: "Segoe UI", sans-serif; font-size: 0.95rem; }
+  .row span { display: block; color: #2c455c; font-size: 0.92rem; }
+  .weak { background: #d5e2ea; padding: 0.8rem 1rem; }
+</style>
+</head>
+<body>
+<main>
+  <div class="seal" aria-label="Sello: endurecida">
+    <svg width="148" height="148" viewBox="0 0 148 148">
+      <circle cx="74" cy="74" r="68" fill="#8f1d1d"/>
+      <circle cx="74" cy="74" r="58" fill="none" stroke="#e7eef2" stroke-width="2"/>
+      <circle cx="74" cy="74" r="50" fill="none" stroke="#e7eef2" stroke-width="1" stroke-dasharray="2 3"/>
+      <path d="M74 28 l4 10 10 2 -8 7 2 10 -8 -5 -8 5 2 -10 -8 -7 10 -2z" fill="#e7eef2"/>
+      <text x="74" y="86" text-anchor="middle" fill="#e7eef2" font-family="Georgia, serif" font-size="15" letter-spacing="2">HARDENED</text>
+      <text x="74" y="106" text-anchor="middle" fill="#e7eef2" font-family="Georgia, serif" font-size="9" letter-spacing="1">7 NOV 2026</text>
+    </svg>
+  </div>
+  <h1>Cody</h1>
+  <p class="lede">Idea endurecida. El negocio que hoy cobra en efectivo puede recibir CoDi sin abrir su banco. Quien nunca activó CoDi queda fuera.</p>
+
+  <h2>Cerrado</h2>
+  <ul>
+    <li>QR del local para pagar solo: el cliente abre su banco, teclea el monto, concepto «Transferencia», sin notificación.</li>
+    <li>Venta con un solo canal, celular o QR, cuando el cliente coopera. El otro canal aparece solo si el primero venció sin pago.</li>
+    <li>Mientras está pendiente, no se cobra por otro lado. Si no esperan, el doble cobro se acepta.</li>
+    <li>Resumen, renombre del concepto solo en Cody, tablero por concepto, día y canal.</li>
+    <li>Una API key oculta. La CLABE del vendedor se registra bajo esa llave. El QR se ve cuando pey la marca ACTIVE.</li>
+    <li>Cuentas nuevas, proyecto de Google nuevo, cookie de Django. También correo y contraseña, sin confirmación. Nombre y tipo se guardan después o se saltan.</li>
+    <li>Hackatón: cuenta ya creada y CLABE demo ACTIVE. Google, la CLABE propia y la confirmación de correo no se demuestran.</li>
+  </ul>
+
+  <h2>Rechazado</h2>
+  <ul>
+    <li>QR de la cámara que abre el banco con el JSON de CoDi. Ese texto no es una URL.</li>
+    <li>Dos canales vivos en la misma venta. pey no cancela el primero.</li>
+    <li>Cuentas, proyecto de Google y JWT de cuentas-claras.</li>
+    <li>Pedir nombre y tipo de negocio antes del primer QR. El tipo no cambia el cobro.</li>
+  </ul>
+
+  <h2>Sigue débil</h2>
+  <div class="weak">
+    <p>Durante los 360 segundos el primer cobro sigue vivo, el QR del local también, y un pago por otro lado más el aviso hacen un doble cobro. Quedó aceptado.</p>
+    <p>Una CLABE propia no llega a ACTIVE el día del hackatón. La demo depende de una ya aprobada.</p>
+    <p>La confirmación de correo quedó solo como feature posible en la documentación.</p>
+  </div>
+
+  <h2>Quién la presionó</h2>
+  <div class="row"><div>📋</div><div><b>John</b><span>El trabajo es el del negocio que cobra en efectivo, no el de convertir a quien no tiene CoDi.</span></div></div>
+  <div class="row"><div>🏗️</div><div><b>Winston</b><span>Una llave de plataforma y la CLABE de cada quien. El JWT de otro producto no entra.</span></div></div>
+  <div class="row"><div>🎨</div><div><b>Sally</b><span>Seis minutos de espera y el de atrás ya pagó en efectivo.</span></div></div>
+  <div class="row"><div>🎯</div><div><b>Sofia</b><span>Lo cerrado alcanza para requisitos. La confirmación de correo no es un ticket.</span></div></div>
+  <div class="row"><div>💻</div><div><b>Amelia</b><span>Google no estaba en la sesión de Cody ni en la de dent-intec.</span></div></div>
+  <div class="row"><div>📊</div><div><b>Mary</b><span>Las cifras de efectivo no prueban que el de la fila tenga CoDi.</span></div></div>
+  <div class="row"><div>📏</div><div><b>Level</b><span>«No me llegó» no es un estado. PENDING sigue cobrable.</span></div></div>
+  <div class="row"><div>🌶️</div><div><b>Boundary</b><span>Dos altas vivas son dos cobros.</span></div></div>
+  <div class="row"><div>🚢</div><div><b>Dana</b><span>El jurado entra con una cuenta que ya cobra.</span></div></div>
+  <div class="row"><div>🪵</div><div><b>Splinter</b><span>El banco ya imprime ese QR. La diferencia está en otro lado.</span></div></div>
+  <div class="row"><div>🎯</div><div><b>Yui</b><span>El código de correo no cobra. La CLABE sí.</span></div></div>
+  <div class="row"><div>🛑</div><div><b>Killjoy</b><span>Lo que seguía ya no cambiaba el cobro de hoy.</span></div></div>
+  <div class="row"><div></div><div><b>Licha, Renata, Toño, Nuria, Lalo, Chela, Don Ramiro, Iván, Rocío, Lila, Beto, Reme, Nico, Sol, Héctor, Nayeli</b><span>Voces de mostrador, banco, portal y fila, generadas para esta sesión.</span></div></div>
+</main>
+</body>
+</html>
