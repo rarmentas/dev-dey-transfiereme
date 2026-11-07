@@ -1,41 +1,39 @@
-# Borrador. El orden de la tabla es el de una sola persona: primero el cobro de $0.01.
-# La CLABE puede empezar cuando termina el QR general, en paralelo con la venta.
+# Borrador de épicas. Orden de tabla = lectura humana, no cola de finalización.
+# Hito previo al paralelo: contrato en docs/stack-tecnologico/000-stack.md (sección
+# Contrato transversal). No depende de cerrar epic-sesion; la integración con pey es aparte.
+# Cinco épicas, sin after entre ellas. Sin sexta épica.
 
 [[epic]]
 id = 1
 slug = "epic-sesion"
 title = "La app local deja entrar al vendedor"
-description = "Arranca en local con Flutter, Django y Postgres. Un vendedor creado a mano entra con correo y contraseña y solo ve su comercio. Deja la app y el movimiento para que el QR general registre ahí el cobro real: concepto enviado, concepto visible y canal (QR general, QR por venta, notificación). La cuenta de ese vendedor queda sembrada ACTIVE. Guarda un cobro de prueba para comprobar que otro comercio no lo encuentra. No habla con pey ni recibe avisos."
+description = "Arranca en local con Flutter, Django y Postgres. Un vendedor creado a mano entra con correo y contraseña y solo ve su comercio. La sesión y el aislamiento por comercio son reales desde el primer corte. Contribuye al contrato transversal (estados, canales, ámbito) junto con el companion de arquitectura; ese contrato es hito compartido y no exige terminar esta épica para que otras avancen en UI o dominio. Para probar aislamiento en desarrollo puede usarse el adaptador de datos descrito en el stack, sin llamar a pey. No usa credenciales ni endpoints de producción."
 covers = ["R7"]
 
 [[epic]]
 id = 2
 slug = "epic-qr-general"
 title = "El QR impreso cobra"
-description = "Usa la app y el movimiento que dejó la sesión, y registra el cobro real sobre ese movimiento. Deja el cliente HTTP de pey y la ruta de webhook: verifica la firma sobre el cuerpo crudo, responde enseguida y aplica cada aviso una sola vez. El alta de QR consulta el estado de la cuenta: si no está ACTIVE no entrega QR; con la cuenta sembrada ACTIVE, el comercio obtiene un QR general impreso, sin vencimiento ni tope. Un cliente con CoDi paga tecleando el monto y codi.qr.payment_received crea un movimiento Transferencia colgado de ese QR. Esa alta queda para que la venta la reuse con monto, y la ruta queda para que la venta agregue codi.pn.payment_received. El cobro del QR general no vence y no tiene pantalla de espera."
+description = "Implementa cobro por QR general conforme al contrato transversal y a R1/R4. El desarrollo de pantallas y reglas puede empezar en paralelo con sesión, venta, tablero y CLABE. La integración real con pey (POST /codi/qr a https://api.pey.mx, webhook firmado e idempotente) queda bloqueada hasta sesión real, cuenta ACTIVE confirmada por pey, PEY_API_KEY de plataforma y webhook operativo; un ACTIVE simulado en el adaptador de desarrollo no autoriza esa petición. Sin ACTIVE en pey no se entrega QR de cobro real. El QR general impreso no vence y no tiene pantalla de espera."
 covers = ["R1", "R4"]
-after = [{ epic = 1, needs = "la app local, la sesión, el comercio y el movimiento con sus tres canales" }]
 
 [[epic]]
 id = 3
 slug = "epic-venta"
 title = "La venta cobra por un solo canal"
-description = "El vendedor arma una venta con monto y, si quiere, concepto y referencia, reusando el alta de QR. Hay un solo canal vivo, QR o notificación; el otro aparece cuando el primero venció sin pago, y con la venta pendiente no se arma otro cobro. Agrega codi.pn.payment_received sobre la ruta ya verificada, ligado al identificador que pey devolvió, y la pantalla de esa venta pasa a pagado sin recargar, con consulta de respaldo si el aviso no llegó. El cobro de la venta y el de la notificación vencen. Deja los movimientos de QR por venta y de notificación para el tablero."
+description = "Venta con monto y, si quiere, concepto y referencia; un solo canal vivo (QR o notificación), el otro solo tras vencer el primero; con venta pendiente no se arma otro cobro (R2, R3, R4). Puede desarrollarse en paralelo leyendo el contrato transversal sin esperar el cierre de la épica del QR. Cobro real y codi.pn.payment_received en producción exigen los mismos bloqueadores que el QR (ACTIVE confirmado por pey, firma, idempotencia). Escribe movimientos qr_venta y notificacion con origen pey cuando la integración está lista."
 covers = ["R2", "R3", "R4"]
-after = [{ epic = 2, needs = "el cliente pey, el alta de QR y la ruta de webhook que ya aplica codi.qr.payment_received una sola vez" }]
 
 [[epic]]
 id = 4
 slug = "epic-tablero"
 title = "El tablero agrupa lo cobrado"
-description = "El resumen lista cada movimiento y el tablero suma por concepto vigente, día en America/Mexico_City y canal. Renombrar el concepto no cambia lo que vio el pagador ni lo que guardó pey. Lee los movimientos que ya dejaron el QR general, el QR de venta y la notificación. No crea cobros."
+description = "Resumen y tablero por concepto vigente, día en America/Mexico_City y canal (R5, R6). En desarrollo puede alimentarse solo con filas origen_desarrollo del adaptador; esas filas no se mezclan en totales que representen cobro confirmado por pey. Los movimientos origen_pey son los que cuentan para dinero real cobrado. Renombrar concepto no altera lo guardado en pey. No crea cobros ni llama a pey."
 covers = ["R5", "R6"]
-after = [{ epic = 2, needs = "movimientos del QR general" }, { epic = 3, needs = "movimientos del QR de venta y de la notificación" }]
 
 [[epic]]
 id = 5
 slug = "epic-clabe"
 title = "La CLABE deja la cuenta ACTIVE"
-description = "El vendedor indica su CLABE y pey la marca ACTIVE. Hasta entonces no se entrega el QR que ya sabe crear la épica del QR general. La API key de plataforma sigue oculta y no hay llave por vendedor. En la demo la CLABE ya está ACTIVE y esta captura no se recorre. No modifica el alta de QR ni los avisos: solo escribe el estado de la cuenta."
+description = "El vendedor indica su CLABE y pey la marca ACTIVE. Hasta que pey confirme ACTIVE, QR y venta no deben entregar cobro real (C13 en initiative-cody.md, Constraints). Una sola API key de plataforma, oculta; sin llave por vendedor. En la demo la CLABE ya está ACTIVE y esta captura no se recorre. Paralelizable con las demás épicas; solo persiste estado y la llamada a pey para activación."
 covers = []
-after = [{ epic = 2, needs = "el cliente pey y el QR general, para negarlo mientras la cuenta no está ACTIVE" }]

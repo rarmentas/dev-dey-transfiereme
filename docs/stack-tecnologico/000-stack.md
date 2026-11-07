@@ -125,6 +125,71 @@ Un middleware responde 403 a `GET` y `POST` bajo `/api/` si no hay usuario. Qued
 
 El ámbito (clínica allá, comercio aquí) lo pone el servidor a partir de la membresía del usuario. El cliente no lo elige en el cuerpo del request. Un recurso de otra cuenta responde 404.
 
+## Contrato transversal de movimientos y cobros
+
+Antes de desarrollar en paralelo las cinco épicas del hackatón, Django y Flutter comparten este contrato mínimo. No es una épica ni un módulo aparte: es la forma común de leer y escribir cobros y movimientos.
+
+| Pieza | Qué fija |
+| --- | --- |
+| **Comercio** | Ámbito de datos; toda consulta y alta va filtrada por la membresía de la sesión. |
+| **Cuenta (pey)** | En producción, `ACTIVE` solo si pey lo confirmó (consulta o aviso de activación). Sin eso, no hay `POST` de cobro real. |
+| **Cobro** | Una instancia enviada a pey (QR general, QR de venta o notificación): monto, concepto hacia pey, vencimiento, identificadores devueltos por pey. |
+| **Movimiento** | Lo que el vendedor ve en resumen y tablero: ligado a un cobro o a un pago sobre QR general; concepto visible editable. Campo de procedencia: `origen_pey` (cobro confirmado vía pey) u `origen_desarrollo` (solo adaptador local; nunca dinero real). |
+
+**Estados del cobro** (los únicos válidos): `pendiente`, `pagado`, `vencido`. No hay reintento ni cancelación en este alcance.
+
+**Canales del tablero** (R6): `qr_general`, `qr_venta`, `notificacion`. El NFC es comportamiento del banco del cliente sobre un QR; no es un cuarto canal.
+
+**Ligas con pey** (R4):
+
+| Origen | Campo guardado al crear | Campo del webhook |
+| --- | --- | --- |
+| QR (general o venta) | `id` de `POST /codi/qr` | `codiQrId` |
+| Notificación | `transactionId` de `POST /codi/pn` | `transactionId` |
+
+**Idempotencia**: cada aviso se aplica una vez; la clave es `webhook-id` (C7).
+
+El día del tablero y la normalización del concepto visible siguen las reglas de [Concepto editable](#concepto-editable) y la zona `America/Mexico_City`.
+
+### Qué es real desde el primer corte
+
+- Sesión por cookie, login manual del vendedor y aislamiento por comercio (R7, C5, C11).
+- Reglas de permisos en API: sin sesión no hay consulta de movimientos ajenos.
+
+### Hito previo al paralelo (no es una épica)
+
+El **contrato transversal** de esta sección es el acuerdo de equipo antes de picar las cinco épicas en paralelo. No equivale a “épica de sesión terminada”: puede documentarse y modelarse en código mientras sesión, QR, venta, tablero y CLABE avanzan en ramas distintas.
+
+### Qué bloquea la integración y el cobro real en pey
+
+No se declara integración de cobro lista ni se envía dinero hasta que, **en el camino de producción** (no el adaptador de desarrollo), existan:
+
+1. Cuenta **ACTIVE** confirmada por pey (no basta un flag local ni `origen_desarrollo`).
+2. Sesión real y aislamiento por comercio en la API que llama a pey.
+3. `PEY_API_KEY` de plataforma en servidor (C13: una llave, no por vendedor; nunca en la app ni en el repo).
+4. Webhook registrado, firma Standard Webhooks sobre el **cuerpo crudo** y respuesta pronta.
+5. Idempotencia por `webhook-id` antes de marcar `pagado`.
+
+Un **ACTIVE simulado** en el adaptador de desarrollo **no autoriza** una petición a `https://api.pey.mx`. El cliente de integración debe comprobar ACTIVE contra pey (o contra un registro actualizado solo por respuestas de pey), no contra semilla local.
+
+La UI y la lógica de **cobro** no se dan por válidas con fixtures que imiten respuestas de pey en el mismo código que firma webhooks reales sin conmutar explícitamente al adaptador.
+
+### Adaptador de desarrollo (identidad, cuenta, pagos simulados)
+
+Solo en entorno local con un **adaptador** explícito (p. ej. backend en `DEBUG`, driver inyectado o repositorio de prueba):
+
+- Identidad, comercio, cuenta o movimientos pueden sembrarse para probar sesión, tablero o pantallas sin red a pey.
+- Ese adaptador **no** usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`.
+- Los movimientos creados ahí llevan `origen_desarrollo`. El tablero en desarrollo puede mostrarlos en una vista o modo de prueba; **no** deben sumarse con movimientos `origen_pey` en totales que el producto presente como cobro confirmado (R6 en integración).
+
+Pruebas de **$0.01** reales siguen en producción (C2) y requieren los cinco bloqueadores anteriores, no el adaptador.
+
+### Qué es desarrollo paralelo sin integración
+
+- **Tablero:** UI y consultas contra `origen_desarrollo` en el adaptador.
+- **QR / venta / CLABE:** UI, validaciones de formulario y máquina de estados del contrato sin llamar a pey hasta activar el camino de integración.
+- **Sesión:** login y ámbito reales pueden coexistir con el adaptador para datos de cobro.
+
 ## Cobros (API de pey)
 
 La capa de cobro habla con la API pública de pey. Autenticación: `Authorization: Bearer` con `PEY_API_KEY`. Base: `https://api.pey.mx` (producción). El índice de la documentación también menciona `https://api.dev.pey.mx` y llaves `test` en `portal.dev.mipey.mx`, pero la portada dice que el ambiente de pruebas llega "próximamente"; en el hackatón se usa producción. Contrato tomado de [docs.pey.mx](https://docs.pey.mx) y de su [openapi.json](https://docs.pey.mx/openapi.json) (versión `2026-10-20`), revisado el 7 de noviembre de 2026.
