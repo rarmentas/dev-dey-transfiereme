@@ -1,0 +1,45 @@
+# next_id = 5
+
+[[entry]]
+id = 1
+type = "story"
+title = "Captura CLABE del vendedor"
+description = "Guarda CLABE del comercio; API key no al cliente."
+verify = "Test CLABE persistida; respuesta sin PEY_API_KEY."
+covers = []
+after = ["1.2"]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Sincroniza estado cuenta con adaptador desarrollo"
+description = "codiStatus vía puerto pey; PENDING bloquea QR en dev."
+verify = "Test adaptador dev PENDING vs ACTIVE simulado."
+covers = []
+after = ["1.6", 1]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Bloqueo QR en UI sin cuenta ACTIVE"
+description = "UI mensaje sin QR cobrable si no ACTIVE."
+verify = "Widget test PENDING."
+covers = []
+after = [2]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Integración real ACTIVE y CLABE en pey"
+description = "Consulta producción ACTIVE; mismos gates que cobro real."
+verify = "Hitl: ACTIVE en pey; QR antes y después."
+covers = []
+after = ["1.7", "1.8", "1.9", 3]
+hitl = true
+risk = "high"

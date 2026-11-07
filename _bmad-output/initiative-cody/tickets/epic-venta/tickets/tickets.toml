@@ -1,0 +1,56 @@
+# next_id = 6
+
+[[entry]]
+id = 1
+type = "story"
+title = "Alta venta valida monto referencia y concepto"
+description = "Crea cobro pendiente qr_venta; referencia 1-7 dígitos; concepto vacío Transferencia; rechazo pey sin pagado."
+verify = "Tests referencia inválida y rechazo pey."
+covers = ["R2"]
+after = ["1.6"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Un solo canal vivo QR o notificación"
+description = "Canal único; venta pendiente bloquea otra venta."
+verify = "Tests C12 y R3."
+covers = ["R2", "R3"]
+after = [1]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Notificación pn y webhook pn"
+description = "POST /codi/pn vía adaptador; aviso ligado a transactionId del alta."
+verify = "Test pn: aviso correcto pagado una vez por transactionId."
+covers = ["R3", "R4"]
+after = ["1.5", 2]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Pantalla espera pagado y vencido"
+description = "Polling 2s; vencido sin aviso; pagado sin recarga."
+verify = "flutter test reloj inyectable pendiente vencido pagado."
+covers = ["R4"]
+after = [3]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Integración real venta un canal cero uno"
+description = "Cobro real 0.01 tras gates 1.7–1.9."
+verify = "Hitl: canal vivo pagado en pey con aviso."
+covers = ["R2", "R3"]
+after = ["1.7", "1.8", "1.9", 4]
+hitl = true
+risk = "high"
