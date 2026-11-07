@@ -14,6 +14,7 @@ Cody usa la misma plataforma que `dent-intec`. Las versiones de este documento s
 | Cliente HTTP | Dio, con cookie de sesión y CSRF | Dio **5.11.1**, `cookie_jar` **4.0.8**, `dio_cookie_manager` **3.2.0** |
 | Estado y rutas | Riverpod y GoRouter | `flutter_riverpod` **3.4.3**, `go_router` **18.1.1** |
 | Asistente | LangGraph sobre LangChain | `langgraph` **1.0.3**, `langchain-core` **1.0.2**, `langchain-openai` **1.0.2**, `langchain-ollama` **1.0.0** |
+| Cobros | API de pey | `https://api.pey.mx`, contrato en [docs.pey.mx](https://docs.pey.mx) |
 | Pruebas de UI | `flutter_test` + `flutter_lints` | `flutter_lints` **^6.0.0** |
 | Zona horaria | `America/Mexico_City`, idioma `es` | — |
 
@@ -130,6 +131,21 @@ Un middleware responde 403 a `GET` y `POST` bajo `/api/` si no hay usuario. Qued
 
 El ámbito (clínica allá, comercio aquí) lo pone el servidor a partir de la membresía del usuario. El cliente no lo elige en el cuerpo del request. Un recurso de otra cuenta responde 404.
 
+## Cobros (API de pey)
+
+La capa de cobro habla con la API pública de pey. Autenticación: `Authorization: Bearer` con `PEY_API_KEY`. Base: `https://api.pey.mx`. El detalle de cada cuerpo está en [docs.pey.mx](https://docs.pey.mx).
+
+| Uso en Cody | Llamada |
+|---|---|
+| QR general del local y QR de una venta | `POST /codi/qr` |
+| Cobro al celular del cliente | `POST /codi/pn` |
+| Pago de un QR | webhook `codi.qr.payment_received` |
+| Pago de una notificación | webhook `codi.pn.payment_received` |
+
+El QR de una venta lleva monto y, si el vendedor los captura, concepto y referencia (`concept`, `numRef` en el ejemplo de la documentación, junto con `expiration`). El QR general es el que se publica en el establecimiento para que el cliente teclee el monto. El NFC lo hace la app bancaria del cliente sobre ese cobro; pey no expone un endpoint de NFC.
+
+Se prueba en producción con montos de **$0.01**. Una API key tiene un solo webhook, firmado con Standard Webhooks.
+
 ## Asistente
 
 LangGraph corre dentro del request de Gunicorn. No hay worker aparte para el chat.
@@ -141,7 +157,7 @@ LangGraph corre dentro del request de Gunicorn. No hay worker aparte para el cha
 | `ollama` (default de la referencia) | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_CTX` |
 | `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` (default de la referencia `gpt-4.1-mini`), `OPENAI_REASONING_EFFORT` (default `none`), `OPENAI_MAX_TOKENS` |
 
-El modelo no arma llamadas externas a mano: el grafo expone herramientas y el servidor las ejecuta. En Cody esas herramientas hablan con la API de pey (`/codi/qr`, `/codi/pn`, links de pago). Los webhooks `codi.qr.payment_received` y `codi.pn.payment_received` entran por una ruta pública, igual que el webhook de la referencia: responden pronto y el trabajo pesado no bloquea al emisor si hace falta una cola.
+El modelo no arma llamadas externas a mano: el grafo expone herramientas y el servidor las ejecuta. En Cody el agente propone las agregaciones del tablero a partir de los conceptos de texto libre. El cobro en sí lo hace el servidor contra la API de pey (`POST /codi/qr`, `POST /codi/pn`). Los webhooks `codi.qr.payment_received` y `codi.pn.payment_received` entran por una ruta pública, igual que el webhook de la referencia: responden pronto y el trabajo pesado no bloquea al emisor si hace falta una cola.
 
 ## Voz (opcional)
 
@@ -160,6 +176,8 @@ Mismo mecanismo que la referencia, en `requirements-voz.txt`, instalado solo si 
 Postgres 17 en Docker. En local el compose de la referencia publica **5433** en el host para no chocar con un Postgres del sistema. Volumen nombrado. Healthcheck con `pg_isready`.
 
 Variables de conexión: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`.
+
+Cobro: `PEY_API_KEY` (Bearer contra `https://api.pey.mx`) y `WEBHOOK_BASE_URL` para que pey entregue `codi.qr.payment_received` y `codi.pn.payment_received`.
 
 El `.env` no se commitea. En el VPS de la referencia lo instala el pipeline desde una variable File de GitLab. Cody sigue esa regla en cuanto haya remoto y despliegue.
 
