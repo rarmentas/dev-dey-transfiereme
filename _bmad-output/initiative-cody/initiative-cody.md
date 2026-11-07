@@ -44,6 +44,7 @@ Para el vendedor de un pequeño comercio, cobrar con CoDi deja de pasar por los 
 - C8 (docs/stack-tecnologico/000-stack.md, POST /codi/qr): El QR se dibuja en la app con la cadena que devuelve pey, sin pedirle la imagen.
 - C9 (docs/stack-tecnologico/000-stack.md, Despliegue y Backend): El día del hackatón basta con correr en local. WhatsApp, almacenamiento de objetos y CFDI quedan fuera. Un servidor posterior sigue el patrón del companion de arquitectura.
 - C10 (README.md, Cómo correrlo): La URL pública que recibe los avisos de pey es https://transfiereme.asware.com.mx.
+- C11 (docs/stack-tecnologico/000-stack.md, Sesión): El vendedor del día se crea a mano. El alta pública queda fuera de esta iniciativa. Se cumple cuando no hay pantalla de registro y solo entra ese vendedor.
 
 ## Done when
 
@@ -52,13 +53,13 @@ Para el vendedor de un pequeño comercio, cobrar con CoDi deja de pasar por los 
 - Un aviso de pey con firma válida marca el cobro pagado una sola vez; sin pago, el cobro queda vencido al expirar.
 - El tablero agrupa por concepto vigente, día y canal, y un cambio de concepto no altera lo que vio el pagador ni lo que guardó pey.
 - La demo de punta a punta es un cobro real de $0.01 en la API de producción.
-- Inventario, ticket, caja, iOS y el despliegue a un servidor siguen fuera.
+- Inventario, ticket, caja, iOS, el alta pública y el despliegue a un servidor siguen fuera.
 
 ## Boundaries
 
 transfiereme reemplaza el tramo en que el vendedor arma el cobro dentro de su banco. El cliente sigue autorizando en su app y SPEI sigue abonando la cuenta.
 
-Fuera de esta iniciativa: inventario, ticket, caja, iOS, reintento, cancelación, conciliación, WhatsApp, almacenamiento de objetos, CFDI, y publicar la app en un servidor el día del hackatón.
+Fuera de esta iniciativa: inventario, ticket, caja, iOS, reintento, cancelación, conciliación, WhatsApp, almacenamiento de objetos, CFDI, el alta pública, y publicar la app en un servidor el día del hackatón.
 
 Recorrido que une las capas: el vendedor abre transfiereme, muestra el QR general o arma la venta, el cliente paga, pey avisa y el tablero se actualiza.
 
@@ -77,4 +78,4 @@ Recorrido que une las capas: el vendedor abre transfiereme, muestra el QR genera
 - Assumption: la app se llama transfiereme.
 - Assumption: la URL pública de los avisos se escribe con https.
 - Assumption: no hay página de inicio aparte; la app web se sirve en la raíz.
-- Open question: ¿El día entra un solo vendedor creado a mano, o el alta de comercio es parte del producto? Espera el primer corte. Opción: un vendedor creado a mano; el alta pública queda fuera.
+- Decision: el alta por correo, Google, nombre y tipo de negocio que proponía el forge se ignora. El vendedor se crea a mano.
