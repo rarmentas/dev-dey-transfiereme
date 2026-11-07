@@ -38,7 +38,7 @@ La confirmación de pago llega por webhooks de pey:
 - `codi.qr.payment_received`
 - `codi.pn.payment_received`
 
-Voz en tiempo real con la API Realtime de OpenAI queda como **opcional y pendiente**: el comercio podría dictar el monto en lugar de escribirlo.
+La voz queda como **opcional y pendiente**: el comercio podría dictar el monto en lugar de escribirlo, con el mismo mecanismo de dent-intec (faster-whisper y Kokoro o Piper).
 
 ## Flujo de usuario
 
@@ -61,8 +61,8 @@ Si el pago no llega, la pantalla se queda en espera. No hay lógica de reintento
 Comercio (texto o voz)
         │
         ▼
-Agente OpenAI (Responses API o Agents SDK)
-  function calling
+Agente LangGraph (Ollama u OpenAI)
+  herramientas del grafo
         │
         ├── POST /codi/qr     → cobro por QR
         ├── POST /codi/pn     → cobro por notificación push
@@ -77,34 +77,38 @@ pey  ──webhooks──►  Cody
 Confirmación en pantalla para el comercio
 ```
 
-- **OpenAI:** Responses API o Agents SDK. El modelo no arma el mensaje CoDi a mano: llama funciones que hablan con pey.
+- **Agente:** LangGraph dentro de Django. El modelo no arma el mensaje CoDi a mano: el grafo llama herramientas que hablan con pey. El proveedor es Ollama u OpenAI (`LLM_SERVER`).
 - **pey:** `POST /codi/qr`, `POST /codi/pn` y links de pago, según [docs.pey.mx](https://docs.pey.mx). El contrato exacto de cada endpoint se toma de esa documentación; este README no lo reproduce.
 - **Webhooks:** un endpoint propio (**pendiente**) recibe `codi.qr.payment_received` y `codi.pn.payment_received` y actualiza el estado del cobro.
 
-La voz con Realtime, si se alcanza, entra como otra entrada al mismo agente. No cambia los endpoints de pey.
+La voz, si se alcanza, usa el mismo camino opcional que dent-intec (faster-whisper y Kokoro o Piper) y entra al mismo agente. No cambia los endpoints de pey.
 
-## Stack sugerido
+## Stack
 
-Nada de esto está instalado. Es una propuesta para el día:
+Cody usa la misma plataforma que dent-intec: Flutter (web y Android), Django 6 + DRF, Postgres 17, sesión por cookie, Gunicorn y LangGraph. El detalle y las versiones están en [docs/stack-tecnologico](docs/stack-tecnologico/README.md). BMAD no entra.
 
-| Capa | Propuesta |
+Nada de eso está instalado en este repositorio todavía.
+
+| Capa | Elección |
 | --- | --- |
-| App web | Next.js (App Router) y TypeScript |
-| Agente | OpenAI Responses API o Agents SDK, con *function calling* |
-| Voz (opcional) | OpenAI Realtime API |
+| App | Flutter (web y Android) |
+| API | Django 6 + Django REST Framework, Python 3.12 |
+| Datos | PostgreSQL 17 |
+| Agente | LangGraph (`LLM_SERVER=ollama` o `openai`), con herramientas |
+| Voz (opcional) | faster-whisper y Kokoro o Piper, como en dent-intec |
 | Cobros | API de pey (`/codi/qr`, `/codi/pn`, links de pago) |
-| Confirmación | Ruta de webhooks en la misma app |
-| Estado del cobro | Memoria o un almacén mínimo durante el hackatón |
+| Confirmación | Webhook en el mismo Django |
 
 ## Cómo correrlo
 
 **Pendiente.** Aún no hay código, `package.json` ni servidor. Cuando exista la app, el arranque previsto es:
 
-1. Clonar este repositorio e instalar dependencias (**pendiente**: no hay manifiesto de paquetes).
-2. Crear un archivo `.env.local` (no se incluye en el repo) con:
+1. Clonar este repositorio e instalar dependencias (**pendiente**: aún no hay `backend/requirements.txt` ni `frontend/pubspec.yaml`; el stack ya está fijado en [docs/stack-tecnologico](docs/stack-tecnologico/README.md)).
+2. Crear un archivo `backend/.env` (no se incluye en el repo) con:
 
 ```bash
 PEY_API_KEY=tu_llave_de_pey
+LLM_SERVER=openai
 OPENAI_API_KEY=tu_llave_de_openai
 # URL pública para que pey entregue los webhooks. Pendiente de definir.
 WEBHOOK_BASE_URL=https://tu-tunel-o-dominio.example
@@ -131,7 +135,7 @@ Plan del 7 de noviembre de 2026. Ningún bloque está hecho.
 | 3 | `POST /codi/pn` y pantalla de espera | Pendiente |
 | 4 | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` | Pendiente |
 | 5 | Links de pago, si queda tiempo | Pendiente |
-| 6 | Voz con Realtime (opcional) | Pendiente |
+| 6 | Voz con faster-whisper (opcional) | Pendiente |
 | 7 | Demo de punta a punta con un cobro de $0.01 | Pendiente |
 
 ## Equipo
