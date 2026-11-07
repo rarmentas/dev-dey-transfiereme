@@ -66,7 +66,9 @@ Fuera de esta iniciativa: inventario, ticket, caja, iOS, reintento, cancelación
 
 Recorrido que une las capas: el QR impreso del local cobra sin abrir transfiereme. Para una venta, el vendedor abre la app y arma un solo canal. El cliente paga, pey avisa y el tablero se actualiza.
 
-- Touch point: API de pey (`https://api.pey.mx`) — alta de QR y aviso `codi.qr.payment_received`; owner: epic-qr-general. La notificación, su aviso y la consulta de respaldo los agrega epic-venta. La CLABE, hasta ACTIVE, la escribe epic-clabe.
+Antes del desarrollo paralelo de las cinco épicas, el contrato compartido de movimientos, cobros, estados y canales está en `docs/stack-tecnologico/000-stack.md` (sección Contrato transversal). Es un hito de documentación y modelo, no una sexta épica ni el cierre de epic-sesion; QR, venta, tablero y CLABE pueden avanzar en paralelo una vez acordado. La integración con pey es un corte aparte (ACTIVE confirmado por pey, firma, idempotencia).
+
+- Touch point: API de pey (`https://api.pey.mx`) — alta de QR y aviso `codi.qr.payment_received`; owner: epic-qr-general. La notificación, su aviso y la consulta de respaldo los agrega epic-venta. El estado ACTIVE de la cuenta y la captura de CLABE los escribe epic-clabe; QR y venta consultan ese estado antes de entregar cobro.
 - Touch point: portal de pey — una persona registra https://transfiereme.asware.com.mx y guarda el secreto; owner: epic-qr-general
 - Touch point: app bancaria del cliente — leer el QR, el acercamiento y la autorización; owner: no se construye
 

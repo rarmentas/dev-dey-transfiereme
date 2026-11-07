@@ -68,7 +68,7 @@ Si el pago no llega, la pantalla se queda en espera hasta que el cobro expira. N
 
 ## Arquitectura
 
-**Pendiente de implementación.** Diseño previsto:
+**Pendiente de implementación.** Las cinco épicas de cobro comparten primero el contrato de movimientos y cobros descrito en [docs/stack-tecnologico/000-stack.md](docs/stack-tecnologico/000-stack.md#contrato-transversal-de-movimientos-y-cobros) (sin épica aparte). Diseño previsto:
 
 ```text
 Vendedor (QR general o venta: monto, concepto, referencia)
