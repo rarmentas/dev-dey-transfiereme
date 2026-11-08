@@ -388,7 +388,10 @@ class NotificacionVentaTests(TestCase):
     @override_settings(PEY_API_KEY="llave-de-prueba")
     def test_adaptador_produccion_envia_el_cuerpo_pn(self) -> None:
         self.comercio.pey_codi_status = self.comercio.PeyCodiStatus.ACTIVE
-        self.comercio.save(update_fields=["pey_codi_status"])
+        self.comercio.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        self.comercio.save(
+            update_fields=["pey_codi_status", "pey_bank_account_id"]
+        )
         self._entrar()
         llamadas: list[tuple] = []
 
@@ -426,6 +429,7 @@ class NotificacionVentaTests(TestCase):
         self.assertEqual(enviado["concept"], "Aviso")
         self.assertEqual(enviado["expiration"], 600)
         self.assertEqual(enviado["numRef"], "42")
+        self.assertEqual(enviado["bankAccountId"], "01ARZ3NDEKTSV4RRFFQ69G5FAV")
         movimiento = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
         self.assertEqual(movimiento.origen, Movimiento.Origen.ORIGEN_PEY)
         self.assertEqual(movimiento.cobro.pey_transaction_id, "tx-prod-pn")

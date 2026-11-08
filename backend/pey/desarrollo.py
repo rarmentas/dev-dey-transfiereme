@@ -24,12 +24,14 @@ class AdaptadorDesarrollo:
         concepto: str = "",
         expiracion_s: int = 0,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> QrCreado:
         validar_qr(
             monto=monto,
             concepto=concepto,
             expiracion_s=expiracion_s,
             num_ref=num_ref,
+            bank_account_id=bank_account_id,
         )
         self._exigir_exito()
         identificador = f"dev-qr-{uuid.uuid4().hex}"
@@ -43,6 +45,7 @@ class AdaptadorDesarrollo:
         concepto: str = "",
         expiracion_s: int = 360,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> NotificacionCreada:
         validar_notificacion(
             monto=monto,
@@ -50,6 +53,7 @@ class AdaptadorDesarrollo:
             concepto=concepto,
             expiracion_s=expiracion_s,
             num_ref=num_ref,
+            bank_account_id=bank_account_id,
         )
         self._exigir_exito()
         return NotificacionCreada(

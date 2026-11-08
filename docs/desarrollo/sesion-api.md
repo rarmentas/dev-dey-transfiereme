@@ -170,6 +170,8 @@ Respuesta `200`: `{ "clabe": "<guardada>" }`. CLABE inválida: `400` con `{"deta
 
 Tras guardar una CLABE válida, en la misma petición `POST /api/cuenta/clabe/` `GuardarClabeView` llama a `sincronizar_codi_status` antes de responder: el adaptador pey configurado actualiza el `codiStatus` persistido en `pey_codi_status` (`pending` / `active`; en desarrollo, sin red a pey). La respuesta del POST sigue siendo solo `{"clabe": ...}`; no expone secretos de plataforma.
 
+Registrar esa CLABE en pey es un paso aparte, con `manage.py registrar_cuenta_pey` (solo si `PEY_ADAPTADOR=produccion`; sin `--confirmar` no llama). `manage.py diagnostico_pey` muestra el modo, si hay llave y secreto (sí/no, nunca el valor), la URL de avisos y el `codiStatus`. El webhook firmado `bank.account.updated` con `codiStatus: ACTIVE` marca `pey_codi_status=active` el comercio cuyo `pey_bank_account_id` coincide. Si no hay comercio, responde `200` con `sin_cobro` y no crea movimientos.
+
 ## Cobro: alta QR general
 
 El servidor crea o devuelve el QR general del comercio de la membresía; no acepta `comercio` ni `comercio_id` en el cuerpo. Antes de crear el cobro llama a `preparar_alta_qr_general`, que exige `pey_codi_status=active` (`cuenta_esta_active`). En desarrollo ese estado lo deja `sincronizar_codi_status`: hace falta CLABE válida y `semilla_active_dev`. La marca sola no alcanza. La respuesta no incluye secretos de plataforma.

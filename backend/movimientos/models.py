@@ -254,6 +254,14 @@ class Cobro(models.Model):
         default="",
         verbose_name="cadena del QR",
     )
+    # ULID de la cuenta ACTIVE a la que pey abonó este cobro. Vacío si se
+    # creó sin bankAccountId (desarrollo o un QR anterior al arreglo).
+    pey_bank_account_id = models.CharField(
+        max_length=26,
+        blank=True,
+        default="",
+        verbose_name="id de cuenta en pey",
+    )
 
     class Meta:
         verbose_name = "cobro"

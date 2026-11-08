@@ -40,6 +40,21 @@ class DesarrolloSinRedTests(SimpleTestCase):
         self.assertEqual(len(aviso.transaction_id.removeprefix("dev-tx-")), 32)
         self.assertRegex(aviso.codi_id, r"^[0-9]{20}$")
 
+    def test_acepta_ulid_y_rechaza_uno_invalido_sin_red(self) -> None:
+        with patch("urllib.request.urlopen", _revienta):
+            adaptador = AdaptadorDesarrollo()
+            qr = adaptador.crear_qr(
+                monto=Decimal("0.01"),
+                bank_account_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            )
+            self.assertTrue(qr.id.startswith("dev-qr-"))
+            with self.assertRaises(ParametroInvalido):
+                adaptador.crear_notificacion(
+                    monto=Decimal("0.01"),
+                    telefono="5512345678",
+                    bank_account_id="no-es-ulid",
+                )
+
     def test_el_modulo_no_importa_red_ni_lee_secretos(self) -> None:
         import pey.desarrollo as desarrollo
 

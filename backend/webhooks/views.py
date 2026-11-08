@@ -8,8 +8,11 @@ from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponseNotFound, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+
+from ambito.models import Comercio
 
 from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago, aplicar_aviso
 from pey.seleccion import modo_adaptador
@@ -30,7 +33,8 @@ _LARGO_WEBHOOK_ID = 128
 _LARGO_TIPO = 128
 _LARGO_TRANSACTION_ID = 64
 _MONTO_MAXIMO = Decimal(10) ** 10
-_TIPOS_CONOCIDOS = frozenset({TIPO_QR, TIPO_PN})
+TIPO_CUENTA = "bank.account.updated"
+_TIPOS_CONOCIDOS = frozenset({TIPO_QR, TIPO_PN, TIPO_CUENTA})
 
 
 class _AvisoMalFormado(Exception):
@@ -38,10 +42,17 @@ class _AvisoMalFormado(Exception):
 
 
 @dataclass(frozen=True)
+class _AvisoCuenta:
+    bank_account_id: str
+    codi_status: str
+
+
+@dataclass(frozen=True)
 class _AvisoEntrante:
     tipo: str
     transaction_id: str
     aviso: AvisoPago | None
+    cuenta: _AvisoCuenta | None = None
 
 
 def _respuesta(cuerpo: dict, status: int) -> JsonResponse:
@@ -102,6 +113,14 @@ def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
         raise _AvisoMalFormado
 
     transaction_id = _transaction_id_usable(datos.get("transactionId"))
+    if tipo == TIPO_CUENTA:
+        cuenta = _cuenta_de_aviso(datos)
+        return _AvisoEntrante(
+            tipo=tipo,
+            transaction_id=cuenta.bank_account_id[:_LARGO_TRANSACTION_ID],
+            aviso=None,
+            cuenta=cuenta,
+        )
     if tipo not in _TIPOS_CONOCIDOS:
         return _AvisoEntrante(
             tipo=tipo,
@@ -184,6 +203,64 @@ def _cerrar(
     return _respuesta({"estado": resultado}, 200)
 
 
+def _cuenta_de_aviso(datos: dict) -> _AvisoCuenta:
+    bank = datos.get("bankAccountId")
+    estado = datos.get("codiStatus")
+    if not isinstance(bank, str):
+        bank = ""
+    if not isinstance(estado, str):
+        estado = ""
+    return _AvisoCuenta(bank_account_id=bank.strip(), codi_status=estado.strip())
+
+
+def _aplicar_activacion_cuenta(
+    recibido: AvisoRecibido,
+    cuenta: _AvisoCuenta,
+    webhook_id: str,
+) -> JsonResponse:
+    if cuenta.codi_status != "ACTIVE" or not cuenta.bank_account_id:
+        logger.warning(
+            "aviso de cuenta sin activación type=%s webhook_id=%s bank_account_id=%s",
+            recibido.tipo,
+            webhook_id,
+            cuenta.bank_account_id,
+        )
+        return _cerrar(
+            recibido,
+            webhook_id=webhook_id,
+            tipo=recibido.tipo,
+            resultado=AvisoRecibido.Resultado.SIN_COBRO,
+        )
+    comercio = Comercio.objects.filter(
+        pey_bank_account_id=cuenta.bank_account_id,
+    ).first()
+    if comercio is None:
+        logger.warning(
+            "aviso de cuenta sin comercio type=%s webhook_id=%s bank_account_id=%s",
+            recibido.tipo,
+            webhook_id,
+            cuenta.bank_account_id,
+        )
+        return _cerrar(
+            recibido,
+            webhook_id=webhook_id,
+            tipo=recibido.tipo,
+            resultado=AvisoRecibido.Resultado.SIN_COBRO,
+        )
+    ahora = timezone.now()
+    comercio.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
+    comercio.pey_codi_status_actualizado_en = ahora
+    comercio.save(
+        update_fields=["pey_codi_status", "pey_codi_status_actualizado_en"],
+    )
+    return _cerrar(
+        recibido,
+        webhook_id=webhook_id,
+        tipo=recibido.tipo,
+        resultado=AvisoRecibido.Resultado.APLICADO,
+    )
+
+
 def _procesar_aviso_registrado(
     *,
     recibido: AvisoRecibido,
@@ -191,6 +268,8 @@ def _procesar_aviso_registrado(
     webhook_id: str,
     origen: Movimiento.Origen,
 ) -> JsonResponse:
+    if entrada.cuenta is not None:
+        return _aplicar_activacion_cuenta(recibido, entrada.cuenta, webhook_id)
     if entrada.aviso is None:
         return _cerrar(
             recibido,

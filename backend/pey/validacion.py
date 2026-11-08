@@ -8,6 +8,7 @@ from pey.tipos import ParametroInvalido
 
 _NUM_REF = re.compile(r"^[0-9]{1,7}$")
 _TELEFONO = re.compile(r"^[0-9]{10}$")
+_ULID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 _CERO = Decimal("0")
 _CENTAVO = Decimal("0.01")
 _TOPE_PN = Decimal("1000000")
@@ -23,6 +24,7 @@ class QrValidado:
     concepto: str
     expiracion_s: int
     num_ref: str
+    bank_account_id: str
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,18 @@ class NotificacionValidada:
     concepto: str
     expiracion_s: int
     num_ref: str
+    bank_account_id: str
+
+
+def validar_bank_account_id(bank_account_id: str) -> str:
+    """Vacío (no se envía) o ULID Crockford de 26. Otro valor es inválido."""
+    if not isinstance(bank_account_id, str):
+        raise ParametroInvalido("bank_account_id debe ser texto")
+    if bank_account_id == "":
+        return ""
+    if _ULID.fullmatch(bank_account_id) is None:
+        raise ParametroInvalido("bank_account_id debe ser un ULID")
+    return bank_account_id
 
 
 def validar_qr(
@@ -40,12 +54,14 @@ def validar_qr(
     concepto: str,
     expiracion_s: int,
     num_ref: str,
+    bank_account_id: str = "",
 ) -> QrValidado:
     return QrValidado(
         monto=_monto(monto, tope=_TOPE_QR, exclusivo_tope=True, permitir_cero=True),
         concepto=_concepto(concepto),
         expiracion_s=_expiracion_qr(expiracion_s),
         num_ref=_num_ref(num_ref),
+        bank_account_id=validar_bank_account_id(bank_account_id),
     )
 
 
@@ -61,6 +77,7 @@ def validar_notificacion(
     concepto: str,
     expiracion_s: int,
     num_ref: str,
+    bank_account_id: str = "",
 ) -> NotificacionValidada:
     return NotificacionValidada(
         monto=_monto(monto, tope=_TOPE_PN, exclusivo_tope=False, permitir_cero=False),
@@ -68,6 +85,7 @@ def validar_notificacion(
         concepto=_concepto(concepto),
         expiracion_s=_expiracion_pn(expiracion_s),
         num_ref=_num_ref(num_ref),
+        bank_account_id=validar_bank_account_id(bank_account_id),
     )
 
 
