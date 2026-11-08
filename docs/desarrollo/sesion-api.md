@@ -61,3 +61,14 @@ Detalle propio: `200` con el mismo objeto. Id de otro comercio o inexistente en 
 Query con `comercio` o `comercio_id`: `400` con el mensaje de ámbito que indica que el servidor fija el comercio por membresía.
 
 Usuario autenticado sin membresía: `403` con el mensaje de `SinAmbitoError`.
+
+## Semilla de desarrollo
+
+Con `DEBUG` activo:
+
+```bash
+cd backend
+.venv/bin/python manage.py sembrar_vendedor --contraseña 'una-clave-local'
+```
+
+Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta como cuenta ACTIVE: el gate `cuenta_esta_active` no la lee. Fuera de desarrollo el comando se niega. No hay alta pública.
