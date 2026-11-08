@@ -97,6 +97,8 @@ Cuerpo JSON: `{ "clabe": "012180015826225713" }` (18 dígitos con dígito verifi
 
 Respuesta `200`: `{ "clabe": "<guardada>" }`. CLABE inválida: `400` con `{"detail": "Indique una CLABE válida de 18 dígitos."}`. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 
+Tras guardar una CLABE válida, en la misma petición `POST /api/cuenta/clabe/` `GuardarClabeView` llama a `sincronizar_codi_status` antes de responder: el adaptador pey configurado actualiza el `codiStatus` persistido en `pey_codi_status` (`pending` / `active`; en desarrollo, sin red a pey). El alta de QR general usa `preparar_alta_qr_general`, que lee ese campo vía `cuenta_esta_active` y, si la cuenta no está activa, devuelve un error controlado. La respuesta del POST sigue siendo solo `{"clabe": ...}`; no expone secretos de plataforma.
+
 ## Semilla de desarrollo
 
 Con `DEBUG` activo:
@@ -106,4 +108,4 @@ cd backend
 .venv/bin/python manage.py sembrar_vendedor --contraseña 'una-clave-local'
 ```
 
-Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta como cuenta ACTIVE: el gate `cuenta_esta_active` no la lee. Fuera de desarrollo el comando se niega. No hay alta pública.
+Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta sola como cuenta ACTIVE: `cuenta_esta_active` solo acepta `pey_codi_status=active` tras sincronizar (en el adaptador de desarrollo, hace falta CLABE válida y `semilla_active_dev` para simular ACTIVE). Fuera de desarrollo el comando se niega. No hay alta pública.

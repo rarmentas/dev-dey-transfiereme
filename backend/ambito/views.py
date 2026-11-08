@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ambito.clabe import clabe_es_valida
+from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro
 
@@ -38,4 +39,5 @@ class GuardarClabeView(APIView):
 
         comercio.clabe = clabe
         comercio.save(update_fields=["clabe"])
+        sincronizar_codi_status(comercio)
         return Response({"clabe": comercio.clabe})
