@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/ui/ui.dart';
 import '../../../theme/transfiereme_theme.dart';
 
 /// Lado mínimo del QR en pantalla (`qr-screen` en diseño).
@@ -39,27 +40,38 @@ class QrGeneralImpresoPage extends StatelessWidget {
     final tema = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi QR')),
+      appBar: AppBar(
+        title: Text(
+          'Mi QR',
+          style: tema.textTheme.headlineMedium,
+        ),
+      ),
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                puedeMostrarQr
+        child: TfPantalla(
+          padding: const EdgeInsets.symmetric(
+            horizontal: kMargenPantalla,
+            vertical: TfSpace.s6,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: puedeMostrarQr
                     ? _MarcoQr(qrString: qrString!.trim())
                     : const _EstadoCuentaPendiente(),
-                if (puedeMostrarQr) ...[
-                  const SizedBox(height: 24),
-                  Text(
-                    'Su cliente puede pagar con CoDi desde la aplicación de su banco.',
-                    textAlign: TextAlign.center,
-                    style: tema.textTheme.bodyLarge,
+              ),
+              if (puedeMostrarQr) ...[
+                const SizedBox(height: TfSpace.s6),
+                Text(
+                  'Su cliente puede pagar con CoDi desde la aplicación de su banco.',
+                  textAlign: TextAlign.center,
+                  style: tema.textTheme.bodyMedium?.copyWith(
+                    color: tema.colorScheme.onSurfaceVariant,
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -74,31 +86,24 @@ class _MarcoQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tf = Theme.of(context).extension<TfColors>()!;
-    const marcoRadius = BorderRadius.all(Radius.circular(20));
-
-    return DecoratedBox(
+    return Container(
+      padding: const EdgeInsets.all(TfSpace.s4),
       decoration: BoxDecoration(
-        color: tf.accent,
-        borderRadius: marcoRadius,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(TfRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: marcoRadius,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: QrImageView(
-              data: qrString,
-              size: kLadoMinimoQrPantalla,
-              backgroundColor: Colors.white,
-              errorCorrectionLevel: QrErrorCorrectLevel.H,
-            ),
-          ),
-        ),
+      child: QrImageView(
+        data: qrString,
+        size: kLadoMinimoQrPantalla,
+        backgroundColor: Colors.white,
+        errorCorrectionLevel: QrErrorCorrectLevel.H,
       ),
     );
   }
@@ -111,55 +116,48 @@ class _EstadoCuentaPendiente extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final tf = tema.extension<TfColors>()!;
-    const marcoRadius = BorderRadius.all(Radius.circular(20));
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tf.accent,
-        borderRadius: marcoRadius,
+    return Container(
+      width: kLadoMinimoQrPantalla + (TfSpace.s4 * 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: TfSpace.s5,
+        vertical: TfSpace.s8,
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: marcoRadius,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(TfRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-            child: SizedBox(
-              width: kLadoMinimoQrPantalla,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: tf.pendingContainer,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Icon(
-                        Icons.schedule,
-                        size: 56,
-                        color: tf.pendingText,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    kMensajeCuentaNoActivaQr,
-                    textAlign: TextAlign.center,
-                    style: tema.textTheme.bodyLarge?.copyWith(
-                      // Tarjeta interior siempre blanca: tinta del tema claro (AA).
-                      color: TfColors.light.pendingText,
-                    ),
-                  ),
-                ],
-              ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(TfSpace.s4),
+            decoration: BoxDecoration(
+              color: tf.pendingContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.schedule_rounded,
+              size: 56,
+              color: tf.pendingText,
             ),
           ),
-        ),
+          const SizedBox(height: TfSpace.s5),
+          Text(
+            kMensajeCuentaNoActivaQr,
+            textAlign: TextAlign.center,
+            style: (tema.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+              color: TfColors.light.pendingText,
+            ),
+          ),
+        ],
       ),
     );
   }

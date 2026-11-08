@@ -6,8 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/router/app_router.dart';
+import '../../../core/ui/ui.dart';
 import '../../../theme/transfiereme_theme.dart';
-import '../../cobro/presentation/qr_general_impreso_page.dart';
 import '../../movimientos/data/movimiento.dart';
 import '../data/venta.dart';
 import '../data/venta_repository.dart';
@@ -103,34 +103,74 @@ class _VentaEsperaPageState extends ConsumerState<VentaEsperaPage> {
   @override
   Widget build(BuildContext context) {
     final venta = _venta;
+    final tema = Theme.of(context);
+    final tf = tema.extension<TfColors>()!;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Cobro')),
+      appBar: AppBar(
+        title: Text(
+          'Cobro',
+          style: tema.textTheme.headlineMedium,
+        ),
+      ),
       body: SafeArea(
         child: _cargando && venta == null
             ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  if (widget.avisoPendiente) ...[
-                    const Text('Ya tenía una venta pendiente'),
-                    const SizedBox(height: 16),
+            : TfPantalla(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: kMargenPantalla,
+                  vertical: TfSpace.s6,
+                ),
+                child: ListView(
+                  children: [
+                    if (widget.avisoPendiente) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: TfSpace.s4,
+                          vertical: TfSpace.s3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: tf.pendingContainer,
+                          borderRadius: BorderRadius.circular(TfRadius.md),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: TfSize.icon,
+                              color: tf.pendingText,
+                            ),
+                            const SizedBox(width: TfSpace.s2),
+                            Expanded(
+                              child: Text(
+                                'Ya tenía una venta pendiente',
+                                style: (tema.textTheme.titleSmall ??
+                                        const TextStyle())
+                                    .copyWith(
+                                  color: tf.pendingText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: TfSpace.s4),
+                    ],
+                    if (venta == null)
+                      const SizedBox.shrink()
+                    else if (venta.esPagado)
+                      _Pagado(venta: venta)
+                    else if (venta.esVencido)
+                      const _Vencido()
+                    else
+                      _Pendiente(venta: venta),
+                    if (_avisoRed != null) ...[
+                      const SizedBox(height: TfSpace.s4),
+                      TfAvisoError(titulo: _avisoRed!),
+                    ],
                   ],
-                  if (venta == null)
-                    const SizedBox.shrink()
-                  else if (venta.esPagado)
-                    _Pagado(venta: venta)
-                  else if (venta.esVencido)
-                    const _Vencido()
-                  else
-                    _Pendiente(venta: venta),
-                  if (_avisoRed != null) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      _avisoRed!,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ],
+                ),
               ),
       ),
     );
@@ -145,39 +185,62 @@ class _Pendiente extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
+    final tf = tema.extension<TfColors>()!;
     final vence = venta.venceEn;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Center(
+          child: TfEstadoChip.pendiente(etiqueta: 'Esperando pago'),
+        ),
+        const SizedBox(height: TfSpace.s4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            formatearMonto(venta.monto),
+            style: tema.textTheme.displayLarge,
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: TfSpace.s2),
+        Text(
+          venta.concepto,
+          style: tema.textTheme.titleMedium?.copyWith(
+            color: tema.colorScheme.onSurfaceVariant,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: TfSpace.s5),
         if (venta.qrString.trim().isNotEmpty)
           Center(
-            child: ColoredBox(
-              color: Colors.white,
+            child: Container(
+              padding: const EdgeInsets.all(TfSpace.s4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(TfRadius.xl),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
               child: QrImageView(
                 data: venta.qrString,
-                size: kLadoMinimoQrPantalla,
+                size: TfSize.qrScreen,
                 backgroundColor: Colors.white,
+                errorCorrectionLevel: QrErrorCorrectLevel.H,
               ),
             ),
           ),
-        const SizedBox(height: 24),
-        Text(
-          formatearMonto(venta.monto),
-          style: tema.textTheme.displaySmall,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          venta.concepto,
-          style: tema.textTheme.titleMedium,
-          textAlign: TextAlign.center,
-        ),
         if (vence != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: TfSpace.s6),
           Text(
             'Quedan ${cuentaRegresiva(vence, DateTime.now())}',
             style: tema.textTheme.titleLarge?.copyWith(
-              color: tema.extension<TfColors>()?.pendingText,
+              color: tf.pendingText,
             ),
             textAlign: TextAlign.center,
           ),
@@ -195,35 +258,68 @@ class _Pagado extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final tf = tema.extension<TfColors>();
+    final colors = tema.colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Pagado',
-          style: tema.textTheme.headlineMedium?.copyWith(color: tf?.paidText),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          formatearMonto(venta.monto),
-          style: tema.textTheme.displaySmall,
-          textAlign: TextAlign.center,
-        ),
-        if (venta.horaPagado.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            venta.horaPagado,
-            style: tema.textTheme.titleLarge,
-            textAlign: TextAlign.center,
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+            horizontal: TfSpace.s6,
+            vertical: TfSpace.s8,
           ),
-        ],
-        const SizedBox(height: 24),
-        FilledButton(
+          decoration: BoxDecoration(
+            color: colors.primary,
+            borderRadius: BorderRadius.circular(TfRadius.lg),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                size: 72,
+                color: colors.onPrimary,
+              ),
+              const SizedBox(height: TfSpace.s4),
+              Text(
+                'Pagado',
+                style: tema.textTheme.headlineMedium?.copyWith(
+                  color: colors.onPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: TfSpace.s4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  formatearMonto(venta.monto),
+                  style: tema.textTheme.displayLarge?.copyWith(
+                    color: colors.onPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              if (venta.horaPagado.isNotEmpty) ...[
+                const SizedBox(height: TfSpace.s2),
+                Text(
+                  venta.horaPagado,
+                  style: tema.textTheme.titleMedium?.copyWith(
+                    color: colors.onPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: TfSpace.s6),
+        TfCobrarButton(
           onPressed: () => context.go(kRutaNuevaVenta),
           child: const Text('Nueva venta'),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: TfSpace.s3),
         OutlinedButton(
           onPressed: () => context.push(kRutaMovimientos),
           child: const Text('Ver movimientos'),
@@ -238,18 +334,13 @@ class _Vencido extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'El cobro venció sin pago',
-          style: tema.textTheme.headlineSmall?.copyWith(
-            color: tema.extension<TfColors>()?.expiredText,
-          ),
-          textAlign: TextAlign.center,
+        const TfAvisoError(
+          titulo: 'El cobro venció sin pago',
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: TfSpace.s6),
         FilledButton(
           onPressed: () => context.go(kRutaNuevaVenta),
           child: const Text('Nueva venta'),
