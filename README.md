@@ -136,6 +136,17 @@ Alta en Transfiéreme una vez (vendedor no abre banco por cobro)
 - **QR por venta** es la opción principal en el flujo de cobro; la notificación solo si el vendedor la elige (no automática ni en paralelo con el QR).
 - **QR general** del local y **NFC** del pagador sobre el mismo QR siguen en [Solución](#solución); pey no expone un endpoint NFC aparte.
 
+### Ventajas documentadas
+
+- **Cambio de CLABE de destino en el mismo comercio y la misma app.** El vendedor puede registrar otra CLABE válida (`POST /api/cuenta/clabe/`; contrato en [sesion-api.md](docs/desarrollo/sesion-api.md)). Al cambiarla, Transfiéreme actualiza la CLABE del comercio de la sesión y reinicia el vínculo con pey (`pey_codi_status` vuelve a `pending` hasta volver a `active`; ver [cuenta-pey-api.md](docs/desarrollo/cuenta-pey-api.md)). El **resumen de ventas** y el **tablero** siguen mostrando los movimientos ya guardados para ese mismo comercio: en el modelo local cada movimiento pertenece al comercio, no a la CLABE vigente, y un cambio de CLABE no reescribe cobros pasados. No afirma retención de historial en la app del banco ni reasignación retroactiva de SPEI ya liquidados hacia la cuenta nueva.
+
+### Evolución posible (no disponible hoy)
+
+Estas líneas son **roadmap**, no capacidades del producto en producción:
+
+- **Multi-CLABE** (varias CLABE por comercio o elegir cuenta destino al cobrar). Hoy hay **una** CLABE por comercio en el modelo y en la UI de registro.
+- **Operación offline.** No está implementada. Un alcance futuro **no** implicaría, por sí solo, liquidar ni confirmar pagos sin conexión; los detalles financieros y de conciliación quedarían por definir.
+
 ## Alcance
 
 La app es del **vendedor**, en pequeños comercios. El alcance es la **capa de cobro**. El punto de venta (inventario, ticket, caja) queda fuera.
