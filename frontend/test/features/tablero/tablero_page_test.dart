@@ -56,6 +56,31 @@ void main() {
     expect(mock.peticiones.last.queryParameters['hasta'], '2026-10-31');
     expect(find.text('Tablero'), findsOneWidget);
     expect(find.text('Esta semana'), findsOneWidget);
+    expect(tester.getSize(find.byType(ListView)).width, 480);
+    final titulo = tester.getRect(find.text('Tablero'));
+    final pastilla = tester.getRect(
+      find
+          .ancestor(
+            of: find.text('Esta semana'),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    expect(pastilla.height, 40);
+    expect(titulo.center.dy, closeTo(pastilla.center.dy, 1));
+    expect(
+      tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('Esta semana'),
+                  matching: find.byType(InkWell),
+                )
+                .first,
+          )
+          .height,
+      greaterThanOrEqualTo(48),
+    );
     expect(find.text('Lo cobrado'), findsOneWidget);
     expect(find.text('Pruebas'), findsOneWidget);
     // Total del periodo y total de pruebas, sin sumarlos.
@@ -98,13 +123,52 @@ void main() {
 
     final pedidos = mock.peticiones.map((p) => p.queryParameters).toList();
     expect(
-      pedidos.any((q) => q['desde'] == '2026-11-01' && q['hasta'] == '2026-11-07'),
+      pedidos.any(
+        (q) => q['desde'] == '2026-11-01' && q['hasta'] == '2026-11-07',
+      ),
       isTrue,
     );
     expect(
-      pedidos.any((q) => q['desde'] == '2026-10-01' && q['hasta'] == '2026-10-07'),
+      pedidos.any(
+        (q) => q['desde'] == '2026-10-01' && q['hasta'] == '2026-10-07',
+      ),
       isTrue,
     );
+  });
+
+  testWidgets('sin cobros confirmados avisa en la tarjeta de canales', (
+    tester,
+  ) async {
+    final mock = MockTableroApi(crearDioTablero());
+    mock.responder(const {
+      'zona': 'America/Mexico_City',
+      'confirmado': {'filas': <Object>[], 'total': '0.00'},
+      'desarrollo': {
+        'filas': [
+          {
+            'dia': '2026-11-07',
+            'canal': 'qr_general',
+            'concepto': 'transferencia',
+            'etiqueta': 'Transferencia',
+            'total': '1.00',
+            'cantidad': 1,
+          },
+        ],
+        'total': '1.00',
+      },
+    });
+
+    await _montar(tester, mock);
+
+    expect(find.text('Aún no hay cobros en este periodo.'), findsOneWidget);
+    expect(find.text('Lo cobrado'), findsOneWidget);
+    expect(find.text('Pruebas'), findsOneWidget);
+    expect(find.text('Aún no tienes cobros'), findsNothing);
+    expect(find.text('QR general'), findsNothing);
+
+    await tester.tap(find.text('Por concepto'));
+    await tester.pump();
+    expect(find.text('Aún no hay cobros en este periodo.'), findsOneWidget);
   });
 
   testWidgets('tablero vacío muestra el texto de vacío', (tester) async {
@@ -147,10 +211,10 @@ void main() {
     // Reintentar vuelve a pedir exactamente el actual y el anterior.
     expect(mock.peticiones, hasLength(4));
     final nuevas = mock.peticiones.skip(2).map((p) => p.queryParameters);
-    expect(
-      nuevas.map((q) => '${q['desde']}..${q['hasta']}').toSet(),
-      {'2026-11-02..2026-11-07', '2026-10-26..2026-10-31'},
-    );
+    expect(nuevas.map((q) => '${q['desde']}..${q['hasta']}').toSet(), {
+      '2026-11-02..2026-11-07',
+      '2026-10-26..2026-10-31',
+    });
     _soloTablero(mock);
     expect(find.text('Lo cobrado'), findsOneWidget);
     expect(find.text(formatearMonto('42.50')), findsOneWidget);

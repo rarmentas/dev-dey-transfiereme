@@ -38,9 +38,8 @@ class _ResumenMovimientosPageState
             child: RefreshIndicator(
               onRefresh: () => _recargar(ref),
               child: asyncMovimientos.when(
-                loading: () => const _EstadoCentrado(
-                  child: CircularProgressIndicator(),
-                ),
+                loading: () =>
+                    const _EstadoCentrado(child: CircularProgressIndicator()),
                 error: (error, _) => _EstadoCentrado(
                   child: _ErrorMovimientos(
                     mensaje: mensajeErrorMovimientos(error),
@@ -122,8 +121,10 @@ class _Grupo {
   final DateTime dia;
   final List<Movimiento> movimientos = [];
 
+  /// Pagados reales del día. Las pruebas no entran, igual que Inicio y el tablero.
+  /// El conteo de cobros sigue contando todos los movimientos del grupo.
   int get totalCentavos => movimientos
-      .where((m) => m.estado == 'pagado')
+      .where((m) => m.estado == 'pagado' && !m.esPrueba)
       .fold(0, (suma, m) => suma + centavosDe(m.monto));
 }
 
@@ -251,7 +252,9 @@ class _EstadoCentrado extends StatelessWidget {
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: kMargenPantalla),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: kMargenPantalla,
+                  ),
                   child: child,
                 ),
               ),
@@ -338,6 +341,10 @@ class _FilaMovimiento extends StatelessWidget {
                                       .copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
+                          if (movimiento.esPrueba) ...[
+                            const SizedBox(width: TfSpace.s2),
+                            const _EtiquetaPrueba(),
+                          ],
                         ],
                       ),
                     ),
@@ -368,23 +375,6 @@ class _FilaMovimiento extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: TfSpace.s2),
-                    if (movimiento.esPrueba) ...[
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        labelPadding: const EdgeInsets.symmetric(
-                          horizontal: TfSpace.s1,
-                        ),
-                        padding: EdgeInsets.zero,
-                        label: Text(
-                          'Prueba',
-                          style: tema.textTheme.labelSmall?.copyWith(
-                            color: colores.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: TfSpace.s1),
-                    ],
                     TfEstadoChip.desde(
                       estado: movimiento.estado,
                       etiqueta: movimiento.etiquetaEstado,
@@ -399,6 +389,35 @@ class _FilaMovimiento extends StatelessWidget {
     );
 
     return contenido;
+  }
+}
+
+/// Marca de cobro de prueba, junto al concepto. Alto 20 y sin objetivo táctil.
+class _EtiquetaPrueba extends StatelessWidget {
+  const _EtiquetaPrueba();
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final colores = tema.colorScheme;
+    return Container(
+      height: TfSpace.s5,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: TfSpace.s2),
+      decoration: BoxDecoration(
+        border: Border.all(color: colores.outlineVariant, width: 1),
+        borderRadius: BorderRadius.circular(TfRadius.full),
+      ),
+      child: Text(
+        'Prueba',
+        maxLines: 1,
+        softWrap: false,
+        style: tema.textTheme.labelSmall?.copyWith(
+          color: colores.onSurfaceVariant,
+          height: 1,
+        ),
+      ),
+    );
   }
 }
 

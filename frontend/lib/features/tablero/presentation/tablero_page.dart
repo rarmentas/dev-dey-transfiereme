@@ -98,6 +98,7 @@ class _TableroPageState extends ConsumerState<TableroPage> {
                 ),
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Text(
@@ -149,29 +150,38 @@ class _SelectorPeriodo extends StatelessWidget {
         for (final p in PeriodoTablero.values)
           PopupMenuItem(value: p, child: Text(p.etiqueta)),
       ],
-      child: Container(
+      child: SizedBox(
         height: TfSize.touchMin,
-        padding: const EdgeInsets.symmetric(horizontal: TfSpace.s3),
-        decoration: BoxDecoration(
-          color: colores.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(TfRadius.full),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.calendar_today_rounded,
-              size: 16,
-              color: colores.onSurfaceVariant,
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colores.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(TfRadius.full),
             ),
-            const SizedBox(width: TfSpace.s2),
-            Text(
-              periodo.etiqueta,
-              style: tema.textTheme.titleSmall?.copyWith(
-                color: colores.onSurfaceVariant,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: TfSpace.s3),
+              child: SizedBox(
+                height: TfSpace.s10,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_rounded,
+                      size: 16,
+                      color: colores.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: TfSpace.s2),
+                    Text(
+                      periodo.etiqueta,
+                      style: tema.textTheme.titleSmall?.copyWith(
+                        color: colores.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -258,7 +268,9 @@ class _TarjetaCobrado extends StatelessWidget {
           children: [
             if (sube || baja)
               Icon(
-                sube ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                sube
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
                 size: 16,
                 color: color,
               ),
@@ -268,7 +280,10 @@ class _TarjetaCobrado extends StatelessWidget {
                   children: [
                     TextSpan(
                       text: '${pct.abs()}%',
-                      style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     TextSpan(text: ' vs. ${periodo.anterior}'),
                   ],
@@ -374,8 +389,9 @@ class _GraficaDias extends StatelessWidget {
           height: _alto,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment:
-                hoyUnico ? MainAxisAlignment.center : MainAxisAlignment.start,
+            mainAxisAlignment: hoyUnico
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
             children: [
               for (final d in dias)
                 Expanded(
@@ -398,9 +414,7 @@ class _GraficaDias extends StatelessWidget {
                             color: maximo > 0 && totales[d] == maximo
                                 ? tf.accent
                                 : colores.primary,
-                            borderRadius: BorderRadius.circular(
-                              denso ? 2 : 6,
-                            ),
+                            borderRadius: BorderRadius.circular(denso ? 2 : 6),
                           ),
                         ),
                       ),
@@ -412,8 +426,9 @@ class _GraficaDias extends StatelessWidget {
         ),
         const SizedBox(height: TfSpace.s2),
         Row(
-          mainAxisAlignment:
-              hoyUnico ? MainAxisAlignment.center : MainAxisAlignment.start,
+          mainAxisAlignment: hoyUnico
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
           children: [
             for (final d in dias)
               Expanded(
@@ -472,6 +487,7 @@ class _TarjetaDesglose extends StatelessWidget {
     final lista = grupos.values.toList()
       ..sort((a, b) => b.centavos.compareTo(a.centavos));
     final suma = lista.fold(0, (s, g) => s + g.centavos);
+    final tema = Theme.of(context);
 
     return Card(
       child: Padding(
@@ -485,6 +501,13 @@ class _TarjetaDesglose extends StatelessWidget {
               onCambio: onCambioVista,
             ),
             const SizedBox(height: TfSpace.s4),
+            if (lista.isEmpty)
+              Text(
+                'Aún no hay cobros en este periodo.',
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.onSurfaceVariant,
+                ),
+              ),
             for (var i = 0; i < lista.length; i++) ...[
               if (i > 0) const SizedBox(height: TfSpace.s4),
               _FilaDesglose(

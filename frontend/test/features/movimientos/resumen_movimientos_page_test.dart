@@ -3,6 +3,8 @@ import 'package:cody/features/movimientos/presentation/movimientos_providers.dar
 import 'package:cody/features/movimientos/presentation/resumen_movimientos_page.dart';
 import 'package:cody/theme/transfiereme_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,6 +75,7 @@ void main() {
     expect(find.text('Vencido'), findsOneWidget);
     expect(find.text('Prueba'), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsOneWidget);
+    expect(tester.getSize(find.byType(ListView)).width, 480);
   });
 
   testWidgets('lista vacía muestra el texto de vacío', (tester) async {
@@ -136,7 +139,64 @@ void main() {
     expect(find.textContaining('VIE 06 NOV · 1 COBRO'), findsOneWidget);
   });
 
-  testWidgets('el chip Prueba solo aparece en origen_desarrollo', (
+  testWidgets('el total del día excluye los pagados de prueba', (tester) async {
+    final mock = MockMovimientosApi(crearDioMovimientos());
+    mock.responderLista([
+      {
+        'id': 1,
+        'monto': '10.00',
+        'concepto_visible': 'Tacos al pastor',
+        'canal': 'qr_general',
+        'estado': 'pagado',
+        'origen': 'origen_pey',
+        'creado_en': '2026-11-07T18:00:00Z',
+        'pagado_en': '2026-11-07T18:05:00Z',
+      },
+      {
+        'id': 2,
+        'monto': '28.50',
+        'concepto_visible': 'Refresco',
+        'canal': 'notificacion',
+        'estado': 'pagado',
+        'origen': 'origen_desarrollo',
+        'creado_en': '2026-11-07T14:00:00Z',
+        'pagado_en': '2026-11-07T14:22:00Z',
+      },
+    ]);
+
+    await _montar(tester, mock, semana: false);
+
+    expect(find.textContaining('HOY · 2 COBROS'), findsOneWidget);
+    expect(find.text(r'$10.00'), findsNWidgets(2));
+    expect(find.text(r'$28.50'), findsOneWidget);
+    expect(find.text(r'$38.50'), findsNothing);
+  });
+
+  testWidgets('a 360 dp la hora y el canal no se cortan', (tester) async {
+    final loader = FontLoader('Inter')
+      ..addFont(rootBundle.load('assets/fonts/Inter-Regular.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Inter-Medium.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Inter-SemiBold.ttf'));
+    await loader.load();
+
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final mock = MockMovimientosApi(crearDioMovimientos());
+    mock.responderLista(fixtureTresCanales());
+    await _montar(tester, mock);
+
+    for (final canal in ['QR general', 'QR de venta', 'Notificación']) {
+      final parrafo = tester.renderObject<RenderParagraph>(
+        find.textContaining(canal),
+      );
+      expect(parrafo.didExceedMaxLines, isFalse, reason: canal);
+    }
+    expect(find.text('Prueba'), findsOneWidget);
+    expect(find.byType(Chip), findsNothing);
+  });
+
+  testWidgets('la etiqueta Prueba va junto al concepto y no se toca', (
     tester,
   ) async {
     final mock = MockMovimientosApi(crearDioMovimientos());
@@ -145,12 +205,35 @@ void main() {
     await _montar(tester, mock);
 
     expect(find.text('Prueba'), findsOneWidget);
-    expect(find.byType(Chip), findsOneWidget);
+    expect(find.byType(Chip), findsNothing);
+    expect(
+      find.ancestor(of: find.text('Prueba'), matching: find.byType(InkWell)),
+      findsNothing,
+    );
 
-    final chip = tester.widget<Chip>(find.byType(Chip));
-    final etiqueta = chip.label;
-    expect(etiqueta, isA<Text>());
-    expect((etiqueta as Text).data, 'Prueba');
+    final texto = tester.widget<Text>(find.text('Prueba'));
+    expect(texto.data, 'Prueba');
+    final caja = tester.getSize(
+      find
+          .ancestor(of: find.text('Prueba'), matching: find.byType(Container))
+          .first,
+    );
+    expect(caja.height, 20);
+
+    Element? filaDe(String texto) {
+      Element? fila;
+      find.text(texto).evaluate().single.visitAncestorElements((element) {
+        if (element.widget is Row) {
+          fila = element;
+          return false;
+        }
+        return true;
+      });
+      return fila;
+    }
+
+    expect(filaDe('Prueba'), filaDe('Refresco'));
+    expect(filaDe('Prueba'), isNot(filaDe('Pagado')));
 
     final tarjetaPrueba = find.ancestor(
       of: find.text('Prueba'),
