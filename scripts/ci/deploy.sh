@@ -34,7 +34,7 @@ ssh_port="$(ci_val DEPLOY_PORT)"
 ssh_host="$(ci_val DEPLOY_HOST)"
 ssh_user="$(ci_val DEPLOY_USER)"
 python_var="${prefix}_PYTHON"
-python_bin="${!python_var:-python3.12}"
+python_bin="${!python_var:-/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12}"
 
 if grep -Eq '^[[:space:]]*DEBUG[[:space:]]*=[[:space:]]*(True|true|1|yes|on)[[:space:]]*$' "$app_env"; then
   echo "DEBUG debe ser False en ${scope}." >&2
