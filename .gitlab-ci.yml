@@ -13,12 +13,12 @@
 # Test (prefijo TEST_):
 #   TEST_SSH_PRIVATE_KEY (base64), TEST_DEPLOY_HOST, TEST_DEPLOY_USER,
 #   TEST_DEPLOY_PORT, TEST_DEPLOY_PATH, TEST_ENV_FILE (File)
-# Opcional: TEST_PYTHON (python3.12)
+# Opcional: TEST_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 #
 # Prod (prefijo PROD_):
 #   PROD_SSH_PRIVATE_KEY (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
 #   PROD_DEPLOY_PORT, PROD_DEPLOY_PATH, PROD_ENV_FILE (File)
-# Opcional: PROD_PYTHON (python3.12)
+# Opcional: PROD_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 
 stages:
   - validate
