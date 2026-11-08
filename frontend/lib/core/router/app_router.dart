@@ -6,6 +6,8 @@ import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
 import '../../features/tablero/presentation/tablero_page.dart';
+import '../../features/venta/presentation/nueva_venta_page.dart';
+import '../../features/venta/presentation/venta_espera_page.dart';
 import '../sesion/sesion_notifier.dart';
 import 'sesion_router_refresh.dart';
 
@@ -13,6 +15,7 @@ const kRutaEntrar = '/entrar';
 const kRutaInicio = '/inicio';
 const kRutaMovimientos = '/movimientos';
 const kRutaTablero = '/tablero';
+const kRutaNuevaVenta = '/venta/nueva';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -65,6 +68,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: kRutaTablero,
         builder: (context, state) => const TableroPage(),
+      ),
+      GoRoute(
+        path: kRutaNuevaVenta,
+        builder: (context, state) => const NuevaVentaPage(),
+      ),
+      GoRoute(
+        path: '/venta/:id',
+        builder: (context, state) {
+          final id = int.parse(state.pathParameters['id']!);
+          return VentaEsperaPage(
+            movimientoId: id,
+            avisoPendiente: state.uri.queryParameters['aviso'] == 'pendiente',
+          );
+        },
       ),
     ],
   );

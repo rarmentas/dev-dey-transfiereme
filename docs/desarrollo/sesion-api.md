@@ -200,6 +200,8 @@ Sin sesión: `403` del middleware. Usuario sin membresía: `403`. Monto, referen
 
 El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respuesta del alta. La referencia se envía a pey como `numRef` y no se guarda en el movimiento.
 
+`GET /api/ventas/<movimiento_id>/` devuelve el estado guardado de una venta del comercio de la sesión (`movimiento_id`, `canal`, `estado`, `monto`, `concepto`, `vence_en`, `pagado_en`, `qr_string`). `qr_string` sale del cobro y va vacío en una notificación. Otro comercio, un id inexistente o un canal que no es de venta (el QR general) responden `404`. `comercio` en la consulta responde `400`. Sin sesión: `403`. Si está `pendiente` y `vence_en` ya se cumplió, el servidor lo marca `vencido` antes de responder; `vence_en` nulo no vence. Esta consulta no llama a pey.
+
 ## Alta de venta por notificación
 
 `POST /api/ventas/notificacion/` crea un cobro `notificacion` pendiente. El ámbito es el de la venta por QR: comercio de la sesión; `comercio` o `comercio_id` en el cuerpo o en la query responden `400`.
