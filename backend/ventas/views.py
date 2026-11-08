@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
 from pey.tipos import ErrorPey, ParametroInvalido
+from ventas.canal import VentaPendiente
 from ventas.serializers import CrearVentaSerializer, venta_creada_a_json
 from ventas.servicio import CuentaNoActive, ValidacionVenta, crear_venta_qr
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 _MENSAJE_CUERPO = "El cuerpo debe ser un objeto JSON."
 _MENSAJE_CUENTA = "La cuenta no está ACTIVE."
+_MENSAJE_VENTA_VIVA = "Ya hay una venta pendiente."
 _MENSAJE_PEY = "pey no pudo crear el cobro."
 
 
@@ -46,6 +48,17 @@ def _leer_cuerpo(request) -> dict:
 
 def _respuesta_ambito(exc: AmbitoError, status: int) -> Response:
     return Response({"detail": str(exc)}, status=status)
+
+
+def _venta_pendiente(exc: VentaPendiente) -> dict:
+    movimiento = exc.movimiento
+    cobro = movimiento.cobro
+    return {
+        "detail": _MENSAJE_VENTA_VIVA,
+        "movimiento_id": movimiento.pk,
+        "canal": movimiento.canal,
+        "vence_en": cobro.vence_en.isoformat() if cobro.vence_en is not None else None,
+    }
 
 
 class CrearVentaView(APIView):
@@ -83,6 +96,8 @@ class CrearVentaView(APIView):
             return Response({exc.campo: [str(exc)]}, status=400)
         except CuentaNoActive:
             return Response({"detail": _MENSAJE_CUENTA}, status=409)
+        except VentaPendiente as exc:
+            return Response(_venta_pendiente(exc), status=409)
         except ParametroInvalido as exc:
             return Response({"detail": str(exc)}, status=400)
         except ErrorPey as exc:

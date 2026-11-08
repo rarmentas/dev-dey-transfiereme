@@ -174,6 +174,7 @@ class AltaVentaApiTests(TestCase):
                 self.assertEqual(movimiento.monto, Decimal("0.01"))
                 self.assertEqual(movimiento.concepto, "Transferencia")
                 self.assertEqual(movimiento.concepto_visible, "Transferencia")
+                movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
 
     def test_error_pey_no_persiste_ni_deja_pagado(self) -> None:
         self._entrar(self.usuario_a)
@@ -496,6 +497,7 @@ class AltaVentaApiTests(TestCase):
         self.assertEqual(espia.qr_kwargs[0]["monto"], Decimal("0.01"))
         centavo = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
         self.assertEqual(centavo.monto, Decimal("0.01"))
+        centavo.cambiar_estado(Movimiento.Estado.VENCIDO)
 
         for cuerpo in (b'{"monto": true}', b'{"monto": false}', b'{"monto": null}'):
             with self.subTest(cuerpo=cuerpo.decode()):
