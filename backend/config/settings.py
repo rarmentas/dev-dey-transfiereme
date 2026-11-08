@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "webhooks",
     "pey",
     "integracion",
+    "ventas",
 ]
 
 MIDDLEWARE = [
