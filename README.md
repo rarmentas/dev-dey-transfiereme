@@ -210,7 +210,7 @@ Resumen de ventas y tablero
 ```
 
 - **Cobro:** la app llama la API de pey (`https://api.pey.mx`). `POST /codi/qr` arma el QR de la venta y el QR general. `POST /codi/pn` manda la notificación al celular. El NFC lo resuelve la app bancaria del cliente sobre ese mismo cobro; pey no tiene un endpoint de NFC. El contrato verificado está en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md#cobros-api-de-pey).
-- **Webhooks:** el endpoint en Django recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado. Quedan fallas conocidas; ver [limitaciones](#limitaciones-conocidas).
+- **Webhooks:** el endpoint en Django recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado. Otras restricciones de producto: [limitaciones](#limitaciones-conocidas).
 - **Espera en pantalla:** la app consulta a Django cada pocos segundos; Django responde con lo que llegó por webhook y, como respaldo, con `GET /transaction/...` de pey.
 - **Tablero:** suma por concepto normalizado (minúsculas, sin espacios sobrantes), día y canal. Es una consulta a Postgres.
 
@@ -250,7 +250,6 @@ Comprobaciones locales: `manage.py check`, `manage.py test config.tests`, `flutt
 ## Limitaciones conocidas
 
 - No hay reintento, cancelación ni conciliación.
-- Los webhooks con firma verificada y la demo de punta a punta quedaron listos con fallas el día del hackatón.
 
 ## Resultado del hackatón
 
@@ -262,9 +261,9 @@ Plan del 7 de noviembre de 2026. El producto en producción está en [https://tr
 | 2      | QR general para publicar en el local (`amount: 0`, concepto "Transferencia")          | Listo              |
 | 3      | QR por venta: monto, concepto y referencia opcionales                                 | Listo              |
 | 4      | `POST /codi/pn` al número del cliente, y espera del pago (QR, NFC o notificación)     | Listo              |
-| 5      | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Listo, con fallas. |
+| 5      | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Listo              |
 | 6      | Resumen de ventas, edición del concepto y tablero por concepto, día y canal           | Listo              |
-| 7      | Demo de punta a punta con un cobro de $0.01                                           | Listo, con fallas. |
+| 7      | Demo de punta a punta con un cobro de $0.01                                           | Listo              |
 
 ## Contribuidores
 
