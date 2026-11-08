@@ -123,3 +123,6 @@ cd backend
 ```
 
 Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta sola como cuenta ACTIVE: `cuenta_esta_active` solo acepta `pey_codi_status=active` tras sincronizar (en el adaptador de desarrollo, hace falta CLABE válida y `semilla_active_dev` para simular ACTIVE). Fuera de desarrollo el comando se niega. No hay alta pública.
+
+Con `DEBUG` activo, `manage.py sembrar_movimientos_demo` (correo por defecto `vendedor@demo.mx`) crea unos doce movimientos `origen_desarrollo` con cobros `demo-` para ver el tablero sin pey; sin `--reset` no duplica y `--reset` borra solo esos demo de ese comercio.
+Fuera de `DEBUG` el comando se niega. Esos pagos aparecen solo en la sección de desarrollo, sin sumarse a lo confirmado.
