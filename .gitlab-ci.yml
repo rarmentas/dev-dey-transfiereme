@@ -1,6 +1,35 @@
+# CI de Cody (Django + Flutter web).
+#
+# Ramas:
+#   test   → entorno test
+#   master → producción (https://transfiereme.asware.com.mx)
+#
+# El runner docker solo acepta refs protegidas. Este workflow no crea
+# pipeline de merge request: solo un push o un lanzamiento manual en
+# master o en test. El merge a esas ramas dispara el push.
+#
+# Variables GitLab (protegidas, alcance production en master y test en la rama test):
+#
+# Test (prefijo TEST_):
+#   TEST_SSH_PRIVATE_KEY (base64), TEST_DEPLOY_HOST, TEST_DEPLOY_USER,
+#   TEST_DEPLOY_PORT, TEST_DEPLOY_PATH, TEST_ENV_FILE (File)
+# Opcional: TEST_PYTHON (python3.12)
+#
+# Prod (prefijo PROD_):
+#   PROD_SSH_PRIVATE_KEY (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
+#   PROD_DEPLOY_PORT, PROD_DEPLOY_PATH, PROD_ENV_FILE (File)
+# Opcional: PROD_PYTHON (python3.12)
+
 stages:
   - validate
   - test
+  - build
+  - deploy
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+    - if: $CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -13,22 +42,7 @@ variables:
   DEBUG: "True"
   ALLOWED_HOSTS: localhost,127.0.0.1
 
-# Contraseña solo del Postgres efímero de este pipeline. No es PROD ni TEST.
-# En GitLab, por ámbito (production=master, test=rama test), protegidas:
-#   File de la app: PROD_ENV_FILE / TEST_ENV_FILE
-#     (incluye POSTGRES_PASSWORD, DJANGO_SECRET_KEY, PEY_API_KEY, PEY_WEBHOOK_SECRET)
-#   Deploy, fuera de ese archivo: PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
-#     PROD_DEPLOY_PORT, PROD_DEPLOY_PATH y PROD_SSH_PRIVATE_KEY (base64).
-#     En la rama test, el mismo conjunto con prefijo TEST_.
-# El runner docker solo acepta refs protegidas. Un pipeline de merge request
-# usa refs/merge-requests/N/head, que no es una rama protegida, así que se queda
-# sin runner. Estos jobs corren en el push de una rama protegida (master, test
-# o la rama del epic, si está protegida).
-.workflow_rules:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true"
-    - if: $CI_COMMIT_BRANCH == "master"
-    - if: $CI_COMMIT_BRANCH == "test"
+# Contraseña solo del Postgres efímero de backend:test. No es PROD ni TEST.
 
 .env_ci:
   stage: validate
@@ -37,16 +51,6 @@ variables:
     - docker
   script:
     - bash scripts/ci-install-env.sh "$CODY_ENV_SCOPE"
-
-env:comprobar:prod:
-  extends: .env_ci
-  environment:
-    name: production
-    action: prepare
-  variables:
-    CODY_ENV_SCOPE: prod
-  rules:
-    - if: $CI_COMMIT_BRANCH == "master"
 
 env:comprobar:test:
   extends: .env_ci
@@ -57,6 +61,16 @@ env:comprobar:test:
     CODY_ENV_SCOPE: test
   rules:
     - if: $CI_COMMIT_BRANCH == "test"
+
+env:comprobar:prod:
+  extends: .env_ci
+  environment:
+    name: production
+    action: prepare
+  variables:
+    CODY_ENV_SCOPE: prod
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
 
 .backend_before:
   before_script:
@@ -70,9 +84,7 @@ backend:check:
   image: python:3.12
   tags:
     - docker
-  extends:
-    - .workflow_rules
-    - .backend_before
+  extends: .backend_before
   cache:
     key:
       files:
@@ -87,9 +99,7 @@ backend:test:
   image: python:3.12
   tags:
     - docker
-  extends:
-    - .workflow_rules
-    - .backend_before
+  extends: .backend_before
   services:
     - name: postgres:17
       alias: postgres
@@ -113,7 +123,6 @@ frontend:analyze:
   image: ghcr.io/gmeligio/flutter-web:3.47.8
   tags:
     - docker
-  extends: .workflow_rules
   cache:
     key:
       files:
@@ -131,7 +140,6 @@ frontend:test:
   image: ghcr.io/gmeligio/flutter-web:3.47.8
   tags:
     - docker
-  extends: .workflow_rules
   cache:
     key:
       files:
@@ -145,3 +153,82 @@ frontend:test:
     - flutter test test/widget_smoke_test.dart
   needs:
     - frontend:analyze
+
+.build_web_template:
+  stage: build
+  image: ghcr.io/gmeligio/flutter-web:3.47.8
+  tags:
+    - docker
+  script:
+    - cd frontend
+    - flutter pub get
+    - flutter build web --release
+  artifacts:
+    paths:
+      - frontend/build/web/
+    expire_in: 1 day
+  needs:
+    - frontend:test
+
+build:web:test:
+  extends: .build_web_template
+  cache:
+    key: flutter-test
+    paths:
+      - frontend/.dart_tool
+      - frontend/.pub-cache
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test"
+
+build:web:prod:
+  extends: .build_web_template
+  cache:
+    key: flutter-prod
+    paths:
+      - frontend/.dart_tool
+      - frontend/.pub-cache
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+.deploy_template:
+  stage: deploy
+  image: alpine:3.22
+  tags:
+    - docker
+  before_script:
+    - apk add --no-cache bash openssh-client rsync
+  script:
+    - bash scripts/ci/deploy.sh "$DEPLOY_SCOPE"
+
+deploy:test:
+  extends: .deploy_template
+  environment:
+    name: test
+  resource_group: test
+  variables:
+    DEPLOY_SCOPE: test
+  needs:
+    - job: backend:test
+    - job: frontend:test
+    - job: env:comprobar:test
+    - job: build:web:test
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test"
+
+deploy:prod:
+  extends: .deploy_template
+  environment:
+    name: production
+    url: https://transfiereme.asware.com.mx
+  resource_group: production
+  variables:
+    DEPLOY_SCOPE: prod
+  needs:
+    - job: backend:test
+    - job: frontend:test
+    - job: env:comprobar:prod
+    - job: build:web:prod
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
