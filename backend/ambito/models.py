@@ -11,6 +11,12 @@ class Comercio(models.Model):
             "ni cuenta como cuenta ACTIVE en pey."
         ),
     )
+    clabe = models.CharField(
+        max_length=18,
+        blank=True,
+        default="",
+        verbose_name="CLABE",
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:

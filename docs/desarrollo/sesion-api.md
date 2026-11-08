@@ -85,6 +85,18 @@ Cada fila trae `dia` (`YYYY-MM-DD`), `canal`, `concepto` (concepto visible en mi
 
 El día sale de `pagado_en` convertido a `America/Mexico_City`. Orden: día descendente, luego canal, luego concepto. Pendientes y vencidos no entran.
 
+## Cuenta: captura de CLABE
+
+El servidor persiste la CLABE en el comercio de la membresía; no acepta `comercio` ni `comercio_id` en el cuerpo. La respuesta no incluye secretos de plataforma (`PEY_API_KEY`, etc.).
+
+| Método | Ruta | Autenticación |
+| --- | --- | --- |
+| `POST` | `/api/cuenta/clabe/` | Sesión activa |
+
+Cuerpo JSON: `{ "clabe": "012180015826225713" }` (18 dígitos con dígito verificador válido).
+
+Respuesta `200`: `{ "clabe": "<guardada>" }`. CLABE inválida: `400` con `{"detail": "Indique una CLABE válida de 18 dígitos."}`. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
+
 ## Semilla de desarrollo
 
 Con `DEBUG` activo:
