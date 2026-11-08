@@ -10,7 +10,6 @@ from movimientos.exceptions import (
     AvisoInvalido,
     AvisoSinCobro,
     MontoDistinto,
-    TransicionInvalida,
 )
 from movimientos.models import Cobro, Movimiento
 
@@ -232,7 +231,7 @@ class CorrelacionTests(TestCase):
         self.assertEqual(leido_pn.pey_transaction_id, "TX-PN")
         self.assertEqual(leido_pn.comercio_id, notificacion.comercio_id)
 
-    def test_aviso_sobre_vencido_no_marca_pagado(self) -> None:
+    def test_aviso_sobre_vencido_marca_pagado(self) -> None:
         casos = (
             (
                 self._cobro(canal=Movimiento.Canal.QR_VENTA, pey_qr_id="QR-VENCIDO"),
@@ -248,13 +247,21 @@ class CorrelacionTests(TestCase):
             ),
         )
         for cobro, aviso in casos:
-            movimiento = self._movimiento(cobro)
-            movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
-            with self.assertRaises(TransicionInvalida):
-                aplicar_aviso(aviso, origen=self.origen)
-            leido = Movimiento.objects.get(pk=movimiento.pk)
-            self.assertEqual(leido.estado, Movimiento.Estado.VENCIDO)
-            self.assertIsNone(leido.pey_transaction_id)
+            with self.subTest(canal=cobro.canal):
+                movimiento = self._movimiento(cobro)
+                movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
+                with self.assertLogs("movimientos.correlacion", level="WARNING") as logs:
+                    pagado = aplicar_aviso(aviso, origen=self.origen)
+                self.assertEqual(pagado.pk, movimiento.pk)
+                leido = Movimiento.objects.get(pk=movimiento.pk)
+                self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
+                self.assertIsNotNone(leido.pagado_en)
+                self.assertEqual(leido.pey_transaction_id, aviso.transaction_id)
+                texto = " ".join(logs.output)
+                self.assertIn("pago tardío", texto)
+                self.assertIn(f"movimiento_id={movimiento.pk}", texto)
+                self.assertIn(f"transaction_id={aviso.transaction_id}", texto)
+                self.assertIn(f"comercio_id={movimiento.comercio_id}", texto)
 
     def test_constraints_de_cobro_rechazan_monto_e_ids_incoherentes(self) -> None:
         rechazados = (

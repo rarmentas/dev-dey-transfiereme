@@ -14,7 +14,7 @@ from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.puerto import PuertoPey
 from pey.seleccion import obtener_puerto
-from ventas.canal import bloquear_comercio, exigir_sin_venta_viva
+from ventas.canal import exigir_sin_venta_viva, vencer_pendientes
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +92,13 @@ def crear_venta_qr(
         if isinstance(puerto, AdaptadorDesarrollo)
         else Movimiento.Origen.ORIGEN_PEY
     )
+    # Fuera del candado: un ErrorPey no revierte estos vencidos.
+    vencer_pendientes(comercio)
     # El candado del comercio se sostiene durante la llamada a pey (timeout
     # 10 s) a propósito: dos altas simultáneas no abren dos cobros (C12).
     qr = None
     try:
         with transaction.atomic():
-            bloquear_comercio(comercio)
             exigir_sin_venta_viva(comercio)
             if not puerto.cuenta_active(comercio):
                 raise CuentaNoActive()

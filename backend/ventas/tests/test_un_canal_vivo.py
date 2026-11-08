@@ -1,6 +1,7 @@
 """Una venta viva por comercio. El puerto es falso: nadie sale a la red."""
 
 import threading
+import time
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -15,6 +16,7 @@ from ambito.models import Comercio, Membresia
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.tipos import ErrorPey, QrCreado
+from ventas.canal import exigir_sin_venta_viva
 
 _RUTA = "/api/ventas/"
 _MENSAJE_VIVA = "Ya hay una venta pendiente."
@@ -31,11 +33,10 @@ class _Espia(AdaptadorDesarrollo):
 
 
 class _PuertoEspera:
-    """Se queda dentro de crear_qr hasta que el test suelta el evento."""
+    """El primero en crear_qr espera a que el otro hilo ya esté en el candado."""
 
-    def __init__(self, adentro: threading.Event, seguir: threading.Event) -> None:
-        self.adentro = adentro
-        self.seguir = seguir
+    def __init__(self, ambos: threading.Event) -> None:
+        self.ambos = ambos
         self.llamadas = 0
         self._candado = threading.Lock()
 
@@ -46,9 +47,9 @@ class _PuertoEspera:
         with self._candado:
             self.llamadas += 1
             numero = self.llamadas
-        self.adentro.set()
-        if not self.seguir.wait(timeout=5):
-            raise TimeoutError("el candado de la venta no se soltó")
+        if not self.ambos.wait(timeout=5):
+            raise TimeoutError("el otro hilo no llegó al candado")
+        time.sleep(0.1)
         return QrCreado(
             id=f"qr-conc-{numero}",
             qr_string=f"cody-dev://qr/qr-conc-{numero}",
@@ -218,6 +219,66 @@ class UnCanalVivoTests(TestCase):
         self.assertEqual(Cobro.objects.filter(comercio=self.comercio_a).count(), 1)
         self.assertEqual(Cobro.objects.filter(comercio=self.comercio_b).count(), 1)
 
+    def test_vence_en_nulo_bloquea_y_no_se_vence(self) -> None:
+        cobro = self._cobro(
+            self.comercio_a,
+            vence_en=None,
+            pey_qr_id="qr-sin-vence",
+        )
+        movimiento = self._movimiento(cobro)
+        self._entrar(self.usuario_a)
+        espia = _Espia()
+        respuesta = self._post(espia)
+        self.assertEqual(respuesta.status_code, 409)
+        cuerpo = respuesta.json()
+        self.assertEqual(cuerpo["detail"], _MENSAJE_VIVA)
+        self.assertEqual(cuerpo["movimiento_id"], movimiento.pk)
+        self.assertIsNone(cuerpo["vence_en"])
+        self.assertEqual(espia.qr_kwargs, [])
+        movimiento.refresh_from_db()
+        self.assertEqual(movimiento.estado, Movimiento.Estado.PENDIENTE)
+        self.assertEqual(Cobro.objects.count(), 1)
+
+    def test_vence_en_igual_a_ahora_no_bloquea_y_se_vence(self) -> None:
+        momento = timezone.now()
+        cobro = self._cobro(
+            self.comercio_a,
+            vence_en=momento,
+            pey_qr_id="qr-justo-ahora",
+        )
+        anterior = self._movimiento(cobro)
+        self._entrar(self.usuario_a)
+        with patch("ventas.canal.timezone.now", return_value=momento):
+            respuesta = self._post(_Espia())
+        self.assertEqual(respuesta.status_code, 201)
+        anterior.refresh_from_db()
+        self.assertEqual(anterior.estado, Movimiento.Estado.VENCIDO)
+        self.assertEqual(
+            Movimiento.objects.filter(estado=Movimiento.Estado.PENDIENTE).count(),
+            1,
+        )
+
+    def test_error_pey_no_revierte_el_vencido_perezoso(self) -> None:
+        cobro = self._cobro(
+            self.comercio_a,
+            vence_en=timezone.now() - timedelta(seconds=30),
+            pey_qr_id="qr-por-vencer",
+        )
+        anterior = self._movimiento(cobro)
+        self.assertEqual(anterior.estado, Movimiento.Estado.PENDIENTE)
+        self._entrar(self.usuario_a)
+        espia = _Espia(
+            fallar_con=ErrorPey("INVALID_STATE", "rechazado", "req-vence", False),
+        )
+        respuesta = self._post(espia)
+        self.assertEqual(respuesta.status_code, 502)
+        anterior.refresh_from_db()
+        self.assertEqual(anterior.estado, Movimiento.Estado.VENCIDO)
+        self.assertEqual(list(Cobro.objects.values_list("pk", flat=True)), [cobro.pk])
+        self.assertFalse(
+            Movimiento.objects.filter(estado=Movimiento.Estado.PENDIENTE).exists()
+        )
+
     def test_error_pey_con_venta_vencida_no_deja_cobro_nuevo(self) -> None:
         cobro = self._cobro(
             self.comercio_a,
@@ -240,15 +301,23 @@ class UnCanalVivoTests(TestCase):
 
 
 class ConcurrenciaUnCanalTests(TransactionTestCase):
+    def test_exigir_sin_venta_viva_fuera_de_atomic_falla(self) -> None:
+        with self.assertRaises(RuntimeError):
+            exigir_sin_venta_viva(Comercio(pk=1))
+
     def test_dos_altas_simultaneas_dejan_un_solo_cobro(self) -> None:
         comercio = Comercio.objects.create(nombre="Concurrente", semilla_active_dev=True)
         usuario = User.objects.create_user(username="concurrente", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
-        adentro = threading.Event()
-        seguir = threading.Event()
-        puerto = _PuertoEspera(adentro, seguir)
+        ambos = threading.Event()
+        barrera = threading.Barrier(2)
+        puerto = _PuertoEspera(ambos)
         codigos: list[int] = []
+        detalles: list[str] = []
+        errores: list[BaseException] = []
         candado = threading.Lock()
+        candado_llegada = threading.Lock()
+        llegados = [0]
         clientes = [APIClient(), APIClient()]
         for cliente in clientes:
             cliente.force_login(usuario)
@@ -256,6 +325,11 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
         def alta(cliente: APIClient) -> None:
             connections.close_all()
             try:
+                barrera.wait(timeout=5)
+                with candado_llegada:
+                    llegados[0] += 1
+                    if llegados[0] >= 2:
+                        ambos.set()
                 respuesta = cliente.post(
                     _RUTA,
                     {"monto": "0.01", "concepto": "Taco"},
@@ -263,6 +337,9 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
                 )
                 with candado:
                     codigos.append(respuesta.status_code)
+                    detalles.append(respuesta.json().get("detail", ""))
+            except BaseException as exc:
+                errores.append(exc)
             finally:
                 connections.close_all()
 
@@ -272,13 +349,13 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
             ]
             for hilo in hilos:
                 hilo.start()
-            self.assertTrue(adentro.wait(timeout=5))
-            seguir.set()
             for hilo in hilos:
-                hilo.join(timeout=5)
+                hilo.join(timeout=8)
                 self.assertFalse(hilo.is_alive())
 
+        self.assertEqual(errores, [])
         self.assertEqual(sorted(codigos), [201, 409])
+        self.assertIn("Ya hay una venta pendiente.", detalles)
         self.assertEqual(puerto.llamadas, 1)
         self.assertEqual(Cobro.objects.filter(comercio=comercio).count(), 1)
         self.assertEqual(

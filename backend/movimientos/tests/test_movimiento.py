@@ -78,20 +78,22 @@ class MovimientoTests(TestCase):
             Movimiento.Estado.PAGADO,
         )
 
-    def test_vencido_no_pasa_a_pagado(self) -> None:
+    def test_vencido_pasa_a_pagado_y_fija_pagado_en(self) -> None:
         movimiento = self._crear()
         movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
+        self.assertIsNone(Movimiento.objects.get(pk=movimiento.pk).pagado_en)
+        movimiento.cambiar_estado(Movimiento.Estado.PAGADO)
+        leido = Movimiento.objects.get(pk=movimiento.pk)
+        self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
+        self.assertIsNotNone(leido.pagado_en)
         for destino in (
-            Movimiento.Estado.PAGADO,
             Movimiento.Estado.PENDIENTE,
             Movimiento.Estado.VENCIDO,
+            Movimiento.Estado.PAGADO,
         ):
             with self.assertRaises(TransicionInvalida):
                 movimiento.cambiar_estado(destino)
-        self.assertEqual(
-            Movimiento.objects.get(pk=movimiento.pk).estado,
-            Movimiento.Estado.VENCIDO,
-        )
+        self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
 
     def test_misma_transicion_desde_pendiente_falla(self) -> None:
         movimiento = self._crear()

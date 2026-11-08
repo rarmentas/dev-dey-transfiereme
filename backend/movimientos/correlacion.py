@@ -1,5 +1,6 @@
 """Aplica un aviso de pago al cobro persistido. Sin HTTP y sin llamar a pey."""
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -12,6 +13,8 @@ from movimientos.exceptions import (
     MontoDistinto,
 )
 from movimientos.models import Cobro, Movimiento
+
+logger = logging.getLogger(__name__)
 
 TIPO_QR = "codi.qr.payment_received"
 TIPO_PN = "codi.pn.payment_received"
@@ -118,18 +121,24 @@ def _marcar_ligado_pagado(cobro: Cobro, aviso: AvisoPago) -> Movimiento:
         )
     if aviso.monto != cobro.monto:
         raise MontoDistinto("El monto del aviso no coincide con el del cobro.")
+    estaba_vencido = movimiento.estado == Movimiento.Estado.VENCIDO
     movimiento.pey_transaction_id = aviso.transaction_id
-    # Si está vencido, cambiar_estado propaga TransicionInvalida y no queda pagado.
     movimiento.cambiar_estado(Movimiento.Estado.PAGADO)
     movimiento.save(update_fields=["pey_transaction_id", "actualizado_en"])
+    if estaba_vencido:
+        logger.warning(
+            "pago tardío movimiento_id=%s transaction_id=%s comercio_id=%s",
+            movimiento.pk,
+            aviso.transaction_id,
+            movimiento.comercio_id,
+        )
     return movimiento
 
 
 def _movimiento_ligado(cobro: Cobro) -> Movimiento:
     """El pendiente del cobro, o el ligado si ya no está pendiente.
 
-    Así un vencido llega a cambiar_estado y se rechaza, en vez de parecer
-    que el cobro no existía.
+    Un vencido también se devuelve: el aviso tardío puede pasarlo a pagado.
     """
     ligados = cobro.movimientos.select_for_update().order_by("pk")
     pendiente = ligados.filter(estado=Movimiento.Estado.PENDIENTE).first()
