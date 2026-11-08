@@ -5,6 +5,20 @@ import VideoClip from './VideoClip.astro';
 <section id="demo" class="demo" aria-labelledby="demo-titulo">
   <div class="container">
     <div class="demo-copy reveal">
+      <h2 id="presentacion-titulo">Qué es transfiéreme</h2>
+      <p class="lead">Cobros con CoDi desde tu celular, sin terminal y directo a tu CLABE.</p>
+    </div>
+
+    <div class="demo-media reveal">
+      <VideoClip
+        nombre="presentacion"
+        titulo="Qué es transfiéreme"
+        desc="Cobros con CoDi desde tu celular, sin terminal y directo a tu CLABE."
+        aspecto="16/9"
+      />
+    </div>
+
+    <div class="demo-copy demo-copy--siguiente reveal">
       <h2 id="demo-titulo">Míralo en acción</h2>
       <p class="lead">Un cobro con CoDi, de la venta al aviso de pago.</p>
     </div>
@@ -44,6 +58,10 @@ import VideoClip from './VideoClip.astro';
     color: var(--ink-muted);
     font-size: var(--type-cuerpo-l-size);
     line-height: var(--type-cuerpo-l-line);
+  }
+
+  .demo-copy--siguiente {
+    margin-top: var(--space-16);
   }
 
   .demo-media {
