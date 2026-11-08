@@ -3,7 +3,6 @@ import 'package:cody/core/sesion/sesion_models.dart';
 import 'package:cody/core/sesion/sesion_notifier.dart';
 import 'package:cody/core/sesion/sesion_view_state.dart';
 import 'package:cody/features/cuenta/data/clabe_repository.dart';
-import 'package:cody/features/cuenta/presentation/cuenta_providers.dart';
 import 'package:cody/features/cuenta/presentation/registrar_clabe_page.dart';
 import 'package:cody/features/sesion/presentation/home_autenticado_page.dart';
 import 'package:cody/theme/transfiereme_theme.dart';
