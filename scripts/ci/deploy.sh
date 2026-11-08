@@ -16,7 +16,8 @@ esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-trap 'rm -f "${SSH_PRIVATE_KEY_FILE:-}"' EXIT
+ssh_dir=""
+trap 'rm -f "${SSH_PRIVATE_KEY_FILE:-}"; rm -rf "${ssh_dir:-}"' EXIT
 # shellcheck disable=SC1091
 source "$ROOT/scripts/ci-install-env.sh" "$scope"
 
@@ -77,19 +78,19 @@ if [[ ! "$health_port" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-mkdir -p "${HOME}/.ssh"
-chmod 700 "${HOME}/.ssh"
-: >"${HOME}/.ssh/known_hosts"
-if ! ssh-keyscan -p "$ssh_port" -T 15 -H "$ssh_host" >>"${HOME}/.ssh/known_hosts"; then
+ssh_dir="$(mktemp -d)"
+chmod 700 "$ssh_dir"
+known_hosts="${ssh_dir}/known_hosts"
+if ! ssh-keyscan -p "$ssh_port" -T 15 -H "$ssh_host" >>"$known_hosts"; then
   echo "ssh-keyscan falló contra ${ssh_host}:${ssh_port}." >&2
   exit 1
 fi
-if [[ ! -s "${HOME}/.ssh/known_hosts" ]]; then
+if [[ ! -s "$known_hosts" ]]; then
   echo "El runner no llega a ${ssh_host}:${ssh_port}." >&2
   exit 1
 fi
 
-ssh_base=(-i "$key_file" -p "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15)
+ssh_base=(-i "$key_file" -p "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o "UserKnownHostsFile=${known_hosts}")
 remote="${ssh_user}@${ssh_host}"
 
 echo "Desplegando en ${remote}:${ssh_port} ${remote_path}"
@@ -105,7 +106,7 @@ if ssh "${ssh_base[@]}" "$remote" test -e "${remote_path}/.ssh"; then
   exit 1
 fi
 
-rsync_rsh="$(printf 'ssh -i %q -p %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15' "$key_file" "$ssh_port")"
+rsync_rsh="$(printf 'ssh -i %q -p %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=%q' "$key_file" "$ssh_port" "$known_hosts")"
 rsync -az --delete -e "$rsync_rsh" \
   --exclude '.git/' \
   --exclude '.tooling/' \
@@ -125,7 +126,7 @@ rsync -az --delete -e "$rsync_rsh" \
   --exclude '.cursor/' \
   ./ "${remote}:${remote_path}/"
 
-scp -i "$key_file" -P "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 \
+scp -i "$key_file" -P "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o "UserKnownHostsFile=${known_hosts}" \
   "$app_env" \
   "${remote}:${remote_path}/backend/.env.incoming"
 
