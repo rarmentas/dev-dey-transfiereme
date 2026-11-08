@@ -69,6 +69,36 @@ fi
 install -m 600 "$incoming" "$target"
 rm -f "$incoming"
 
+env_val() {
+  local key="$1"
+  local line
+  line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$target" | tail -1 || true)"
+  line="${line#*=}"
+  line="${line%%#*}"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  printf '%s' "$line"
+}
+
+pg_port="$(env_val POSTGRES_PORT)"
+if [[ "$pg_port" != "5435" ]]; then
+  echo "POSTGRES_PORT debe ser 5435. En este servidor Cody publica su Postgres ahí." >&2
+  exit 1
+fi
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Hace falta docker en el servidor para levantar el Postgres de Cody." >&2
+  exit 1
+fi
+
+as_root mkdir -p /var/lib/codi/postgres
+echo "Levantando Postgres de Cody en 127.0.0.1:5435."
+compose=(docker compose --env-file "$target" -f "${dest}/deploy/compose.yaml")
+if ! "${compose[@]}" up -d --wait --wait-timeout 60; then
+  echo "Postgres de Cody no quedó listo en 127.0.0.1:5435." >&2
+  "${compose[@]}" logs --tail 40 postgres >&2 || true
+  exit 1
+fi
+
 if [[ ! -x "${dest}/backend/.venv/bin/python" ]]; then
   echo "Creando el venv."
   "$python_bin" -m venv "${dest}/backend/.venv"

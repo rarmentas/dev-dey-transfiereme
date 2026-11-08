@@ -7,7 +7,9 @@ POSTGRES_DB=cody
 POSTGRES_USER=cody
 POSTGRES_PASSWORD=
 POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
+# En intec-vps-001, deploy/compose.yaml publica Cody en 5435.
+# 5432 es el Postgres del sistema, 5433 denti-demo y 5434 denti-prod.
+POSTGRES_PORT=5435
 DJANGO_SECRET_KEY=
 DEBUG=False
 ALLOWED_HOSTS=transfiereme.asware.com.mx

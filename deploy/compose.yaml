@@ -1,0 +1,25 @@
+# Postgres de Cody en el VPS. Lo levanta scripts/ci/deploy-remoto.sh.
+# El puerto 5435 es el de este servicio: 5432 es el del sistema,
+# 5433 es denti-demo y 5434 es denti-prod.
+# Uso: docker compose --env-file backend/.env -f deploy/compose.yaml up -d --wait
+
+name: codi
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: codi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB requerido}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requerido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - /var/lib/codi/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
