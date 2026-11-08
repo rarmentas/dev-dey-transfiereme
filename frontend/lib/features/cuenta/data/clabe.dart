@@ -1,4 +1,4 @@
-const mensajeClabeInvalida = 'Indique una CLABE válida de 18 dígitos.';
+const mensajeClabeInvalida = 'Escribe una CLABE válida de 18 dígitos.';
 
 const _pesos = [3, 7, 1];
 

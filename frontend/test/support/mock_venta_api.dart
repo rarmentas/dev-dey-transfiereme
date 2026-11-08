@@ -81,3 +81,35 @@ Map<String, dynamic> cuerpoVenta({
     'qr_string': qrString,
   };
 }
+
+const rutaCrearNotificacion = '/api/ventas/notificacion/';
+
+extension MockVentaNotificacion on MockVentaApi {
+  void alCrearNotificacion(int status, Map<String, dynamic> cuerpo) {
+    adapter.onPost(
+      rutaCrearNotificacion,
+      (server) => server.reply(status, cuerpo),
+      data: Matchers.any,
+    );
+  }
+}
+
+Map<String, dynamic> cuerpoNotificacion({
+  required int id,
+  String monto = '120.00',
+  String concepto = 'Transferencia',
+  String? venceEn,
+  String telefonoFinal = '4321',
+}) {
+  return {
+    'movimiento_id': id,
+    'cobro_id': 70,
+    'canal': 'notificacion',
+    'monto': monto,
+    'concepto': concepto,
+    'estado': 'pendiente',
+    'vence_en': venceEn,
+    'origen': 'app',
+    'telefono_final': telefonoFinal,
+  };
+}

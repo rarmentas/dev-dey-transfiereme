@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ui/ui.dart';
+import '../../../theme/transfiereme_theme.dart';
 import '../../cobro/presentation/qr_general_impreso_page.dart';
+import '../../movimientos/data/movimiento.dart';
 import '../data/venta.dart';
 import '../data/venta_repository.dart';
 import 'venta_providers.dart';
+
+/// Concepto que el API usa cuando llega vacío.
+const kConceptoPorDefecto = 'Transferencia';
 
 class NuevaVentaPage extends ConsumerStatefulWidget {
   const NuevaVentaPage({super.key, this.repositorio});
@@ -23,13 +30,49 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   final _conceptoController = TextEditingController();
   final _referenciaController = TextEditingController();
 
+  final _celularController = TextEditingController();
+  var _aCelular = false;
+  var _prellenado = false;
+
   var _guardando = false;
   String? _error;
   PeyException? _pey;
   var _cuentaInactiva = false;
 
   @override
+  void initState() {
+    super.initState();
+    _conceptoController.text = kConceptoPorDefecto;
+    _montoController.addListener(_alCambiarMonto);
+  }
+
+  void _alCambiarMonto() => setState(() {});
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prellenado) {
+      return;
+    }
+    _prellenado = true;
+    final consulta =
+        GoRouter.maybeOf(context)?.routeInformationProvider.value.uri
+            .queryParameters;
+    if (consulta == null) {
+      return;
+    }
+    _montoController.text = consulta['monto'] ?? '';
+    final concepto = consulta['concepto'];
+    if (concepto != null && concepto.isNotEmpty) {
+      _conceptoController.text = concepto;
+    }
+    _referenciaController.text = consulta['referencia'] ?? '';
+  }
+
+  @override
   void dispose() {
+    _montoController.removeListener(_alCambiarMonto);
+    _celularController.dispose();
     _montoController.dispose();
     _conceptoController.dispose();
     _referenciaController.dispose();
@@ -50,15 +93,32 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       _cuentaInactiva = false;
     });
     try {
-      final venta = await _repositorio.crear(
-        monto: _montoController.text,
-        concepto: _conceptoController.text,
-        referencia: _referenciaController.text,
-      );
+      final referencia = _referenciaController.text.trim();
+      final venta = _aCelular
+          ? await _repositorio.crearNotificacion(
+              monto: _montoController.text,
+              telefono: _celularController.text,
+              concepto: _conceptoController.text,
+              referencia: referencia,
+            )
+          : await _repositorio.crear(
+              monto: _montoController.text,
+              concepto: _conceptoController.text,
+              referencia: referencia,
+            );
       if (!mounted) {
         return;
       }
-      context.push('/venta/${venta.movimientoId}');
+      final consulta = <String, String>{
+        if (referencia.isNotEmpty) 'ref': referencia,
+        if (venta.telefonoFinal != null) 'tel': venta.telefonoFinal!,
+      };
+      context.push(
+        Uri(
+          path: '/venta/${venta.movimientoId}',
+          queryParameters: consulta.isEmpty ? null : consulta,
+        ).toString(),
+      );
     } on VentaPendienteException catch (error) {
       if (!mounted) {
         return;
@@ -94,96 +154,319 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
+    final tf = tema.extension<TfColors>()!;
+    final colores = tema.colorScheme;
+    final montoValido = validarMontoVenta(_montoController.text) == null;
+    final etiquetaCobrar = montoValido
+        ? 'Cobrar ${formatearMonto(_montoController.text.trim())}'
+        : 'Cobrar';
+
+    InputDecoration campo({String? hint, Widget? icono, String? prefijo}) {
+      return InputDecoration(
+        hintText: hint,
+        prefixIcon: icono,
+        prefixText: prefijo,
+      );
+    }
+
+    Widget etiqueta(String texto, {String? extra}) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: TfSpace.s2),
+        child: Text.rich(
+          TextSpan(
+            text: texto,
+            children: [
+              if (extra != null)
+                TextSpan(
+                  text: ' $extra',
+                  style: TextStyle(
+                    color: colores.onSurfaceVariant,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+            ],
+          ),
+          style: tema.textTheme.titleSmall,
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nueva venta')),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        title: Text('Nuevo cobro', style: tema.textTheme.headlineMedium),
+      ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  key: const Key('campo_monto'),
-                  controller: _montoController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: TfPantalla(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: kMargenPantalla,
+                      vertical: TfSpace.s2,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _CampoMonto(controller: _montoController),
+                        const SizedBox(height: TfSpace.s5),
+                        etiqueta('Concepto'),
+                        TextFormField(
+                          key: const Key('campo_concepto'),
+                          controller: _conceptoController,
+                          maxLength: 40,
+                          decoration: campo(
+                            hint: kConceptoPorDefecto,
+                            icono: const Icon(Icons.edit_rounded),
+                          ),
+                        ),
+                        const SizedBox(height: TfSpace.s2),
+                        etiqueta('Referencia', extra: '(opcional)'),
+                        TextFormField(
+                          key: const Key('campo_referencia'),
+                          controller: _referenciaController,
+                          keyboardType: TextInputType.number,
+                          decoration: campo(hint: 'Ej. 4521'),
+                          validator: (valor) =>
+                              validarReferenciaVenta(valor ?? ''),
+                        ),
+                        const SizedBox(height: TfSpace.s4),
+                        TfSegmentado<bool>(
+                          key: const Key('selector_canal'),
+                          opciones: const {false: 'QR', true: 'A su celular'},
+                          iconos: const {
+                            false: Icons.qr_code_2_rounded,
+                            true: Icons.smartphone_rounded,
+                          },
+                          valor: _aCelular,
+                          onCambio: (valor) => setState(() => _aCelular = valor),
+                        ),
+                        if (_aCelular) ...[
+                          const SizedBox(height: TfSpace.s4),
+                          etiqueta('Celular'),
+                          TextFormField(
+                            key: const Key('campo_celular'),
+                            controller: _celularController,
+                            keyboardType: TextInputType.phone,
+                            maxLength: 10,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            decoration: campo(
+                              hint: '10 dígitos',
+                              prefijo: '+52  ',
+                            ).copyWith(counterText: ''),
+                            validator: (valor) =>
+                                validarCelularVenta(valor ?? ''),
+                          ),
+                        ],
+                        if (_cuentaInactiva) ...[
+                          const SizedBox(height: TfSpace.s4),
+                          const TfAvisoError(
+                            titulo: kMensajeCuentaNoActivaQr,
+                          ),
+                        ],
+                        if (_pey != null) ...[
+                          const SizedBox(height: TfSpace.s4),
+                          TfAvisoError(
+                            titulo: _pey!.mensaje,
+                            mensaje: _pey!.puedeHaberseCreado
+                                ? 'Puede que el cobro se haya creado; revisa Movimientos antes de reintentar'
+                                : null,
+                          ),
+                        ],
+                        if (_error != null) ...[
+                          const SizedBox(height: TfSpace.s4),
+                          TfAvisoError(titulo: _error!),
+                        ],
+                      ],
+                    ),
                   ),
-                  decoration: const InputDecoration(labelText: 'Monto'),
-                  validator: (valor) => validarMontoVenta(valor ?? ''),
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  key: const Key('campo_concepto'),
-                  controller: _conceptoController,
-                  decoration: const InputDecoration(
-                    labelText: 'Concepto',
-                    helperText: 'Si lo deja vacío, se envía "Transferencia"',
-                  ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  kMargenPantalla,
+                  TfSpace.s2,
+                  kMargenPantalla,
+                  TfSpace.s4,
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  key: const Key('campo_referencia'),
-                  controller: _referenciaController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Referencia',
-                    helperText: 'Opcional. Solo dígitos, de 1 a 7.',
-                  ),
-                  validator: (valor) => validarReferenciaVenta(valor ?? ''),
-                ),
-                if (_cuentaInactiva) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    kMensajeCuentaNoActivaQr,
-                    style: tema.textTheme.bodyLarge?.copyWith(
-                      color: tema.colorScheme.error,
-                    ),
-                  ),
-                ],
-                if (_pey != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _pey!.mensaje,
-                    style: tema.textTheme.bodyLarge?.copyWith(
-                      color: tema.colorScheme.error,
-                    ),
-                  ),
-                  if (_pey!.puedeHaberseCreado) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Puede que el cobro se haya creado; revise Movimientos antes de reintentar',
-                      style: tema.textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: tema.textTheme.bodyLarge?.copyWith(
-                      color: tema.colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                FilledButton(
+                child: TfCobrarButton(
                   key: const Key('boton_cobrar'),
                   onPressed: _guardando ? null : _cobrar,
                   child: _guardando
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                      ? SizedBox(
+                          height: TfSize.icon,
+                          width: TfSize.icon,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: tf.onAccent,
+                          ),
                         )
-                      : Text(_pey != null ? 'Reintentar' : 'Cobrar'),
+                      : Text(_pey != null ? 'Reintentar' : etiquetaCobrar),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Tarjeta del monto: borde primary de 2 px, anillo de foco y cifra grande.
+class _CampoMonto extends StatefulWidget {
+  const _CampoMonto({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  State<_CampoMonto> createState() => _CampoMontoState();
+}
+
+class _CampoMontoState extends State<_CampoMonto> {
+  final _foco = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _foco.addListener(_alCambiarFoco);
+  }
+
+  void _alCambiarFoco() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _foco.removeListener(_alCambiarFoco);
+    _foco.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final tf = tema.extension<TfColors>()!;
+    final colores = tema.colorScheme;
+    final estiloMonto = tema.textTheme.displaySmall?.copyWith(
+      fontWeight: FontWeight.w800,
+    );
+    final controller = widget.controller;
+
+    return FormField<String>(
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      validator: (_) => validarMontoVenta(controller.text),
+      builder: (estado) {
+        final hayError = estado.hasError;
+        final colorBorde = hayError ? tf.expired : colores.primary;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(TfRadius.md + 5),
+                border: Border.all(
+                  color: _foco.hasFocus ? colorBorde : Colors.transparent,
+                  width: 3,
+                ),
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: TfSpace.s4,
+                  vertical: TfSpace.s3,
+                ),
+                decoration: BoxDecoration(
+                  color: tema.cardTheme.color ?? colores.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(TfRadius.md),
+                  border: Border.all(color: colorBorde, width: 2),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '¿Cuánto vas a cobrar?',
+                      style: tema.textTheme.bodyMedium?.copyWith(
+                        color: colores.onSurfaceVariant,
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: TfSpace.s1),
+                          child: Text(
+                            '\$',
+                            style: estiloMonto?.copyWith(
+                              color: colores.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        Flexible(
+                          child: IntrinsicWidth(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minWidth: 96),
+                              child: TextField(
+                                key: const Key('campo_monto'),
+                                focusNode: _foco,
+                                controller: controller,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                textAlign: TextAlign.center,
+                                style: estiloMonto,
+                                onChanged: estado.didChange,
+                                decoration: const InputDecoration(
+                                  hintText: '0.00',
+                                  isCollapsed: true,
+                                  filled: false,
+                                  constraints: BoxConstraints(
+                                    minWidth: 0,
+                                    minHeight: 0,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ).copyWith(
+                                  hintStyle: estiloMonto?.copyWith(
+                                    color: colores.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (hayError)
+              Padding(
+                padding: const EdgeInsets.only(top: TfSpace.s2),
+                child: Text(
+                  estado.errorText!,
+                  style: tema.textTheme.bodySmall?.copyWith(
+                    color: tf.expiredText,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

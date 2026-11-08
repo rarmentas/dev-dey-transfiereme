@@ -19,20 +19,20 @@ String mensajeErrorSesionCliente(Object error) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return 'La solicitud tardó demasiado. Verifique su conexión e intente de nuevo.';
+        return 'La solicitud tardó demasiado. Revisa tu conexión e intenta de nuevo.';
       case DioExceptionType.connectionError:
-        return 'No pudimos conectar con el servidor. Verifique su conexión e intente de nuevo.';
+        return 'No pudimos conectar con el servidor. Revisa tu conexión e intenta de nuevo.';
       case DioExceptionType.badResponse:
         final codigo = error.response?.statusCode;
         if (codigo != null && codigo >= 500) {
-          return 'El servidor no está disponible en este momento. Intente de nuevo más tarde.';
+          return 'El servidor no está disponible en este momento. Intenta de nuevo más tarde.';
         }
         break;
       default:
         break;
     }
   }
-  return 'No pudimos completar la solicitud. Intente de nuevo.';
+  return 'No pudimos completar la solicitud. Intenta de nuevo.';
 }
 
 class SesionNotifier extends Notifier<SesionViewState> {
@@ -119,7 +119,7 @@ class SesionNotifier extends Notifier<SesionViewState> {
           resuelto: true,
           cargando: false,
           limpiarEstado: true,
-          errorMensaje: 'No pudimos confirmar su sesión.',
+          errorMensaje: 'No pudimos confirmar tu sesión.',
         );
         _notificarRouter();
         return false;

@@ -7,6 +7,7 @@ import '../../../core/sesion/registro_olvido_repository.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 import '../../../core/sesion/sesion_providers.dart';
 import '../../../core/sesion/sesion_repository.dart';
+import '../../../core/ui/ui.dart';
 import 'widgets/reenvio_codigo_button.dart';
 
 enum _PasoRegistro { datos, codigo }
@@ -19,8 +20,12 @@ Future<void> mostrarRegistroCuentaModal({
     barrierDismissible: true,
     builder: (dialogContext) {
       return Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(TfRadius.xl),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: const BoxConstraints(maxWidth: 420),
           child: RegistroCuentaModal(
             onCerrar: () => Navigator.of(dialogContext).pop(),
             despuesDeEntrar: () {
@@ -101,7 +106,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -127,7 +132,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
       return false;
@@ -168,7 +173,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -182,10 +187,13 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final titulo =
-        _paso == _PasoRegistro.datos ? 'Cree su cuenta' : 'Confirme su cuenta';
+        _paso == _PasoRegistro.datos ? 'Crea tu cuenta' : 'Confirma tu cuenta';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(
+        horizontal: TfSpace.s6,
+        vertical: TfSpace.s5,
+      ),
       child: Form(
         key: _formKey,
         child: ListView(
@@ -193,119 +201,122 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
           padding: EdgeInsets.zero,
           physics: const ClampingScrollPhysics(),
           children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      titulo,
-                      style: tema.textTheme.titleLarge,
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    titulo,
+                    style: tema.textTheme.headlineSmall,
                   ),
-                  IconButton(
-                    tooltip: 'Cerrar',
-                    onPressed: _cargando ? null : widget.onCerrar,
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+                ),
+                IconButton(
+                  tooltip: 'Cerrar',
+                  onPressed: _cargando ? null : widget.onCerrar,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: TfSpace.s2),
+            if (_paso == _PasoRegistro.datos) ...[
+              Text(
+                'Escribe tu correo y contraseña. Te enviaremos un código de confirmación.',
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 8),
-              if (_paso == _PasoRegistro.datos) ...[
-                Text(
-                  'Indique su correo y contraseña. Le enviaremos un código de confirmación.',
-                  style: tema.textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
+              const SizedBox(height: TfSpace.s5),
+              TextFormField(
+                controller: _correoController,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Correo',
+                  prefixIcon: Icon(Icons.mail_outline_rounded),
                 ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _correoController,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo',
-                    prefixIcon: Icon(Icons.mail_outline),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Indique su correo.';
-                    }
-                    return null;
-                  },
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Escribe tu correo.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: TfSpace.s3),
+              TextFormField(
+                controller: _contrasenaController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Contraseña',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _contrasenaController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Contraseña',
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) {
-                      return 'Indique su contraseña.';
-                    }
-                    return null;
-                  },
+                validator: (v) {
+                  if (v == null || v.isEmpty) {
+                    return 'Escribe tu contraseña.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: TfSpace.s3),
+              TextFormField(
+                key: const Key('campo_confirmar_contrasena'),
+                controller: _confirmarController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirma tu contraseña',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  key: const Key('campo_confirmar_contrasena'),
-                  controller: _confirmarController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirme su contraseña',
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) {
-                      return 'Confirme su contraseña.';
-                    }
-                    if (v != _contrasenaController.text) {
-                      return 'Las contraseñas no coinciden.';
-                    }
-                    return null;
-                  },
+                validator: (v) {
+                  if (v == null || v.isEmpty) {
+                    return 'Confirma tu contraseña.';
+                  }
+                  if (v != _contrasenaController.text) {
+                    return 'Las contraseñas no coinciden.';
+                  }
+                  return null;
+                },
+              ),
+            ] else ...[
+              Text(
+                'Escribe el código de seis dígitos que enviamos a $_correoGuardado.',
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.onSurfaceVariant,
                 ),
-              ] else ...[
-                Text(
-                  'Escriba el código de seis dígitos que enviamos a $_correoGuardado.',
-                  style: tema.textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: TfSpace.s5),
+              TextFormField(
+                controller: _codigoController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Código',
+                  prefixIcon: Icon(Icons.pin_rounded),
+                  counterText: '',
                 ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _codigoController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Código',
-                    prefixIcon: Icon(Icons.pin_outlined),
-                    counterText: '',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Indique el código.';
-                    }
-                    return null;
-                  },
-                ),
-                ReenvioCodigoButton(
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Escribe el código.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: TfSpace.s2),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ReenvioCodigoButton(
                   onReenviar: _reenviarCodigo,
                   habilitado: !_cargando,
                   iniciarEnEspera: true,
                 ),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: tema.textTheme.bodySmall?.copyWith(
-                    color: tema.colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 20),
-              FilledButton(
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: TfSpace.s4),
+              TfAvisoError(titulo: _error!),
+            ],
+            const SizedBox(height: TfSpace.s5),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
                 onPressed: _cargando
                     ? null
                     : (_paso == _PasoRegistro.datos
@@ -323,6 +334,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
                             : 'Confirmar cuenta',
                       ),
               ),
+            ),
           ],
         ),
       ),
