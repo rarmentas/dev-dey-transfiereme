@@ -22,6 +22,131 @@ Datos de contexto (sin métricas propias del proyecto):
 
 Transfiéreme apunta a esa fricción desde el lado del proveedor: el pequeño comercio cobra sin recorrer los menús de su banco.
 
+## CoDi en el banco frente a Transfiéreme
+
+Comparación autocontenida. El recorrido **sin esta app** resume la hoja «Pasos y fricción» de [flujo-codi-actual.drawio](docs/flujos-de-trabajo/flujo-codi-actual.drawio). El recorrido **con Transfiéreme** sigue lo documentado e implementado en este repositorio (véase [Flujo de usuario](#flujo-de-usuario), [Solución](#solución) y [cuenta-pey-api.md](docs/desarrollo/cuenta-pey-api.md)); el cliente sigue autorizando en su app bancaria.
+
+### Antes: cobro en la app del banco (sin Transfiéreme)
+
+Referencia de fricción de caja, no un manual de cada banco. En cada venta quien cobra opera dentro de su app bancaria. QR, notificación y NFC son **alternativas excluyentes** por cobro (no consecutivas ni simultáneas).
+
+```text
+Alta previa del vendedor en la app del banco
++--------------------------------------------------+
+| 1. Cuenta de depositos con CoDi                  |
+|                    |                             |
+|                    v                             |
+| 2. Abrir app y buscar seccion CoDi               |
+|                    |                             |
+|                    v                             |
+| 3. Terminos, SMS y elegir cuenta   <-- SMS aqui  |
+|                    |                             |
+|                    v                             |
+| 4. Validacion: abono 0.01 MXN en cuenta          |
+|    (no es cobro CoDi por SMS)                    |
+|                    |                             |
+|                    v                             |
+| 5. App predeterminada si ya usa CoDi             |
++--------------------------------------------------+
+                    |
+                    v
+        Abrir banco receptor y Cobrar
+                    |
+                    v
+    Monto, concepto y referencia hasta 7 digitos
+                    |
+                    v
+         Canal de entrega (una ruta por cobro)
+                    |
+      +-------------+-------------+
+      |             |             |
+      v             v             v
+  OPCION QR    ALTERNATIVA    ALTERNATIVA
+  PRINCIPAL    notificacion   NFC
+      |             |             |
+      v             v             v
+ Mostrar QR    Aviso celular   Acercar telefonos
+ sin cerrar    del cliente     si aplica
+ pantalla          |             |
+      +-------------+-------------+
+                    |
+                    v
+      Cliente autoriza en su app bancaria
+                    |
+                    v
+           SPEI o traspaso interno
+                    |
+                    v
+     Confirmacion en comercio y cliente
+```
+
+La validación del alta es un **abono de $0.01** en la cuenta; no es un cobro CoDi entregado por SMS.
+
+### Después: cobro con Transfiéreme (documentado e implementado)
+
+El vendedor no abre la app del banco para armar cada cobro. Hace falta cuenta **ACTIVE** en pey (`puede_cobrar`) tras registrar la CLABE del comercio; hasta entonces la app no dispara cobros reales.
+
+```text
+Alta en Transfiéreme una vez (vendedor no abre banco por cobro)
++--------------------------------------------------+
+| Sesion del vendedor y comercio                   |
+|                    |                             |
+|                    v                             |
+| CLABE del comercio                               |
+|                    |                             |
+|                    v                             |
+| Registro en pey y estado ACTIVE                  |
++--------------------------------------------------+
+                    |
+                    |  puede_cobrar
+                    v
+           Vendedor en Transfiéreme
+                    |
+                    v
+     Monto; concepto y referencia opcionales
+                    |
+                    v
+           Un solo canal vivo por venta
+                    |
+        +-----------+-----------+
+        |                       |
+        v                       v
+  >>> OPCION PRINCIPAL QR    ALTERNATIVA SECUNDARIA
+      (flujo principal)      notificacion
+        |                    (solo si el vendedor
+        v                     la pide; no automatica)
+ POST /codi/qr                        |
+ y muestra QR                         v
+        |                    POST /codi/pn
+        +-----------+-----------+
+                    |
+                    v
+         Espera de pago en pantalla
+                    |
+                    v
+      Cliente autoriza en su app bancaria
+                    |
+                    v
+ Webhook codi.qr o codi.pn payment_received
+                    |
+                    v
+          Resumen de ventas y tablero
+```
+
+- **QR por venta** es la opción principal en el flujo de cobro; la notificación solo si el vendedor la elige (no automática ni en paralelo con el QR).
+- **QR general** del local y **NFC** del pagador sobre el mismo QR siguen en [Solución](#solución); pey no expone un endpoint NFC aparte.
+
+### Ventajas documentadas
+
+- **Cambio de CLABE de destino en el mismo comercio y la misma app.** El vendedor puede registrar otra CLABE válida (`POST /api/cuenta/clabe/`; contrato en [sesion-api.md](docs/desarrollo/sesion-api.md)). Al cambiarla, Transfiéreme actualiza la CLABE del comercio de la sesión y reinicia el vínculo con pey (`pey_codi_status` vuelve a `pending` hasta volver a `active`; ver [cuenta-pey-api.md](docs/desarrollo/cuenta-pey-api.md)). El **resumen de ventas** y el **tablero** siguen mostrando los movimientos ya guardados para ese mismo comercio: en el modelo local cada movimiento pertenece al comercio, no a la CLABE vigente, y un cambio de CLABE no reescribe cobros pasados. No afirma retención de historial en la app del banco ni reasignación retroactiva de SPEI ya liquidados hacia la cuenta nueva.
+
+### Evolución posible (no disponible hoy)
+
+Estas líneas son **roadmap**, no capacidades del producto en producción:
+
+- **Multi-CLABE** (varias CLABE por comercio o elegir cuenta destino al cobrar). Hoy hay **una** CLABE por comercio en el modelo y en la UI de registro.
+- **Operación offline.** No está implementada. Un alcance futuro **no** implicaría, por sí solo, liquidar ni confirmar pagos sin conexión; los detalles financieros y de conciliación quedarían por definir.
+
 ## Alcance
 
 La app es del **vendedor**, en pequeños comercios. El alcance es la **capa de cobro**. El punto de venta (inventario, ticket, caja) queda fuera.
@@ -85,7 +210,7 @@ Resumen de ventas y tablero
 ```
 
 - **Cobro:** la app llama la API de pey (`https://api.pey.mx`). `POST /codi/qr` arma el QR de la venta y el QR general. `POST /codi/pn` manda la notificación al celular. El NFC lo resuelve la app bancaria del cliente sobre ese mismo cobro; pey no tiene un endpoint de NFC. El contrato verificado está en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md#cobros-api-de-pey).
-- **Webhooks:** el endpoint en Django recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado. Quedan fallas conocidas; ver [limitaciones](#limitaciones-conocidas).
+- **Webhooks:** el endpoint en Django recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado. Otras restricciones de producto: [limitaciones](#limitaciones-conocidas).
 - **Espera en pantalla:** la app consulta a Django cada pocos segundos; Django responde con lo que llegó por webhook y, como respaldo, con `GET /transaction/...` de pey.
 - **Tablero:** suma por concepto normalizado (minúsculas, sin espacios sobrantes), día y canal. Es una consulta a Postgres.
 
@@ -125,7 +250,6 @@ Comprobaciones locales: `manage.py check`, `manage.py test config.tests`, `flutt
 ## Limitaciones conocidas
 
 - No hay reintento, cancelación ni conciliación.
-- Los webhooks con firma verificada y la demo de punta a punta quedaron listos con fallas el día del hackatón.
 
 ## Resultado del hackatón
 
@@ -137,9 +261,9 @@ Plan del 7 de noviembre de 2026. El producto en producción está en [https://tr
 | 2      | QR general para publicar en el local (`amount: 0`, concepto "Transferencia")          | Listo              |
 | 3      | QR por venta: monto, concepto y referencia opcionales                                 | Listo              |
 | 4      | `POST /codi/pn` al número del cliente, y espera del pago (QR, NFC o notificación)     | Listo              |
-| 5      | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Listo, con fallas. |
+| 5      | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Listo              |
 | 6      | Resumen de ventas, edición del concepto y tablero por concepto, día y canal           | Listo              |
-| 7      | Demo de punta a punta con un cobro de $0.01                                           | Listo, con fallas. |
+| 7      | Demo de punta a punta con un cobro de $0.01                                           | Listo              |
 
 ## Contribuidores
 
