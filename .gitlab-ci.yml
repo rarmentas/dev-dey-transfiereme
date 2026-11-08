@@ -13,10 +13,46 @@ variables:
   DEBUG: "True"
   ALLOWED_HOSTS: localhost,127.0.0.1
 
+# Contraseña solo del Postgres efímero de este pipeline. No es PROD ni TEST.
+# En GitLab, por ámbito (production=master, test=rama test), protegidas:
+#   File de la app: PROD_ENV_FILE / TEST_ENV_FILE
+#     (incluye POSTGRES_PASSWORD, DJANGO_SECRET_KEY, PEY_API_KEY, PEY_WEBHOOK_SECRET)
+#   Deploy, fuera de ese archivo: PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
+#     PROD_DEPLOY_PORT, PROD_DEPLOY_PATH y PROD_SSH_PRIVATE_KEY (base64).
+#     En la rama test, el mismo conjunto con prefijo TEST_.
 .workflow_rules:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == "test"
+
+.env_ci:
+  stage: validate
+  image: python:3.12
+  tags:
+    - docker
+  script:
+    - bash scripts/ci-install-env.sh "$CODY_ENV_SCOPE"
+
+env:comprobar:prod:
+  extends: .env_ci
+  environment:
+    name: production
+    action: prepare
+  variables:
+    CODY_ENV_SCOPE: prod
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+env:comprobar:test:
+  extends: .env_ci
+  environment:
+    name: test
+    action: prepare
+  variables:
+    CODY_ENV_SCOPE: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test"
 
 .backend_before:
   before_script:

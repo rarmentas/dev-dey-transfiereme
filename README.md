@@ -117,7 +117,7 @@ Requisitos: Docker, Python 3.12, Flutter 3.47.x (ver [stack](docs/stack-tecnolog
 3. Copiar `backend/.env.example` a `backend/.env` y ajustar valores **locales** (sin credenciales de pey; véase [variables de entorno](docs/desarrollo/variables-entorno.md)).
 4. Ejecutar `./scripts/dev-start.sh` (incluye Postgres vía Compose en el puerto **5433**, migraciones, Django, Flutter web y proxy). Cuando el script confirme la API, use **http://127.0.0.1:8000** (origen único). Prueba: `curl http://127.0.0.1:8000/api/salud/`. La primera vez, Flutter puede seguir compilando unos minutos aunque la API ya responda.
 
-Para integración con pey más adelante: `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` y `WEBHOOK_BASE_URL` van solo en el servidor o en su `.env` local fuera del repo; no son necesarias para este scaffold.
+En GitLab, `PROD_ENV_FILE` (`master`) y `TEST_ENV_FILE` (rama `test`) son el `.env` de la app, con `POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY` y `PEY_WEBHOOK_SECRET` dentro. El deploy usa otras variables, que no van en ese archivo: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT`, `DEPLOY_PATH` y `SSH_PRIVATE_KEY` (base64), con prefijo `PROD_` o `TEST_`. Lista en [variables de entorno](docs/desarrollo/variables-entorno.md).
 
 ## Nota de pruebas
 
