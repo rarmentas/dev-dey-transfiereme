@@ -18,24 +18,6 @@ class MovimientosRepository {
 
   static const rutaListado = '/api/movimientos/';
 
-  Future<void> renombrarConcepto(int id, String nuevo) async {
-    try {
-      final respuesta = await _dio.patch<dynamic>(
-        '$rutaListado$id/',
-        data: {'concepto_visible': nuevo},
-      );
-      final status = respuesta.statusCode ?? 0;
-      if (status == 200) {
-        return;
-      }
-      throw _errorRenombre(respuesta.data, status);
-    } on MovimientosApiException {
-      rethrow;
-    } on DioException catch (error) {
-      throw MovimientosApiException(_mensajeDeDio(error));
-    }
-  }
-
   Future<List<Movimiento>> listar() async {
     try {
       final respuesta = await _dio.get<dynamic>(rutaListado);
@@ -70,19 +52,6 @@ class MovimientosRepository {
       }
     }
     return lista;
-  }
-
-  MovimientosApiException _errorRenombre(Object? data, int status) {
-    final detalle = _detalle(data);
-    if (detalle != null) {
-      return MovimientosApiException(detalle);
-    }
-    if (status >= 500) {
-      return MovimientosApiException(_mensajeServidor);
-    }
-    return MovimientosApiException(
-      'No pudimos renombrar el concepto. Intenta de nuevo.',
-    );
   }
 
   MovimientosApiException _errorDesdeRespuesta(Object? data, int status) {
