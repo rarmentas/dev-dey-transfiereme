@@ -9,14 +9,14 @@ interface Props {
   eager?: boolean;
 }
 
-const { nombre, titulo, desc, aspecto = '9/19.5', eager = false } = Astro.props;
+const { nombre, titulo, desc, aspecto = '16/9', eager = false } = Astro.props;
 
 const aspectoSeguro = /^\d+(\.\d+)?\s*\/\s*\d+(\.\d+)?$/.test(aspecto)
   ? aspecto.replace(/\s+/g, '')
-  : '9/19.5';
+  : '16/9';
 
 const video = obtenerVideo(nombre);
-const hayVideo = video.estado === 'listo';
+const hayVideo = video.estado === 'listo' && Boolean(video.mp4);
 const idBase = `clip-${nombre.replace(/[^a-z0-9]+/gi, '-')}`;
 const idDesc = `${idBase}-desc`;
 ---
@@ -29,57 +29,50 @@ const idDesc = `${idBase}-desc`;
   data-estado={video.estado}
 >
   <p id={idDesc} class="sr-only">{desc}</p>
-  <div class="clip-phone">
-    <span class="clip-auricular" aria-hidden="true"></span>
-    <div class="clip-screen">
-      {
-        hayVideo ? (
-          <video
-            class="clip-video"
-            muted
-            loop
-            playsinline
-            preload="none"
-            poster={video.poster ?? undefined}
-            aria-label={titulo}
-            aria-describedby={idDesc}
-          >
-            {video.webm && <source data-src={video.webm} type="video/webm" />}
-            {video.mp4 && <source data-src={video.mp4} type="video/mp4" />}
-          </video>
-        ) : (
-          <div class="clip-ph">
-            <span class="clip-ph-icono" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="28" height="28">
-                <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.75" />
-                <path d="M10.2 8.6v6.8l5.6-3.4-5.6-3.4z" fill="currentColor" />
-              </svg>
-            </span>
-            <p class="clip-pronto">Video próximamente</p>
-          </div>
-        )
-      }
-      {
-        hayVideo && (
-          <button type="button" class="clip-play" data-reproducir aria-label={`Reproducir ${titulo}`}>
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" />
+  <div class="clip-screen">
+    {
+      hayVideo ? (
+        <video
+          class="clip-video"
+          muted
+          loop
+          playsinline
+          preload="none"
+          poster={video.poster ?? undefined}
+          aria-label={titulo}
+          aria-describedby={idDesc}
+        >
+          <source data-src={video.mp4} type="video/mp4" />
+        </video>
+      ) : (
+        <div class="clip-ph">
+          <span class="clip-ph-icono" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28">
+              <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.75" />
+              <path d="M10.2 8.6v6.8l5.6-3.4-5.6-3.4z" fill="currentColor" />
             </svg>
-            <span>Reproducir</span>
-          </button>
-        )
-      }
-    </div>
-    <span class="clip-barra" aria-hidden="true"></span>
+          </span>
+          <p class="clip-pronto">Video próximamente</p>
+        </div>
+      )
+    }
+    {
+      hayVideo && (
+        <button type="button" class="clip-play" data-reproducir aria-label={`Reproducir ${titulo}`}>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" />
+          </svg>
+          <span>Reproducir</span>
+        </button>
+      )
+    }
   </div>
 </div>
 
 <style>
   .clip {
     position: relative;
-    display: flex;
-    justify-content: center;
-    width: 100%;
+    width: min(100%, var(--clip-ancho, 100%));
     min-width: 0;
   }
 
@@ -95,45 +88,14 @@ const idDesc = `${idBase}-desc`;
     border: 0;
   }
 
-  .clip-phone {
-    width: min(100%, var(--clip-ancho, 260px));
-    padding: var(--space-2) var(--space-2) var(--space-3);
-    background: var(--on-accent);
-    border: 2px solid var(--ink);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--elev-3);
-  }
-
-  .clip-auricular,
-  .clip-barra {
-    display: block;
-    height: 4px;
-    margin-inline: auto;
-    border-radius: var(--radius-full);
-    background: var(--surface);
-  }
-
-  .clip-auricular {
-    width: 28%;
-    margin-bottom: var(--space-2);
-  }
-
-  .clip-barra {
-    width: 34%;
-    margin-top: var(--space-2);
-  }
-
   .clip-screen {
     position: relative;
     width: 100%;
-    aspect-ratio: var(--clip-aspect, 9 / 19.5);
+    aspect-ratio: var(--clip-aspect, 16 / 9);
     overflow: hidden;
-    border-radius: calc(var(--radius-xl) - var(--space-2));
-    background: linear-gradient(
-      165deg,
-      var(--primary-container),
-      color-mix(in srgb, var(--primary) 18%, var(--primary-container))
-    );
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--outline-soft);
+    background: var(--surface-2);
   }
 
   .clip-video,
@@ -146,7 +108,7 @@ const idDesc = `${idBase}-desc`;
 
   .clip-video {
     object-fit: contain;
-    background: var(--primary-container);
+    background: var(--surface-2);
   }
 
   .clip-ph {
@@ -165,7 +127,7 @@ const idDesc = `${idBase}-desc`;
     width: 64px;
     height: 64px;
     border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--surface) 72%, var(--primary-container));
+    background: color-mix(in srgb, var(--surface) 72%, var(--surface-2));
     color: var(--primary);
   }
 
@@ -186,8 +148,8 @@ const idDesc = `${idBase}-desc`;
     margin: 0;
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-full);
-    background: var(--primary-container);
-    color: var(--on-primary-container);
+    background: var(--surface);
+    color: var(--ink);
     font-family: var(--font-display);
     font-size: var(--type-etiqueta-size);
     line-height: var(--type-etiqueta-line);
@@ -218,7 +180,6 @@ const idDesc = `${idBase}-desc`;
     font-weight: var(--type-boton-weight);
     white-space: nowrap;
     cursor: pointer;
-    box-shadow: var(--elev-3);
   }
 
   .clip.is-activado .clip-play {

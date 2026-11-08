@@ -1,47 +1,21 @@
 ---
 import VideoClip from './VideoClip.astro';
-
-const pasos = ['Crear la venta', 'El cliente paga', 'Aviso «¡Te pagaron!»'];
 ---
 
 <section id="demo" class="demo" aria-labelledby="demo-titulo">
-  <div class="container demo-grid">
-    <div class="demo-copy reveal" style="transition-delay: 80ms">
+  <div class="container">
+    <div class="demo-copy reveal">
       <h2 id="demo-titulo">Míralo en acción</h2>
       <p class="lead">Un cobro con CoDi, de la venta al aviso de pago.</p>
-      <ul class="pasos" role="list">
-        {
-          pasos.map((paso) => (
-            <li>
-              <span class="paso-icono" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16">
-                  <path
-                    d="M5 12.5 9.2 16.7 19 7.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.25"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <span>{paso}</span>
-            </li>
-          ))
-        }
-      </ul>
     </div>
 
     <div class="demo-media reveal">
-      <div class="phone-rise">
-        <div class="phone-halo" aria-hidden="true"></div>
-        <VideoClip
-          nombre="demo-completo"
-          titulo="Míralo en acción"
-          desc="Un cobro con CoDi, de la venta al aviso de pago."
-          aspecto="9/19.5"
-        />
-      </div>
+      <VideoClip
+        nombre="demo-completo"
+        titulo="Míralo en acción"
+        desc="Un cobro con CoDi, de la venta al aviso de pago."
+        aspecto="16/9"
+      />
     </div>
   </div>
 </section>
@@ -50,13 +24,6 @@ const pasos = ['Crear la venta', 'El cliente paga', 'Aviso «¡Te pagaron!»'];
   .demo {
     scroll-margin-top: calc(var(--space-16) + var(--space-6));
     padding-block: var(--space-16);
-  }
-
-  .demo-grid {
-    display: grid;
-    align-items: center;
-    gap: var(--space-8);
-    min-width: 0;
   }
 
   .demo-copy {
@@ -79,73 +46,10 @@ const pasos = ['Crear la venta', 'El cliente paga', 'Aviso «¡Te pagaron!»'];
     line-height: var(--type-cuerpo-l-line);
   }
 
-  .pasos {
-    list-style: none;
-    display: grid;
-    gap: var(--space-3);
-    margin-top: var(--space-6);
-  }
-
-  .pasos li {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    color: var(--ink);
-    font-size: var(--type-cuerpo-l-size);
-    line-height: var(--type-cuerpo-l-line);
-  }
-
-  .paso-icono {
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-full);
-    background: var(--paid-container);
-    color: var(--paid-text);
-  }
-
-  .paso-icono svg {
-    display: block;
-    width: 16px;
-    height: 16px;
-    max-width: none;
-  }
-
   .demo-media {
-    --clip-ancho: 250px;
-    order: -1;
-    display: flex;
-    justify-content: center;
-    width: var(--clip-ancho);
-    max-width: 100%;
-  }
-
-  .phone-rise {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--clip-ancho);
-    max-width: 100%;
-  }
-
-  .phone-halo {
-    position: absolute;
-    z-index: 0;
-    top: var(--space-6);
-    left: 50%;
     width: 100%;
-    aspect-ratio: 1;
-    border-radius: var(--radius-full);
-    background: var(--primary-container);
-    transform: translateX(-50%);
-    pointer-events: none;
-  }
-
-  .phone-rise :global(.clip) {
-    position: relative;
-    z-index: 1;
+    min-width: 0;
+    margin-top: var(--space-8);
   }
 
   @media (min-width: 900px) {
@@ -153,39 +57,8 @@ const pasos = ['Crear la venta', 'El cliente paga', 'Aviso «¡Te pagaron!»'];
       padding-block: calc(var(--space-16) + var(--space-10));
     }
 
-    .demo-grid {
-      grid-template-columns: minmax(0, 1fr) auto;
-      column-gap: var(--space-16);
-    }
-
     .demo-media {
-      --clip-ancho: 280px;
-      order: 0;
-    }
-  }
-
-  @media (min-width: 1100px) {
-    .demo-media {
-      --clip-ancho: 310px;
-    }
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .phone-rise {
-      transform: translateY(22px) scale(0.96);
-      transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .demo-media.is-visible .phone-rise,
-    :global(html.no-js) .phone-rise {
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .phone-rise {
-      transform: none;
-      transition: none;
+      margin-top: var(--space-10);
     }
   }
 </style>

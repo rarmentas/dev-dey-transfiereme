@@ -53,7 +53,7 @@ const funciones = [
               <p>{fn.desc}</p>
             </div>
             <div class="fn-media">
-              <VideoClip nombre={fn.nombre} titulo={fn.titulo} desc={fn.desc} aspecto="9/19.5" />
+              <VideoClip nombre={fn.nombre} titulo={fn.titulo} desc={fn.desc} aspecto="16/9" />
             </div>
           </article>
         ))
@@ -154,7 +154,7 @@ const funciones = [
   }
 
   .fn-media {
-    --clip-ancho: 220px;
+    --clip-ancho: 100%;
     order: -1;
     display: flex;
     justify-content: center;
@@ -173,10 +173,6 @@ const funciones = [
     .fn-fila {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: var(--space-12);
-    }
-
-    .fn-media {
-      --clip-ancho: 240px;
     }
 
     .fn-fila:nth-child(odd) .fn-media {
