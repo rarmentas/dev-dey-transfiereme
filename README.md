@@ -30,31 +30,54 @@ Comparación autocontenida. El recorrido **sin esta app** resume la hoja «Pasos
 
 Referencia de fricción de caja, no un manual de cada banco. En cada venta quien cobra opera dentro de su app bancaria. QR, notificación y NFC son **alternativas excluyentes** por cobro (no consecutivas ni simultáneas).
 
-```mermaid
-flowchart TD
-    subgraph altaVendedor ["Alta previa del vendedor en la app del banco"]
-        a1["1. Cuenta de depositos con CoDi"]
-        a2["2. Abrir app y buscar seccion CoDi"]
-        a3["3. Terminos, SMS y elegir cuenta"]
-        a4["4. Validacion: abono de 0.01 MXN en cuenta"]
-        a5["5. App predeterminada si ya usa CoDi"]
-        a1 --> a2 --> a3 --> a4 --> a5
-    end
-    a5 --> abrir["Abrir banco receptor y Cobrar"]
-    abrir --> captura["Monto, concepto y referencia hasta 7 digitos"]
-    captura --> canal{"Canal de entrega"}
-    canal -->|"OPCION QR"| qrRuta["Mostrar QR sin cerrar pantalla"]
-    canal -->|"ALTERNATIVA notificacion"| pnRuta["Aviso al celular del cliente"]
-    canal -->|"ALTERNATIVA NFC"| nfcRuta["Acercar telefonos si aplica"]
-    qrRuta --> autoriza["Cliente autoriza en su app bancaria"]
-    pnRuta --> autoriza
-    nfcRuta --> autoriza
-    autoriza --> abono["SPEI o traspaso interno"]
-    abono --> conf["Confirmacion en comercio y cliente"]
-    classDef qrPrincipal fill:#1f4e79,stroke:#0d2847,color:#ffffff,stroke-width:4px
-    classDef altSecundaria fill:#fff2cc,stroke:#d6b656,color:#1a1a1a
-    class qrRuta qrPrincipal
-    class pnRuta,nfcRuta altSecundaria
+```text
+Alta previa del vendedor en la app del banco
++--------------------------------------------------+
+| 1. Cuenta de depositos con CoDi                  |
+|                    |                             |
+|                    v                             |
+| 2. Abrir app y buscar seccion CoDi               |
+|                    |                             |
+|                    v                             |
+| 3. Terminos, SMS y elegir cuenta   <-- SMS aqui  |
+|                    |                             |
+|                    v                             |
+| 4. Validacion: abono 0.01 MXN en cuenta          |
+|    (no es cobro CoDi por SMS)                    |
+|                    |                             |
+|                    v                             |
+| 5. App predeterminada si ya usa CoDi             |
++--------------------------------------------------+
+                    |
+                    v
+        Abrir banco receptor y Cobrar
+                    |
+                    v
+    Monto, concepto y referencia hasta 7 digitos
+                    |
+                    v
+         Canal de entrega (una ruta por cobro)
+                    |
+      +-------------+-------------+
+      |             |             |
+      v             v             v
+  OPCION QR    ALTERNATIVA    ALTERNATIVA
+  PRINCIPAL    notificacion   NFC
+      |             |             |
+      v             v             v
+ Mostrar QR    Aviso celular   Acercar telefonos
+ sin cerrar    del cliente     si aplica
+ pantalla          |             |
+      +-------------+-------------+
+                    |
+                    v
+      Cliente autoriza en su app bancaria
+                    |
+                    v
+           SPEI o traspaso interno
+                    |
+                    v
+     Confirmacion en comercio y cliente
 ```
 
 La validación del alta es un **abono de $0.01** en la cuenta; no es un cobro CoDi entregado por SMS.
@@ -63,28 +86,51 @@ La validación del alta es un **abono de $0.01** en la cuenta; no es un cobro Co
 
 El vendedor no abre la app del banco para armar cada cobro. Hace falta cuenta **ACTIVE** en pey (`puede_cobrar`) tras registrar la CLABE del comercio; hasta entonces la app no dispara cobros reales.
 
-```mermaid
-flowchart TD
-    subgraph altaApp ["Alta en Transfiéreme una vez"]
-        b1["Sesion del vendedor y comercio"]
-        b2["CLABE del comercio"]
-        b3["Registro en pey y estado ACTIVE"]
-        b1 --> b2 --> b3
-    end
-    b3 -->|"puede_cobrar"| inicio["Vendedor en Transfiéreme"]
-    inicio --> venta["Monto; concepto y referencia opcionales"]
-    venta --> eleccion{"Un solo canal por venta"}
-    eleccion -->|"OPCION PRINCIPAL QR"| qrVenta["POST /codi/qr y muestra QR"]
-    eleccion -->|"ALTERNATIVA notificacion"| pnVenta["POST /codi/pn solo si el vendedor lo pide"]
-    qrVenta --> espera["Espera de pago en pantalla"]
-    pnVenta --> espera
-    espera --> cliente["Cliente autoriza en su app bancaria"]
-    cliente --> webhook["Webhook codi.qr o codi.pn payment_received"]
-    webhook --> resumen["Resumen de ventas y tablero"]
-    classDef qrPrincipal fill:#1f4e79,stroke:#0d2847,color:#ffffff,stroke-width:4px
-    classDef altSecundaria fill:#dae8fc,stroke:#6c8ebf,color:#1a1a1a
-    class qrVenta qrPrincipal
-    class pnVenta altSecundaria
+```text
+Alta en Transfiéreme una vez (vendedor no abre banco por cobro)
++--------------------------------------------------+
+| Sesion del vendedor y comercio                   |
+|                    |                             |
+|                    v                             |
+| CLABE del comercio                               |
+|                    |                             |
+|                    v                             |
+| Registro en pey y estado ACTIVE                  |
++--------------------------------------------------+
+                    |
+                    |  puede_cobrar
+                    v
+           Vendedor en Transfiéreme
+                    |
+                    v
+     Monto; concepto y referencia opcionales
+                    |
+                    v
+           Un solo canal vivo por venta
+                    |
+        +-----------+-----------+
+        |                       |
+        v                       v
+  >>> OPCION PRINCIPAL QR    ALTERNATIVA SECUNDARIA
+      (flujo principal)      notificacion
+        |                    (solo si el vendedor
+        v                     la pide; no automatica)
+ POST /codi/qr                        |
+ y muestra QR                         v
+        |                    POST /codi/pn
+        +-----------+-----------+
+                    |
+                    v
+         Espera de pago en pantalla
+                    |
+                    v
+      Cliente autoriza en su app bancaria
+                    |
+                    v
+ Webhook codi.qr o codi.pn payment_received
+                    |
+                    v
+          Resumen de ventas y tablero
 ```
 
 - **QR por venta** es la opción principal en el flujo de cobro; la notificación solo si el vendedor la elige (no automática ni en paralelo con el QR).
