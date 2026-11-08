@@ -10,7 +10,7 @@ from movimientos.models import Cobro
 _CLABE_VALIDA = "012180015826225713"
 
 
-@override_settings(PEY_ADAPTADOR="desarrollo")
+@override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="")
 class CuentaGateAltaQrTests(TestCase):
     def test_pending_bloquea_alta_qr_sin_cobro(self) -> None:
         comercio = Comercio.objects.create(
