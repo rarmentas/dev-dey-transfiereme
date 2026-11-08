@@ -106,7 +106,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -132,7 +132,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
       return false;
@@ -173,7 +173,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -187,7 +187,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final titulo =
-        _paso == _PasoRegistro.datos ? 'Cree su cuenta' : 'Confirme su cuenta';
+        _paso == _PasoRegistro.datos ? 'Crea tu cuenta' : 'Confirma tu cuenta';
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -219,7 +219,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
             const SizedBox(height: TfSpace.s2),
             if (_paso == _PasoRegistro.datos) ...[
               Text(
-                'Indique su correo y contraseña. Le enviaremos un código de confirmación.',
+                'Escribe tu correo y contraseña. Te enviaremos un código de confirmación.',
                 style: tema.textTheme.bodyMedium?.copyWith(
                   color: tema.colorScheme.onSurfaceVariant,
                 ),
@@ -235,7 +235,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
-                    return 'Indique su correo.';
+                    return 'Escribe tu correo.';
                   }
                   return null;
                 },
@@ -250,7 +250,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) {
-                    return 'Indique su contraseña.';
+                    return 'Escribe tu contraseña.';
                   }
                   return null;
                 },
@@ -261,12 +261,12 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
                 controller: _confirmarController,
                 obscureText: true,
                 decoration: const InputDecoration(
-                  labelText: 'Confirme su contraseña',
+                  labelText: 'Confirma tu contraseña',
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) {
-                    return 'Confirme su contraseña.';
+                    return 'Confirma tu contraseña.';
                   }
                   if (v != _contrasenaController.text) {
                     return 'Las contraseñas no coinciden.';
@@ -276,7 +276,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
               ),
             ] else ...[
               Text(
-                'Escriba el código de seis dígitos que enviamos a $_correoGuardado.',
+                'Escribe el código de seis dígitos que enviamos a $_correoGuardado.',
                 style: tema.textTheme.bodyMedium?.copyWith(
                   color: tema.colorScheme.onSurfaceVariant,
                 ),
@@ -293,7 +293,7 @@ class _RegistroCuentaModalState extends ConsumerState<RegistroCuentaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
-                    return 'Indique el código.';
+                    return 'Escribe el código.';
                   }
                   return null;
                 },

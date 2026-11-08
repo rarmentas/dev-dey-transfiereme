@@ -96,7 +96,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -119,7 +119,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
       return false;
@@ -151,7 +151,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error = 'No pudimos completar la solicitud. Intente de nuevo.',
+          () => _error = 'No pudimos completar la solicitud. Inténtalo de nuevo.',
         );
       }
     } finally {
@@ -165,7 +165,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final titulo = _paso == _PasoOlvido.correo
-        ? 'Recupere su contraseña'
+        ? 'Recupera tu contraseña'
         : 'Nueva contraseña';
 
     return Padding(
@@ -198,7 +198,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
             const SizedBox(height: TfSpace.s2),
             if (_paso == _PasoOlvido.correo) ...[
               Text(
-                'Indique el correo de su cuenta. Si existe, le enviaremos un código.',
+                'Escribe el correo de tu cuenta. Si existe, te enviaremos un código.',
                 style: tema.textTheme.bodyMedium?.copyWith(
                   color: tema.colorScheme.onSurfaceVariant,
                 ),
@@ -214,14 +214,14 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
-                    return 'Indique su correo.';
+                    return 'Escribe tu correo.';
                   }
                   return null;
                 },
               ),
             ] else ...[
               Text(
-                'Escriba el código enviado a $_correoGuardado y su nueva contraseña.',
+                'Escribe el código enviado a $_correoGuardado y tu nueva contraseña.',
                 style: tema.textTheme.bodyMedium?.copyWith(
                   color: tema.colorScheme.onSurfaceVariant,
                 ),
@@ -238,7 +238,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
-                    return 'Indique el código.';
+                    return 'Escribe el código.';
                   }
                   return null;
                 },
@@ -253,7 +253,7 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) {
-                    return 'Indique su contraseña.';
+                    return 'Escribe tu contraseña.';
                   }
                   return null;
                 },
@@ -264,12 +264,12 @@ class _OlvidoContrasenaModalState extends ConsumerState<OlvidoContrasenaModal> {
                 controller: _confirmarController,
                 obscureText: true,
                 decoration: const InputDecoration(
-                  labelText: 'Confirme su contraseña',
+                  labelText: 'Confirma tu contraseña',
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) {
-                    return 'Confirme su contraseña.';
+                    return 'Confirma tu contraseña.';
                   }
                   if (v != _contrasenaController.text) {
                     return 'Las contraseñas no coinciden.';

@@ -23,7 +23,7 @@ void main() {
     expect(find.text('Mi QR'), findsOneWidget);
     expect(
       find.text(
-        'Su cliente puede pagar con CoDi desde la aplicación de su banco.',
+        'Tu cliente puede pagar con CoDi desde la app de su banco.',
       ),
       findsOneWidget,
     );
@@ -46,7 +46,7 @@ void main() {
     expect(find.text('Mi QR'), findsOneWidget);
     expect(find.text(kMensajeCuentaNoActivaQr), findsOneWidget);
     expect(
-      find.textContaining('Su cliente puede pagar'),
+      find.textContaining('Tu cliente puede pagar'),
       findsNothing,
     );
   });

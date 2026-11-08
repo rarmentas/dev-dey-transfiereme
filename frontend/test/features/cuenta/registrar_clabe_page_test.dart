@@ -4,7 +4,7 @@ import 'package:cody/core/sesion/sesion_notifier.dart';
 import 'package:cody/core/sesion/sesion_view_state.dart';
 import 'package:cody/features/cuenta/data/clabe_repository.dart';
 import 'package:cody/features/cuenta/presentation/registrar_clabe_page.dart';
-import 'package:cody/features/sesion/presentation/home_autenticado_page.dart';
+import 'package:cody/features/ajustes/presentation/ajustes_page.dart';
 import 'package:cody/theme/transfiereme_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -92,13 +92,13 @@ class _SesionFija extends SesionNotifier {
 }
 
 void main() {
-  testWidgets('el inicio abre Registrar CLABE', (tester) async {
+  testWidgets('Ajustes abre Registrar CLABE', (tester) async {
     final router = GoRouter(
-      initialLocation: kRutaInicio,
+      initialLocation: kRutaAjustes,
       routes: [
         GoRoute(
-          path: kRutaInicio,
-          builder: (context, state) => const HomeAutenticadoPage(),
+          path: kRutaAjustes,
+          builder: (context, state) => const AjustesPage(),
         ),
         GoRoute(
           path: kRutaRegistrarClabe,
@@ -136,7 +136,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('Indique una CLABE válida de 18 dígitos.'),
+      find.text('Escribe una CLABE válida de 18 dígitos.'),
       findsOneWidget,
     );
     expect(mock.cuerpos, isEmpty);
@@ -165,7 +165,7 @@ void main() {
     final dio = _dio();
     final mock = _MockClabe(dio);
     mock.alGuardar(400, {
-      'detail': 'Indique una CLABE válida de 18 dígitos.',
+      'detail': 'Escribe una CLABE válida de 18 dígitos.',
     });
     await _montarPagina(tester, ClabeRepository(dio));
 
@@ -174,7 +174,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Indique una CLABE válida de 18 dígitos.'),
+      find.text('Escribe una CLABE válida de 18 dígitos.'),
       findsOneWidget,
     );
     expect(find.text('CLABE guardada.'), findsNothing);

@@ -101,7 +101,7 @@ class _RegistrarClabePageState extends ConsumerState<RegistrarClabePage> {
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(
                         labelText: 'CLABE',
-                        helperText: '18 dígitos de su cuenta.',
+                        helperText: '18 dígitos de tu cuenta.',
                       ),
                       validator: (valor) => validarClabe(valor ?? ''),
                     ),

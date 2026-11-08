@@ -5,9 +5,22 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 import '../../../core/ui/ui.dart';
+import '../../inicio/data/inicio_resumen.dart';
+import '../../inicio/presentation/inicio_providers.dart';
+import '../../inicio/presentation/inicio_widgets.dart';
 
+/// Inicio: saludo, «Hoy llevas», acciones de cobro y últimos cobros.
 class HomeAutenticadoPage extends ConsumerWidget {
   const HomeAutenticadoPage({super.key});
+
+  Future<void> _refrescar(WidgetRef ref) async {
+    try {
+      ref.invalidate(inicioResumenProvider);
+      await ref.read(inicioResumenProvider.future);
+    } catch (_) {
+      // El error se muestra en pantalla con «Reintentar».
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,6 +33,7 @@ class HomeAutenticadoPage extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final resumen = ref.watch(inicioResumenProvider);
     final comercioTexto = estado.comercio?.nombre ?? 'Sin comercio asignado';
     final inicial = estado.nombreParaSaludo.isNotEmpty
         ? estado.nombreParaSaludo.substring(0, 1).toUpperCase()
@@ -31,13 +45,16 @@ class HomeAutenticadoPage extends ConsumerWidget {
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxAnchoContenido),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: kMargenPantalla,
-                vertical: TfSpace.s6,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: RefreshIndicator(
+              onRefresh: () => _refrescar(ref),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  kMargenPantalla,
+                  TfSpace.s6,
+                  kMargenPantalla,
+                  TfSpace.s6,
+                ),
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -56,6 +73,8 @@ class HomeAutenticadoPage extends ConsumerWidget {
                             Text(
                               'Hola, ${estado.nombreParaSaludo}',
                               style: tema.textTheme.headlineLarge,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -81,20 +100,37 @@ class HomeAutenticadoPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: TfSpace.s6),
+                  const SizedBox(height: TfSpace.s5),
+                  resumen.when(
+                    skipLoadingOnRefresh: true,
+                    skipLoadingOnReload: true,
+                    data: (r) => HoyLlevasCard(resumen: r),
+                    loading: () => const HoyLlevasCard(cargando: true),
+                    error: (error, _) => TfAvisoError(
+                      titulo: 'No pudimos cargar tu resumen',
+                      mensaje: error.toString(),
+                      accion: OutlinedButton(
+                        key: const Key('boton_reintentar_inicio'),
+                        onPressed: () => ref.invalidate(inicioResumenProvider),
+                        child: const Text('Reintentar'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: TfSpace.s4),
                   TfCobrarButton(
                     onPressed: () => context.push(kRutaNuevaVenta),
                     icon: const Icon(Icons.qr_code_2_rounded),
-                    child: const Text('Nueva venta'),
+                    child: const Text('Cobrar'),
                   ),
                   const SizedBox(height: TfSpace.s3),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: OutlinedButton.icon(
-                      onPressed: () => context.push(kRutaMovimientos),
-                      icon: const Icon(Icons.receipt_long_rounded),
-                      label: const Text('Ver movimientos'),
+                      key: const Key('boton_mi_qr'),
+                      onPressed: () => context.push(kRutaMiQr),
+                      icon: const Icon(Icons.qr_code_rounded),
+                      label: const Text('Mi QR'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: tema.colorScheme.primary,
                         side: BorderSide(
@@ -107,78 +143,19 @@ class HomeAutenticadoPage extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: TfSpace.s3),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () => context.push(kRutaTablero),
-                      icon: const Icon(Icons.bar_chart_rounded),
-                      label: const Text('Ver tablero'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: tema.colorScheme.primary,
-                        side: BorderSide(
-                          color: tema.colorScheme.primary,
-                          width: 2,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(TfRadius.md),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: TfSpace.s3),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      key: const Key('boton_registrar_clabe'),
-                      onPressed: () => context.push(kRutaRegistrarClabe),
-                      icon: const Icon(Icons.account_balance_rounded),
-                      label: const Text('Registrar CLABE'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: tema.colorScheme.primary,
-                        side: BorderSide(
-                          color: tema.colorScheme.primary,
-                          width: 2,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(TfRadius.md),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: TfSpace.s8),
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: sesion.cargando
-                          ? null
-                          : () async {
-                              await ref
-                                  .read(sesionNotifierProvider.notifier)
-                                  .salir();
-                              if (context.mounted) {
-                                context.go(kRutaEntrar);
-                              }
-                            },
-                      icon: sesion.cargando
-                          ? const SizedBox.shrink()
-                          : const Icon(Icons.logout_rounded, size: 20),
-                      label: sesion.cargando
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('Salir'),
+                  const SizedBox(height: TfSpace.s6),
+                  TfSobretitulo(
+                    'ÚLTIMOS COBROS',
+                    trailing: TextButton(
+                      onPressed: () => context.go(kRutaMovimientos),
                       style: TextButton.styleFrom(
-                        foregroundColor: tema.colorScheme.onSurfaceVariant,
                         minimumSize: const Size(48, 48),
                       ),
+                      child: const Text('Ver todos'),
                     ),
                   ),
+                  const SizedBox(height: TfSpace.s2),
+                  ..._ultimos(resumen, tema),
                 ],
               ),
             ),
@@ -186,5 +163,35 @@ class HomeAutenticadoPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _ultimos(AsyncValue<InicioResumen> resumen, ThemeData tema) {
+    final r = resumen.asData?.value;
+    if (r == null) {
+      return const [];
+    }
+    if (r.recientes.isEmpty) {
+      return [
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(TfSpace.s5),
+            child: Text(
+              'Aún no hay cobros. Toca Cobrar para registrar el primero.',
+              textAlign: TextAlign.center,
+              style: tema.textTheme.bodyMedium?.copyWith(
+                color: tema.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
+      for (var i = 0; i < r.recientes.length; i++) ...[
+        if (i > 0) const SizedBox(height: TfSpace.s3),
+        CobroRecienteCard(movimiento: r.recientes[i]),
+      ],
+    ];
   }
 }

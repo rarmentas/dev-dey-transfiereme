@@ -9,7 +9,7 @@ const double kLadoMinimoQrPantalla = 232;
 
 /// Alineado con [CuentaNoActiveError] del API `POST /api/cobro/qr-general/`.
 const String kMensajeCuentaNoActivaQr =
-    'Su cuenta aún no está activa para generar un código de cobro.';
+    'Tu cuenta aún no está activa para generar un código de cobro.';
 
 /// Pantalla «Mi QR»: código CoDi cobrable o bloqueo si la cuenta no está ACTIVE (C13).
 ///
@@ -64,7 +64,7 @@ class QrGeneralImpresoPage extends StatelessWidget {
               if (puedeMostrarQr) ...[
                 const SizedBox(height: TfSpace.s6),
                 Text(
-                  'Su cliente puede pagar con CoDi desde la aplicación de su banco.',
+                  'Tu cliente puede pagar con CoDi desde la app de su banco.',
                   textAlign: TextAlign.center,
                   style: tema.textTheme.bodyMedium?.copyWith(
                     color: tema.colorScheme.onSurfaceVariant,
