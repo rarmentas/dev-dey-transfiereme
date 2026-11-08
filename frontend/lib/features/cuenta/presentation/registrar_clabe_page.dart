@@ -23,8 +23,56 @@ class _RegistrarClabePageState extends ConsumerState<RegistrarClabePage> {
   final _clabeController = TextEditingController();
 
   var _guardando = false;
+  var _cargandoClabe = true;
   String? _error;
+  String? _errorCarga;
   String? _guardada;
+  String? _clabeActual;
+  var _usuarioEditoCampo = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cargarClabeSiHaceFalta();
+  }
+
+  var _inicioCargaHecho = false;
+
+  Future<void> _cargarClabeSiHaceFalta() async {
+    if (_inicioCargaHecho) {
+      return;
+    }
+    _inicioCargaHecho = true;
+    setState(() {
+      _cargandoClabe = true;
+      _errorCarga = null;
+    });
+    try {
+      final clabe = await _repositorio.obtener();
+      if (!mounted) {
+        return;
+      }
+      if (_usuarioEditoCampo || _guardando || _guardada != null) {
+        setState(() => _cargandoClabe = false);
+        return;
+      }
+      setState(() {
+        _clabeActual = clabe.isEmpty ? null : clabe;
+        if (clabe.isNotEmpty) {
+          _clabeController.text = clabe;
+        }
+      });
+    } on ClabeApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _errorCarga = error.mensaje);
+    } finally {
+      if (mounted) {
+        setState(() => _cargandoClabe = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -49,7 +97,10 @@ class _RegistrarClabePageState extends ConsumerState<RegistrarClabePage> {
       if (!mounted) {
         return;
       }
-      setState(() => _guardada = clabe);
+      setState(() {
+        _guardada = clabe;
+        _clabeActual = clabe;
+      });
     } on ClabeApiException catch (error) {
       if (!mounted) {
         return;
@@ -93,9 +144,44 @@ class _RegistrarClabePageState extends ConsumerState<RegistrarClabePage> {
                       ),
                     ),
                     const SizedBox(height: TfSpace.s6),
+                    if (_cargandoClabe)
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: TfSpace.s4),
+                          child: SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                    if (_errorCarga != null) ...[
+                      TfAvisoError(titulo: _errorCarga!),
+                      const SizedBox(height: TfSpace.s4),
+                    ],
+                    if (!_cargandoClabe &&
+                        _clabeActual != null &&
+                        _clabeActual!.isNotEmpty) ...[
+                      Text(
+                        'CLABE actual',
+                        style: tema.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: TfSpace.s1),
+                      Text(
+                        _clabeActual!,
+                        key: const Key('texto_clabe_actual'),
+                        style: (tema.textTheme.bodyLarge ?? const TextStyle())
+                            .copyWith(fontFeatures: kTabular),
+                      ),
+                      const SizedBox(height: TfSpace.s5),
+                    ],
                     TextFormField(
                       key: const Key('campo_clabe'),
                       controller: _clabeController,
+                      onChanged: (_) => _usuarioEditoCampo = true,
                       keyboardType: TextInputType.number,
                       maxLength: 18,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],

@@ -10,6 +10,13 @@ class ComercioResumen {
       nombre: json['nombre'] as String? ?? '',
     );
   }
+
+  ComercioResumen copyWith({int? id, String? nombre}) {
+    return ComercioResumen(
+      id: id ?? this.id,
+      nombre: nombre ?? this.nombre,
+    );
+  }
 }
 
 class EstadoSesion {
@@ -39,6 +46,22 @@ class EstadoSesion {
       nombre: json['nombre'] as String? ?? '',
       apellidos: json['apellidos'] as String? ?? '',
       comercio: comercio,
+    );
+  }
+
+  EstadoSesion copyWith({
+    String? usuario,
+    String? correo,
+    String? nombre,
+    String? apellidos,
+    ComercioResumen? comercio,
+  }) {
+    return EstadoSesion(
+      usuario: usuario ?? this.usuario,
+      correo: correo ?? this.correo,
+      nombre: nombre ?? this.nombre,
+      apellidos: apellidos ?? this.apellidos,
+      comercio: comercio ?? this.comercio,
     );
   }
 

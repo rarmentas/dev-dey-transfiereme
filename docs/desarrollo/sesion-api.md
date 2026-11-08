@@ -156,15 +156,30 @@ Cada fila trae `dia` (`YYYY-MM-DD`), `canal`, `concepto` (concepto visible en mi
 
 El día sale de `pagado_en` convertido a `America/Mexico_City`. Orden: día descendente, luego canal, luego concepto. Pendientes y vencidos no entran.
 
+## Cuenta: nombre del comercio
+
+El servidor actualiza el nombre del comercio de la membresía; no acepta `comercio` ni `comercio_id` en el cuerpo. No toca CLABE ni campos de pey.
+
+| Método | Ruta | Autenticación |
+| --- | --- | --- |
+| `PATCH` | `/api/cuenta/comercio/` | Sesión activa |
+
+Cuerpo JSON: `{ "nombre": "Tortillería La Esperanza" }` (texto; se guarda con `strip()`).
+
+Respuesta `200`: `{ "id": <pk>, "nombre": "<guardado>" }`. Vacío o solo espacios: `400` con `{"detail": "Indique el nombre del comercio."}`. Más de 200 caracteres: `400` con `{"detail": "El nombre del comercio no puede pasar de 200 caracteres."}`. Campos distintos de `nombre`: `400` (ámbito). Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403`. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
+
 ## Cuenta: captura de CLABE
 
 El servidor persiste la CLABE en el comercio de la membresía; no acepta `comercio` ni `comercio_id` en el cuerpo. La respuesta no incluye secretos de plataforma (`PEY_API_KEY`, etc.).
 
 | Método | Ruta | Autenticación |
 | --- | --- | --- |
+| `GET` | `/api/cuenta/clabe/` | Sesión activa |
 | `POST` | `/api/cuenta/clabe/` | Sesión activa |
 
-Cuerpo JSON: `{ "clabe": "012180015826225713" }` (18 dígitos con dígito verificador válido).
+`GET` responde `200` con `{ "clabe": "<guardada>" }` o `{ "clabe": "" }` si no hay CLABE. No llama a pey ni cambia `pey_codi_status`. Comercio en la query: `400` (ámbito). Sin sesión: `403`.
+
+Cuerpo JSON del `POST`: `{ "clabe": "012180015826225713" }` (18 dígitos con dígito verificador válido).
 
 Respuesta `200`: `{ "clabe": "<guardada>" }`. CLABE inválida: `400` con `{"detail": "Indique una CLABE válida de 18 dígitos."}`. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 

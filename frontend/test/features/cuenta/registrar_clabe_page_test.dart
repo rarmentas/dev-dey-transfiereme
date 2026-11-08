@@ -6,6 +6,8 @@ import 'package:cody/features/cuenta/data/clabe_repository.dart';
 import 'package:cody/features/cuenta/presentation/registrar_clabe_page.dart';
 import 'package:cody/features/ajustes/presentation/ajustes_page.dart';
 import 'package:cody/theme/transfiereme_theme.dart';
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +33,12 @@ class _MockClabe {
       0,
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          final metodo = options.method.toUpperCase();
+          if (metodo == 'GET') {
+            llamadasGet++;
+          } else if (metodo == 'POST') {
+            llamadasPost++;
+          }
           final data = options.data;
           if (data is Map<String, dynamic>) {
             cuerpos.add(Map<String, dynamic>.from(data));
@@ -44,6 +52,8 @@ class _MockClabe {
   final Dio dio;
   final DioAdapter adapter;
   final List<Map<String, dynamic>> cuerpos = [];
+  var llamadasGet = 0;
+  var llamadasPost = 0;
 
   void alGuardar(int status, Map<String, dynamic> cuerpo) {
     adapter.onPost(
@@ -52,6 +62,48 @@ class _MockClabe {
       data: Matchers.any,
     );
   }
+
+  void alObtener(int status, Map<String, dynamic> cuerpo) {
+    adapter.onGet(
+      ClabeRepository.ruta,
+      (server) => server.reply(status, cuerpo),
+    );
+  }
+
+}
+
+class _RepoClabeLento extends ClabeRepository {
+  _RepoClabeLento(this._clabeInicial)
+      : super(Dio(BaseOptions(baseUrl: 'http://test')));
+
+  final String _clabeInicial;
+
+  @override
+  Future<String> obtener() async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return _clabeInicial;
+  }
+
+  @override
+  Future<String> guardar(String clabe) async => clabe;
+}
+
+class _RepoGetPendienteTrasPost extends ClabeRepository {
+  _RepoGetPendienteTrasPost() : super(Dio(BaseOptions(baseUrl: 'http://test')));
+
+  final _obtener = Completer<String>();
+
+  void completarObtener(String clabe) {
+    if (!_obtener.isCompleted) {
+      _obtener.complete(clabe);
+    }
+  }
+
+  @override
+  Future<String> obtener() => _obtener.future;
+
+  @override
+  Future<String> guardar(String clabe) async => clabe;
 }
 
 Future<void> _montarPagina(WidgetTester tester, ClabeRepository repositorio) async {
@@ -125,11 +177,143 @@ void main() {
     expect(find.byKey(const Key('campo_clabe')), findsOneWidget);
   });
 
+  testWidgets('al abrir solo llama GET y no POST', (tester) async {
+    final dio = _dio();
+    final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': ''});
+    await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
+    expect(mock.llamadasGet, 1);
+    expect(mock.llamadasPost, 0);
+  });
+
+  testWidgets('guardar actualiza el bloque CLABE actual', (tester) async {
+    const anterior = '646180157000123456';
+    const nueva = '012180015826225713';
+    final dio = _dio();
+    final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': anterior});
+    mock.alGuardar(200, {'clabe': nueva});
+    await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('campo_clabe')), nueva);
+    await tester.tap(find.byKey(const Key('boton_guardar_clabe')));
+    await tester.pumpAndSettle();
+
+    final actual = tester.widget<Text>(find.byKey(const Key('texto_clabe_actual')));
+    expect(actual.data, nueva);
+    expect(find.text(anterior), findsNothing);
+  });
+
+  testWidgets('GET que llega tras POST no revierte la CLABE guardada', (
+    tester,
+  ) async {
+    const anterior = '646180157000123456';
+    const nueva = '012180015826225713';
+    final repo = _RepoGetPendienteTrasPost();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: TfTheme.light,
+          home: RegistrarClabePage(repositorio: repo),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('campo_clabe')), nueva);
+    await tester.tap(find.byKey(const Key('boton_guardar_clabe')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    repo.completarObtener(anterior);
+    await tester.pumpAndSettle();
+
+    final actual = tester.widget<Text>(find.byKey(const Key('texto_clabe_actual')));
+    expect(actual.data, nueva);
+    expect(
+      tester.widget<TextFormField>(find.byKey(const Key('campo_clabe'))).controller
+          ?.text,
+      nueva,
+    );
+    expect(find.text(anterior), findsNothing);
+  });
+
+  testWidgets('GET lento no pisa texto que el usuario ya escribió', (
+    tester,
+  ) async {
+    const delServidor = '646180157000123456';
+    const escrita = '012180015826225713';
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: TfTheme.light,
+          home: RegistrarClabePage(
+            repositorio: _RepoClabeLento(delServidor),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('campo_clabe')), escrita);
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+    expect(
+      tester.widget<TextFormField>(find.byKey(const Key('campo_clabe'))).controller
+          ?.text,
+      escrita,
+    );
+    expect(find.text(delServidor), findsNothing);
+  });
+
+  testWidgets('muestra CLABE actual cuando el servidor la devuelve', (
+    tester,
+  ) async {
+    const clabeFicticia = '646180157000123456';
+    final dio = _dio();
+    final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': clabeFicticia});
+    mock.alGuardar(200, {'clabe': clabeFicticia});
+    await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CLABE actual'), findsOneWidget);
+    expect(find.byKey(const Key('texto_clabe_actual')), findsOneWidget);
+    expect(find.text(clabeFicticia), findsWidgets);
+  });
+
+  testWidgets('sin CLABE guardada el bloque actual no aparece', (
+    tester,
+  ) async {
+    final dio = _dio();
+    final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': ''});
+    mock.alGuardar(200, {'clabe': _clabeValida});
+    await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CLABE actual'), findsNothing);
+    expect(find.byKey(const Key('texto_clabe_actual')), findsNothing);
+  });
+
+  testWidgets('error al cargar CLABE se muestra sin bloque actual', (
+    tester,
+  ) async {
+    final dio = _dio();
+    final mock = _MockClabe(dio);
+    mock.alObtener(500, {'detail': 'fallo'});
+    await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CLABE actual'), findsNothing);
+    expect(find.text('fallo'), findsOneWidget);
+  });
+
   testWidgets('una CLABE inválida no llama al servidor', (tester) async {
     final dio = _dio();
     final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': ''});
     mock.alGuardar(200, {'clabe': _clabeValida});
     await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('campo_clabe')), '123');
     await tester.tap(find.byKey(const Key('boton_guardar_clabe')));
@@ -147,8 +331,10 @@ void main() {
   ) async {
     final dio = _dio();
     final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': ''});
     mock.alGuardar(200, {'clabe': _clabeValida});
     await _montarPagina(tester, ClabeRepository(dio));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('campo_clabe')), _clabeValida);
     await tester.tap(find.byKey(const Key('boton_guardar_clabe')));
@@ -164,6 +350,7 @@ void main() {
   testWidgets('el error del servidor se muestra', (tester) async {
     final dio = _dio();
     final mock = _MockClabe(dio);
+    mock.alObtener(200, {'clabe': ''});
     mock.alGuardar(400, {
       'detail': 'Escribe una CLABE válida de 18 dígitos.',
     });
