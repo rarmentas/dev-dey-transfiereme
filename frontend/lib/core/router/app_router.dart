@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/cuenta/presentation/registrar_clabe_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
@@ -16,6 +17,7 @@ const kRutaInicio = '/inicio';
 const kRutaMovimientos = '/movimientos';
 const kRutaTablero = '/tablero';
 const kRutaNuevaVenta = '/venta/nueva';
+const kRutaRegistrarClabe = '/cuenta/clabe';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -72,6 +74,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: kRutaNuevaVenta,
         builder: (context, state) => const NuevaVentaPage(),
+      ),
+      GoRoute(
+        path: kRutaRegistrarClabe,
+        builder: (context, state) => const RegistrarClabePage(),
       ),
       GoRoute(
         path: '/venta/:id',
