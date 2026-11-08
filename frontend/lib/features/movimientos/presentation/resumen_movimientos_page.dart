@@ -102,10 +102,7 @@ class _ResumenMovimientosPageState
                           grupo: grupo,
                           esHoy: grupo.dia == soloDia(ahora),
                         ),
-                        _GrupoDia(
-                          movimientos: grupo.movimientos,
-                          onRenombrar: (m) => _renombrar(context, ref, m),
-                        ),
+                        _GrupoDia(movimientos: grupo.movimientos),
                         const SizedBox(height: TfSpace.s4),
                       ],
                     ],
@@ -196,10 +193,9 @@ class _EncabezadoDia extends StatelessWidget {
 }
 
 class _GrupoDia extends StatelessWidget {
-  const _GrupoDia({required this.movimientos, required this.onRenombrar});
+  const _GrupoDia({required this.movimientos});
 
   final List<Movimiento> movimientos;
-  final void Function(Movimiento) onRenombrar;
 
   @override
   Widget build(BuildContext context) {
@@ -216,12 +212,7 @@ class _GrupoDia extends StatelessWidget {
                 endIndent: TfSpace.s4,
                 color: Theme.of(context).colorScheme.surfaceContainerHigh,
               ),
-            _FilaMovimiento(
-              movimiento: movimientos[i],
-              onRenombrar: movimientos[i].estado == 'pagado'
-                  ? () => onRenombrar(movimientos[i])
-                  : null,
-            ),
+            _FilaMovimiento(movimiento: movimientos[i]),
           ],
         ],
       ),
@@ -234,32 +225,6 @@ String mensajeErrorMovimientos(Object error) {
     return error.mensaje;
   }
   return 'No pudimos cargar tus movimientos. Intenta de nuevo.';
-}
-
-Future<void> _renombrar(
-  BuildContext context,
-  WidgetRef ref,
-  Movimiento movimiento,
-) async {
-  final nuevo = await showDialog<String>(
-    context: context,
-    builder: (context) =>
-        _DialogoRenombrar(inicial: movimiento.conceptoVisible),
-  );
-  if (nuevo == null || !context.mounted) {
-    return;
-  }
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    await ref
-        .read(movimientosRepositoryProvider)
-        .renombrarConcepto(movimiento.id, nuevo);
-    ref.invalidate(movimientosProvider);
-  } catch (error) {
-    messenger.showSnackBar(
-      SnackBar(content: Text(mensajeErrorMovimientos(error))),
-    );
-  }
 }
 
 Future<void> _recargar(WidgetRef ref) async {
@@ -322,54 +287,10 @@ class _ErrorMovimientos extends StatelessWidget {
   }
 }
 
-class _DialogoRenombrar extends StatefulWidget {
-  const _DialogoRenombrar({required this.inicial});
-
-  final String inicial;
-
-  @override
-  State<_DialogoRenombrar> createState() => _DialogoRenombrarState();
-}
-
-class _DialogoRenombrarState extends State<_DialogoRenombrar> {
-  late final TextEditingController _control = TextEditingController(
-    text: widget.inicial,
-  );
-
-  @override
-  void dispose() {
-    _control.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Renombrar'),
-      content: TextField(
-        controller: _control,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Concepto visible'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _control.text),
-          child: const Text('Guardar'),
-        ),
-      ],
-    );
-  }
-}
-
 class _FilaMovimiento extends StatelessWidget {
-  const _FilaMovimiento({required this.movimiento, this.onRenombrar});
+  const _FilaMovimiento({required this.movimiento});
 
   final Movimiento movimiento;
-  final VoidCallback? onRenombrar;
 
   @override
   Widget build(BuildContext context) {
@@ -418,14 +339,6 @@ class _FilaMovimiento extends StatelessWidget {
                                       .copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
-                          if (onRenombrar != null) ...[
-                            const SizedBox(width: TfSpace.s1),
-                            Icon(
-                              Icons.edit_rounded,
-                              size: 14,
-                              color: colores.onSurfaceVariant,
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -486,11 +399,7 @@ class _FilaMovimiento extends StatelessWidget {
       ),
     );
 
-    if (onRenombrar == null) return contenido;
-    return Tooltip(
-      message: 'Renombrar',
-      child: InkWell(onTap: onRenombrar, child: contenido),
-    );
+    return contenido;
   }
 }
 
