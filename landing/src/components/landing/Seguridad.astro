@@ -1,7 +1,286 @@
----
-// Seguridad.astro — Placeholder (será completado por el builder correspondiente)
----
+<section id="seguridad" class="seguridad" aria-labelledby="seguridad-titulo">
+  <div class="container">
+    <div class="seguridad-head reveal">
+      <div class="shield-wrap">
+        <svg class="shield" viewBox="0 0 48 48" width="56" height="56" aria-hidden="true" focusable="false">
+          <path
+            class="draw"
+            pathLength="100"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linejoin="round"
+            d="M24 4.5 40.5 11v11.2c0 9.4-6.4 16.2-16.5 21.3C13.9 38.4 7.5 31.6 7.5 22.2V11L24 4.5z"
+          />
+          <path
+            class="draw draw-check"
+            pathLength="100"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M16.5 24.5 21.8 30l10-12"
+          />
+        </svg>
+      </div>
+      <div class="seguridad-copy">
+        <h2 id="seguridad-titulo">Cobros con respaldo de Banxico</h2>
+        <p>Tus cobros van por CoDi y el dinero llega a tu cuenta.</p>
+        <span class="seguridad-linea" aria-hidden="true"></span>
+      </div>
+    </div>
 
-<section id="seguridad">
-  <h2></h2>
+    <ul class="seguridad-grid">
+      <li class="seg-card reveal">
+        <div class="seg-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
+            <path d="M4 10.5 12 4l8 6.5" />
+            <path d="M6.5 10.5V19h11v-8.5" />
+            <path d="M4 19h16" />
+            <path d="M10 19v-4.5h4V19" />
+          </svg>
+        </div>
+        <h3>CoDi de Banxico</h3>
+        <p>Tus cobros usan CoDi, la plataforma de cobro digital del Banco de México.</p>
+      </li>
+      <li class="seg-card reveal">
+        <div class="seg-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
+            <rect x="3" y="5.5" width="18" height="13" rx="2" />
+            <path d="M3 10h18" />
+            <path d="M7 14.5h6" />
+            <path d="M16 3.5v4M14.2 5.2 16 3.5l1.8 1.7" />
+          </svg>
+        </div>
+        <h3>Directo a tu CLABE</h3>
+        <p>El dinero llega a la cuenta CLABE que registras; no pasa por una terminal ni por tus menús de banco.</p>
+      </li>
+      <li class="seg-card reveal">
+        <div class="seg-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
+            <rect x="7" y="2.5" width="10" height="19" rx="2" />
+            <path d="M10 5.5h4" />
+            <path d="M10 8.5h1.2v1.2H10zM12.4 8.5H13.6v1.2h-1.2zM10 10.7h1.2V11.9H10zM12.4 10.7H13.6V11.9h-1.2z" />
+            <path d="M11 18.2h2" />
+          </svg>
+        </div>
+        <h3>Sin terminal</h3>
+        <p>Solo necesitas tu celular y tu QR; no compras ni rentas equipo.</p>
+      </li>
+    </ul>
+  </div>
 </section>
+
+<style>
+  .seguridad {
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    padding-block: var(--space-12);
+    scroll-margin-top: 88px;
+  }
+
+  @media (min-width: 768px) {
+    .seguridad {
+      padding-block: var(--space-16);
+    }
+  }
+
+  .seguridad-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    max-width: 40rem;
+    margin-bottom: var(--space-8);
+  }
+
+  @media (min-width: 768px) {
+    .seguridad-head {
+      gap: var(--space-5);
+      margin-bottom: var(--space-10);
+    }
+  }
+
+  .shield-wrap {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    color: var(--primary);
+  }
+
+  .shield {
+    width: 56px;
+    height: 56px;
+  }
+
+  .draw {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 0;
+  }
+
+  .seguridad-linea {
+    display: block;
+    width: 4.5rem;
+    height: 3px;
+    margin-top: var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+
+  .seguridad h2 {
+    color: var(--on-primary-container);
+    font-size: var(--type-titulo-1-size);
+    line-height: var(--type-titulo-1-line);
+    font-weight: var(--type-titulo-1-weight);
+    letter-spacing: var(--type-titulo-1-tracking);
+    text-wrap: balance;
+  }
+
+  @media (min-width: 768px) {
+    .seguridad h2 {
+      font-size: var(--type-display-size);
+      line-height: var(--type-display-line);
+      letter-spacing: var(--type-display-tracking);
+    }
+  }
+
+  .seguridad-copy p {
+    margin-top: var(--space-3);
+    max-width: 38ch;
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
+  }
+
+  .seguridad-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 768px) {
+    .seguridad-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-6);
+    }
+  }
+
+  .seg-card {
+    min-width: 0;
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    box-shadow: var(--elev-1);
+  }
+
+  .seg-card:nth-child(1) {
+    transition-delay: 80ms;
+  }
+
+  .seg-card:nth-child(2) {
+    transition-delay: 180ms;
+  }
+
+  .seg-card:nth-child(3) {
+    transition-delay: 280ms;
+  }
+
+  .seg-icon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--primary-container);
+    color: var(--primary);
+  }
+
+  .seg-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .seg-icon path,
+  .seg-icon rect {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .seg-card h3 {
+    margin-bottom: var(--space-2);
+    font-size: var(--type-titulo-3-size);
+    line-height: var(--type-titulo-3-line);
+    font-weight: var(--type-titulo-3-weight);
+    text-wrap: balance;
+  }
+
+  .seg-card p {
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-size);
+    line-height: var(--type-cuerpo-line);
+    font-weight: var(--type-cuerpo-weight);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html:not(.no-js) .draw {
+      stroke-dashoffset: 100;
+    }
+
+    html:not(.no-js) .seguridad-head.is-visible .draw {
+      animation: trazo 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    html:not(.no-js) .seguridad-head.is-visible .draw-check {
+      animation-delay: 380ms;
+    }
+
+    html:not(.no-js) .seguridad-linea {
+      transform: scaleX(0);
+    }
+
+    html:not(.no-js) .seguridad-head.is-visible .seguridad-linea {
+      animation: linea 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .draw,
+    .seguridad-linea,
+    .seg-card {
+      animation: none;
+      transition-delay: 0ms;
+    }
+
+    .draw {
+      stroke-dashoffset: 0;
+    }
+
+    .seguridad-linea {
+      transform: none;
+    }
+  }
+
+  @keyframes trazo {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes linea {
+    to {
+      transform: scaleX(1);
+    }
+  }
+</style>

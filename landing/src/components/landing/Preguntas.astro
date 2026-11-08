@@ -1,7 +1,259 @@
 ---
-// Preguntas.astro — Placeholder (será completado por el builder correspondiente)
+const preguntas = [
+  {
+    q: "¿Qué es CoDi?",
+    a: "Es la plataforma de cobro digital de Banxico: tu cliente paga desde la app de su banco y el dinero llega a tu cuenta.",
+  },
+  {
+    q: "¿Necesito una terminal?",
+    a: "No. Usas tu celular, tu QR o la solicitud de cobro por notificación.",
+  },
+  {
+    q: "¿Cómo cobro?",
+    a: "De dos formas: tu cliente escanea el QR con la app de su banco, o le envías una solicitud de cobro con su número y le llega la notificación.",
+  },
+  {
+    q: "¿Dónde recibo el dinero?",
+    a: "En la cuenta CLABE que registras al crear tu cuenta.",
+  },
+  {
+    q: "¿Puedo ver mis cobros?",
+    a: "Sí: en Movimientos ves cada cobro y su estado, y en el tablero cuánto llevas.",
+  },
+  {
+    q: "¿Funciona en mi celular?",
+    a: "Sí, desde la web de la app y en Android.",
+  },
+  {
+    q: "¿Puedo tener un QR fijo?",
+    a: "Sí, Mi QR: un código tuyo para el mostrador, listo para imprimir.",
+  },
+];
+
+const faqLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: preguntas.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.a,
+    },
+  })),
+};
 ---
 
-<section id="preguntas">
-  <h2></h2>
+<section id="preguntas" class="preguntas" aria-labelledby="preguntas-titulo">
+  <div class="container">
+    <div class="preguntas-head reveal">
+      <h2 id="preguntas-titulo">Preguntas frecuentes</h2>
+    </div>
+
+    <div class="faq-list">
+      {
+        preguntas.map((item) => (
+          <details class="faq reveal">
+            <summary>
+              <span class="faq-q">{item.q}</span>
+              <span class="faq-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24" focusable="false">
+                  <path d="M5 12h14" />
+                  <path class="faq-vert" d="M12 5v14" />
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-body">
+              <div class="faq-body-inner">
+                <p>{item.a}</p>
+              </div>
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, "\\u003c")} />
 </section>
+
+<style>
+  .preguntas {
+    background: var(--bg);
+    padding-block: var(--space-12);
+    scroll-margin-top: 88px;
+  }
+
+  @media (min-width: 768px) {
+    .preguntas {
+      padding-block: var(--space-16);
+    }
+  }
+
+  .preguntas-head,
+  .faq-list {
+    max-width: 760px;
+    margin-inline: auto;
+  }
+
+  .preguntas-head {
+    margin-bottom: var(--space-6);
+  }
+
+  @media (min-width: 768px) {
+    .preguntas-head {
+      margin-bottom: var(--space-8);
+    }
+  }
+
+  .preguntas h2 {
+    font-size: var(--type-titulo-1-size);
+    line-height: var(--type-titulo-1-line);
+    font-weight: var(--type-titulo-1-weight);
+    letter-spacing: var(--type-titulo-1-tracking);
+    text-wrap: balance;
+  }
+
+  @media (min-width: 768px) {
+    .preguntas h2 {
+      font-size: var(--type-display-size);
+      line-height: var(--type-display-line);
+      letter-spacing: var(--type-display-tracking);
+    }
+  }
+
+  .faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .faq {
+    background: var(--surface);
+    border: 1px solid var(--outline-soft);
+    border-radius: var(--radius-lg);
+    interpolate-size: allow-keywords;
+  }
+
+  .faq[open] {
+    border-color: var(--primary);
+  }
+
+  .faq summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--input-h);
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+    list-style: none;
+    cursor: pointer;
+    border-radius: var(--radius-lg);
+    color: var(--ink);
+  }
+
+  .faq[open] summary {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq summary::marker {
+    content: "";
+  }
+
+  .faq summary:hover {
+    background: var(--surface-2);
+  }
+
+  .faq-q {
+    flex: 1;
+    font-family: var(--font-display);
+    font-size: var(--type-titulo-3-size);
+    line-height: var(--type-titulo-3-line);
+    font-weight: var(--type-titulo-3-weight);
+    text-wrap: balance;
+  }
+
+  .faq-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 48px;
+    height: 48px;
+    color: var(--primary);
+  }
+
+  .faq-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .faq-icon path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .faq-vert {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 240ms ease;
+  }
+
+  .faq[open] .faq-vert {
+    transform: rotate(90deg);
+  }
+
+  /* Fallback: colapsa con filas del grid. Con ::details-content, la altura anima el cajón nativo. */
+  .faq-body {
+    display: grid;
+    grid-template-rows: 0fr;
+  }
+
+  .faq[open] .faq-body {
+    grid-template-rows: 1fr;
+  }
+
+  .faq-body-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .faq-body-inner p {
+    padding: 0 var(--space-5) var(--space-5);
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-size);
+    line-height: var(--type-cuerpo-line);
+    font-weight: var(--type-cuerpo-weight);
+  }
+
+  @supports selector(::details-content) {
+    .faq::details-content {
+      height: 0;
+      overflow: clip;
+      transition:
+        height 320ms ease,
+        content-visibility 320ms allow-discrete;
+    }
+
+    .faq[open]::details-content {
+      height: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .faq-body {
+      transition: grid-template-rows 320ms ease;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .faq-vert,
+    .faq-body,
+    .faq::details-content {
+      transition: none;
+    }
+  }
+</style>
