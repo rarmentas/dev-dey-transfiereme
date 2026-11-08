@@ -36,7 +36,7 @@ def _monto_entrada(data: dict, errores: dict) -> Decimal | None:
 
 
 def _texto_opcional(data: dict, campo: str, errores: dict) -> str:
-    if campo not in data:
+    if campo not in data or data[campo] is None:
         return ""
     valor = data[campo]
     if not isinstance(valor, str):

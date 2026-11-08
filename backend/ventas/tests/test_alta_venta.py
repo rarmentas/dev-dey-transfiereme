@@ -1,5 +1,6 @@
 """Alta de venta. El puerto es el adaptador de desarrollo o un doble: sin red."""
 
+from contextlib import contextmanager
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -10,8 +11,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from movimientos.correlacion import AvisoPago, aplicar_aviso
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
+from pey.produccion import AdaptadorProduccion
 from pey.tipos import ErrorPey, ParametroInvalido, QrCreado
 from sesion.middleware import _MENSAJE_SIN_SESION
 from ventas.servicio import (
@@ -22,6 +25,32 @@ from ventas.servicio import (
 )
 
 _RUTA = "/api/ventas/"
+_LLAVE_PRUEBA = "llave-de-prueba"
+_MENSAJE_CUERPO = "El cuerpo debe ser un objeto JSON."
+
+
+@contextmanager
+def _cuenta_produccion_activa(comercio: Comercio):
+    """Activa el gate de producción sin salir a la red.
+
+    Si el comercio ya tiene ``pey_codi_status`` (master), se marca active.
+    En esta rama el campo no existe: el adaptador ya importó
+    ``cuenta_esta_active``, así que el parche cae en los dos módulos.
+    """
+    if any(campo.name == "pey_codi_status" for campo in comercio._meta.fields):
+        estado = "active"
+        enum = getattr(Comercio, "PeyCodiStatus", None)
+        if enum is not None:
+            estado = enum.ACTIVE
+        comercio.pey_codi_status = estado
+        comercio.save(update_fields=["pey_codi_status"])
+        yield
+        return
+    with (
+        patch("ambito.cuenta.cuenta_esta_active", return_value=True),
+        patch("pey.produccion.cuenta_esta_active", return_value=True),
+    ):
+        yield
 
 
 class _DoblePuerto:
@@ -86,6 +115,13 @@ class AltaVentaApiTests(TestCase):
 
     def _entrar(self, usuario: User) -> None:
         self.client.force_login(usuario)
+
+    def _post_crudo(self, cuerpo: bytes):
+        return self.client.post(
+            _RUTA,
+            data=cuerpo,
+            content_type="application/json",
+        )
 
     def test_referencia_invalida_no_llama_al_adaptador(self) -> None:
         self._entrar(self.usuario_a)
@@ -377,3 +413,175 @@ class AltaVentaApiTests(TestCase):
         propio = self.client.get("/api/movimientos/")
         self.assertEqual(propio.status_code, 200)
         self.assertIn(movimiento_id, [item["id"] for item in propio.json()])
+
+    def test_json_extremo_responde_400(self) -> None:
+        self._entrar(self.usuario_a)
+        cuerpos = (
+            ("entero", b'{"monto": ' + b"1" * 4301 + b"}"),
+            ("exponente", b'{"monto": 1e9999999999999999999}'),
+        )
+        for nombre, cuerpo in cuerpos:
+            with self.subTest(nombre=nombre):
+                respuesta = self._post_crudo(cuerpo)
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(respuesta.json()["detail"], _MENSAJE_CUERPO)
+        self.assertEqual(Cobro.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_null_en_concepto_y_referencia_equivale_a_ausente(self) -> None:
+        self._entrar(self.usuario_a)
+        espia = _Espia()
+        with patch("ventas.servicio.obtener_puerto", return_value=espia):
+            respuesta = self.client.post(
+                _RUTA,
+                {"monto": "0.01", "concepto": None, "referencia": None},
+                format="json",
+            )
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(espia.qr_kwargs[0]["concepto"], "Transferencia")
+        self.assertEqual(espia.qr_kwargs[0]["num_ref"], "0")
+        cuerpo = respuesta.json()
+        self.assertEqual(cuerpo["concepto"], "Transferencia")
+        movimiento = Movimiento.objects.get(pk=cuerpo["movimiento_id"])
+        self.assertEqual(movimiento.concepto, "Transferencia")
+        self.assertEqual(movimiento.concepto_visible, "Transferencia")
+
+    def test_comercio_en_query_responde_400(self) -> None:
+        self._entrar(self.usuario_a)
+        doble = _DoblePuerto()
+        with patch("ventas.servicio.obtener_puerto", return_value=doble):
+            respuesta = self.client.post(
+                "/api/ventas/?comercio=2",
+                {"monto": "0.01"},
+                format="json",
+            )
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn("comercio", respuesta.json()["detail"].lower())
+        self.assertEqual(doble.llamadas, [])
+        self.assertEqual(Cobro.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    @override_settings(PEY_API_KEY=_LLAVE_PRUEBA)
+    def test_fallo_de_bd_tras_qr_loguea_el_id_y_no_persiste(self) -> None:
+        self._entrar(self.usuario_a)
+        espia = _Espia()
+        with self.assertLogs("ventas.servicio", level="ERROR") as logs:
+            with patch("ventas.servicio.obtener_puerto", return_value=espia):
+                with patch(
+                    "ventas.servicio.Movimiento.objects.create",
+                    side_effect=RuntimeError("bd"),
+                ):
+                    with self.assertRaises(RuntimeError):
+                        self.client.post(
+                            _RUTA,
+                            {"monto": "0.01", "concepto": "Taco"},
+                            format="json",
+                        )
+        self.assertIsNotNone(espia.qr)
+        texto = " ".join(logs.output)
+        self.assertIn(f"pey_qr_id={espia.qr.id}", texto)
+        self.assertIn(f"comercio_id={self.comercio_a.pk}", texto)
+        self.assertNotIn(_LLAVE_PRUEBA, texto)
+        self.assertNotIn(espia.qr.qr_string, texto)
+        self.assertEqual(Cobro.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_monto_numero_json_notacion_y_no_finitos(self) -> None:
+        self._entrar(self.usuario_a)
+        espia = _Espia()
+        with patch("ventas.servicio.obtener_puerto", return_value=espia):
+            respuesta = self._post_crudo(b'{"monto": 0.01}')
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(espia.qr_kwargs[0]["monto"], Decimal("0.01"))
+        centavo = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
+        self.assertEqual(centavo.monto, Decimal("0.01"))
+
+        for cuerpo in (b'{"monto": true}', b'{"monto": false}', b'{"monto": null}'):
+            with self.subTest(cuerpo=cuerpo.decode()):
+                respuesta = self._post_crudo(cuerpo)
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn("monto", respuesta.json())
+
+        espia_cien = _Espia()
+        with patch("ventas.servicio.obtener_puerto", return_value=espia_cien):
+            respuesta = self.client.post(
+                _RUTA,
+                {"monto": "1E+2"},
+                format="json",
+            )
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(respuesta.json()["monto"], "100.00")
+        self.assertEqual(espia_cien.qr_kwargs[0]["monto"], Decimal("100.00"))
+        cien = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
+        self.assertEqual(cien.monto, Decimal("100.00"))
+
+        for texto in ("NaN", "Infinity"):
+            with self.subTest(texto=texto):
+                respuesta = self.client.post(
+                    _RUTA,
+                    {"monto": texto},
+                    format="json",
+                )
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn("monto", respuesta.json())
+        self.assertFalse(
+            Movimiento.objects.filter(estado=Movimiento.Estado.PAGADO).exists()
+        )
+
+    @override_settings(PEY_API_KEY=_LLAVE_PRUEBA)
+    def test_adaptador_produccion_marca_origen_pey(self) -> None:
+        self._entrar(self.usuario_a)
+        llamadas: list[tuple] = []
+
+        def transporte(metodo, url, headers, cuerpo, timeout):
+            llamadas.append((metodo, url, dict(headers), cuerpo, timeout))
+            return 201, b'{"id": "qr-prod-1", "qrString": "codi-prod-qr"}'
+
+        puerto = AdaptadorProduccion(transporte=transporte)
+        with _cuenta_produccion_activa(self.comercio_a):
+            with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
+                with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+                    respuesta = self.client.post(
+                        _RUTA,
+                        {"monto": "0.01", "concepto": "Tacos"},
+                        format="json",
+                    )
+        self.assertEqual(respuesta.status_code, 201)
+        cuerpo = respuesta.json()
+        self.assertEqual(cuerpo["origen"], "origen_pey")
+        self.assertEqual(cuerpo["qr_string"], "codi-prod-qr")
+        self.assertNotIn(_LLAVE_PRUEBA, str(cuerpo))
+        self.assertEqual(len(llamadas), 1)
+        self.assertEqual(llamadas[0][0], "POST")
+        self.assertIn("/codi/qr", llamadas[0][1])
+        self.assertIn(_LLAVE_PRUEBA, llamadas[0][2]["Authorization"])
+        movimiento = Movimiento.objects.get(pk=cuerpo["movimiento_id"])
+        self.assertEqual(movimiento.origen, Movimiento.Origen.ORIGEN_PEY)
+        self.assertEqual(movimiento.comercio_id, self.comercio_a.pk)
+        cobro = Cobro.objects.get(pk=cuerpo["cobro_id"])
+        self.assertEqual(cobro.pey_qr_id, "qr-prod-1")
+
+    def test_aviso_de_pago_marca_la_venta_pagada(self) -> None:
+        self._entrar(self.usuario_a)
+        with patch("ventas.servicio.obtener_puerto", return_value=_Espia()):
+            respuesta = self.client.post(
+                _RUTA,
+                {"monto": "0.01", "concepto": "Tacos"},
+                format="json",
+            )
+        self.assertEqual(respuesta.status_code, 201)
+        cobro = Cobro.objects.get(pk=respuesta.json()["cobro_id"])
+        movimiento = aplicar_aviso(
+            AvisoPago(
+                tipo="codi.qr.payment_received",
+                monto=Decimal("0.01"),
+                transaction_id="tx-venta-3-1",
+                codi_qr_id=cobro.pey_qr_id,
+            ),
+            origen=Movimiento.Origen.ORIGEN_DESARROLLO,
+        )
+        self.assertEqual(movimiento.pk, respuesta.json()["movimiento_id"])
+        guardado = Movimiento.objects.get(pk=movimiento.pk)
+        self.assertEqual(guardado.estado, Movimiento.Estado.PAGADO)
+        self.assertEqual(guardado.pey_transaction_id, "tx-venta-3-1")
+        self.assertIsNotNone(guardado.pagado_en)

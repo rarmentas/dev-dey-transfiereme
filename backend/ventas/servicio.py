@@ -1,5 +1,6 @@
 """Alta de una venta por QR. No habla con la red: usa el puerto inyectado."""
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -13,6 +14,8 @@ from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.puerto import PuertoPey
 from pey.seleccion import obtener_puerto
+
+logger = logging.getLogger(__name__)
 
 VENTA_EXPIRACION_S = 600
 
@@ -100,24 +103,34 @@ def crear_venta_qr(
         else Movimiento.Origen.ORIGEN_PEY
     )
     vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
-    with transaction.atomic():
-        cobro = Cobro.objects.create(
-            comercio=comercio,
-            canal=Movimiento.Canal.QR_VENTA,
-            monto=monto_ok,
-            concepto=concepto_ok,
-            vence_en=vence_en,
-            pey_qr_id=qr.id,
+    # Si la base falla, el QR ya existe en pey pero qr_string no se entrega:
+    # nadie puede pagar ese QR. La reconciliación queda pendiente (historia 3.2).
+    try:
+        with transaction.atomic():
+            cobro = Cobro.objects.create(
+                comercio=comercio,
+                canal=Movimiento.Canal.QR_VENTA,
+                monto=monto_ok,
+                concepto=concepto_ok,
+                vence_en=vence_en,
+                pey_qr_id=qr.id,
+            )
+            movimiento = Movimiento.objects.create(
+                comercio=comercio,
+                cobro=cobro,
+                canal=Movimiento.Canal.QR_VENTA,
+                monto=monto_ok,
+                concepto=concepto_ok,
+                estado=Movimiento.Estado.PENDIENTE,
+                origen=origen,
+            )
+    except Exception:
+        logger.error(
+            "qr de venta creado en pey sin persistir pey_qr_id=%s comercio_id=%s",
+            qr.id,
+            comercio.pk,
         )
-        movimiento = Movimiento.objects.create(
-            comercio=comercio,
-            cobro=cobro,
-            canal=Movimiento.Canal.QR_VENTA,
-            monto=monto_ok,
-            concepto=concepto_ok,
-            estado=Movimiento.Estado.PENDIENTE,
-            origen=origen,
-        )
+        raise
     return VentaCreada(movimiento=movimiento, cobro=cobro, qr_string=qr.qr_string)
 
 

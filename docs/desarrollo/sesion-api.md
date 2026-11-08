@@ -115,13 +115,13 @@ El alta no crea movimientos; los pagos sobre ese QR se registran vía webhook (h
 
 ## Alta de venta (QR)
 
-`POST /api/ventas/` crea un cobro `qr_venta` pendiente y su movimiento. El comercio sale de la sesión; `comercio` o `comercio_id` en el cuerpo responden `400`.
+`POST /api/ventas/` crea un cobro `qr_venta` pendiente y su movimiento. El comercio sale de la sesión; `comercio` o `comercio_id` en el cuerpo o en la cadena de consulta responden `400`.
 
 | Método | Ruta | Autenticación |
 | --- | --- | --- |
 | `POST` | `/api/ventas/` | Sesión activa |
 
-Cuerpo JSON: `monto` (cadena o número, por ejemplo `"0.01"`), `concepto` (opcional) y `referencia` (opcional). El monto tiene que ser mayor que 0, con hasta 2 decimales. Concepto vacío o en blanco se envía y se guarda como `Transferencia`. Referencia vacía se envía como `"0"`; si viene, tiene que ser numérica de 1 a 7 dígitos. El QR vence a los 600 segundos.
+Cuerpo JSON: `monto` (cadena o número, por ejemplo `"0.01"`), `concepto` (opcional) y `referencia` (opcional). El monto tiene que ser mayor que 0, con hasta 2 decimales. Concepto vacío, en blanco o null se envía y se guarda como `Transferencia`. Referencia vacía o null se envía como `"0"`; si viene, tiene que ser numérica de 1 a 7 dígitos. Un cuerpo que no es JSON legible (entero enorme o exponente fuera de rango) responde `400`. El QR vence a los 600 segundos.
 
 Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`qr_venta`), `monto` (cadena con dos decimales), `concepto`, `estado` (`pendiente`), `vence_en`, `qr_string` y `origen`.
 

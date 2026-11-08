@@ -2,14 +2,14 @@
 
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
-from ambito.scope import preparar_operacion_cobro
+from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
 from pey.tipos import ErrorPey, ParametroInvalido
 from ventas.serializers import CrearVentaSerializer, venta_creada_a_json
 from ventas.servicio import CuentaNoActive, ValidacionVenta, crear_venta_qr
@@ -32,7 +32,12 @@ def _leer_cuerpo(request) -> dict:
         raise _CuerpoInvalido()
     try:
         datos = json.loads(bruto.decode("utf-8"), parse_float=Decimal)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        InvalidOperation,
+    ) as exc:
         raise _CuerpoInvalido() from exc
     if not isinstance(datos, dict):
         raise _CuerpoInvalido()
@@ -55,6 +60,7 @@ class CrearVentaView(APIView):
             return Response({"detail": str(exc)}, status=400)
 
         try:
+            rechazar_comercio_en_query(request.GET)
             comercio = preparar_operacion_cobro(request, datos)
         except ComercioEnCuerpoError as exc:
             return _respuesta_ambito(exc, 400)
