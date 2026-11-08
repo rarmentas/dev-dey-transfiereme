@@ -134,6 +134,16 @@ void main() {
 
     expect(find.text('Ya tenías una venta pendiente'), findsOneWidget);
     expect(find.text('Tortas'), findsOneWidget);
+    final aviso = tester.getRect(find.byKey(const Key('aviso_pendiente')));
+    expect(aviso.left, greaterThan(120));
+    expect(aviso.right, lessThan(680));
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Ya tenías una venta pendiente'), findsOneWidget);
     expect(mock.peticiones.map((p) => p.path), [
       rutaCrearVenta,
       '/api/ventas/9/',

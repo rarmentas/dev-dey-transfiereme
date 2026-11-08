@@ -95,6 +95,10 @@ void main() {
     expect(find.text(horaLocalCorta(DateTime.parse(pagadoEn))), findsOneWidget);
     expect(find.text('Nuevo cobro'), findsOneWidget);
     expect(find.text('Listo'), findsOneWidget);
+    final anchoBoton = tester
+        .getSize(find.widgetWithText(FilledButton, 'Nuevo cobro'))
+        .width;
+    expect(anchoBoton, inInclusiveRange(400, 480));
     expect(mock.lecturas, 2);
 
     await tester.pump(const Duration(seconds: 2));
@@ -133,8 +137,22 @@ void main() {
     ]);
     await _montar(tester, mock, 8);
     expect(find.text('Vence en'), findsOneWidget);
+    expect(find.text('Sin límite'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.text('Pídele que escanee con la app de su banco'),
         findsOneWidget);
     expect(find.byTooltip('Cerrar'), findsOneWidget);
+    expect(tester.getTopLeft(find.byTooltip('Cerrar')).dx, greaterThan(120));
+  });
+
+  testWidgets('pendiente sin vence_en dice Sin límite y no muestra la barra', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alObtener([cuerpoVenta(id: 10, estado: 'pendiente')]);
+    await _montar(tester, mock, 10);
+    expect(find.text('Vence en'), findsOneWidget);
+    expect(find.text('Sin límite'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 }

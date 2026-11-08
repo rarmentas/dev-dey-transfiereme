@@ -139,67 +139,72 @@ class _VentaEsperaPageState extends ConsumerState<VentaEsperaPage> {
 
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                TfSpace.s2,
-                TfSpace.s2,
-                kMargenPantalla,
-                0,
+        child: TfPantalla(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  TfSpace.s2,
+                  TfSpace.s2,
+                  kMargenPantalla,
+                  0,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Cerrar',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => context.go(kRutaInicio),
+                    ),
+                    const SizedBox(width: TfSpace.s2),
+                    if (venta == null || venta.esPendiente)
+                      const TfEstadoChip.pendiente(etiqueta: 'Esperando pago'),
+                  ],
+                ),
               ),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Cerrar',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => context.go(kRutaInicio),
-                  ),
-                  const SizedBox(width: TfSpace.s2),
-                  if (venta == null || venta.esPendiente)
-                    const TfEstadoChip.pendiente(etiqueta: 'Esperando pago'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _cargando && venta == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : TfPantalla(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: kMargenPantalla,
-                        vertical: TfSpace.s4,
-                      ),
-                      child: ListView(
+              Expanded(
+                child: _cargando && venta == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: kMargenPantalla,
+                          vertical: TfSpace.s4,
+                        ),
                         children: [
                           if (widget.avisoPendiente) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: TfSpace.s4,
-                                vertical: TfSpace.s3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: tf.pendingContainer,
-                                borderRadius:
-                                    BorderRadius.circular(TfRadius.md),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.info_outline_rounded,
-                                    size: TfSize.icon,
-                                    color: tf.pendingText,
-                                  ),
-                                  const SizedBox(width: TfSpace.s2),
-                                  Expanded(
-                                    child: Text(
-                                      'Ya tenías una venta pendiente',
-                                      style: (tema.textTheme.titleSmall ??
-                                              const TextStyle())
-                                          .copyWith(color: tf.pendingText),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                key: const Key('aviso_pendiente'),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: TfSpace.s3,
+                                  vertical: TfSpace.s2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: tf.pendingContainer,
+                                  borderRadius:
+                                      BorderRadius.circular(TfRadius.md),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline_rounded,
+                                      size: TfSize.icon,
+                                      color: tf.pendingText,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: TfSpace.s2),
+                                    Flexible(
+                                      child: Text(
+                                        'Ya tenías una venta pendiente',
+                                        style: (tema.textTheme.titleSmall ??
+                                                const TextStyle())
+                                            .copyWith(color: tf.pendingText),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: TfSpace.s4),
@@ -222,9 +227,9 @@ class _VentaEsperaPageState extends ConsumerState<VentaEsperaPage> {
                           ],
                         ],
                       ),
-                    ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -328,27 +333,31 @@ class _Pendiente extends StatelessWidget {
           style: tema.textTheme.bodyLarge,
           textAlign: TextAlign.center,
         ),
+        const SizedBox(height: TfSpace.s5),
+        Row(
+          children: [
+            Text(
+              'Vence en',
+              style: tema.textTheme.bodyMedium?.copyWith(
+                color: colores.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              vence == null ? 'Sin límite' : _minutosSegundos(vence, ahora),
+              style: vence == null
+                  ? tema.textTheme.bodyMedium?.copyWith(
+                      color: colores.onSurfaceVariant,
+                    )
+                  : tema.textTheme.titleMedium?.copyWith(
+                      color: tf.pendingText,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+            ),
+          ],
+        ),
         if (vence != null) ...[
-          const SizedBox(height: TfSpace.s5),
-          Row(
-            children: [
-              Text(
-                'Vence en',
-                style: tema.textTheme.bodyMedium?.copyWith(
-                  color: colores.onSurfaceVariant,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                _minutosSegundos(vence, ahora),
-                style: tema.textTheme.titleMedium?.copyWith(
-                  color: tf.pendingText,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: TfSpace.s2),
           ClipRRect(
             borderRadius: TfRadius.brFull,

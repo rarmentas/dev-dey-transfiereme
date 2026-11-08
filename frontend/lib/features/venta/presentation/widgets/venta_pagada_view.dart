@@ -51,7 +51,7 @@ class _VentaPagadaViewState extends State<VentaPagadaView> {
       child: Scaffold(
         backgroundColor: colores.primary,
         body: SafeArea(
-          child: Padding(
+          child: TfPantalla(
             padding: const EdgeInsets.symmetric(horizontal: kMargenPantalla),
             child: Column(
               children: [

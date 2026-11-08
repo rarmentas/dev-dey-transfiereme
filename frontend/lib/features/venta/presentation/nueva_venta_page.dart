@@ -235,24 +235,15 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                               validarReferenciaVenta(valor ?? ''),
                         ),
                         const SizedBox(height: TfSpace.s4),
-                        SegmentedButton<bool>(
+                        TfSegmentado<bool>(
                           key: const Key('selector_canal'),
-                          showSelectedIcon: false,
-                          segments: const [
-                            ButtonSegment(
-                              value: false,
-                              icon: Icon(Icons.qr_code_2_rounded),
-                              label: Text('QR'),
-                            ),
-                            ButtonSegment(
-                              value: true,
-                              icon: Icon(Icons.smartphone_rounded),
-                              label: Text('A su celular'),
-                            ),
-                          ],
-                          selected: {_aCelular},
-                          onSelectionChanged: (valor) =>
-                              setState(() => _aCelular = valor.first),
+                          opciones: const {false: 'QR', true: 'A su celular'},
+                          iconos: const {
+                            false: Icons.qr_code_2_rounded,
+                            true: Icons.smartphone_rounded,
+                          },
+                          valor: _aCelular,
+                          onCambio: (valor) => setState(() => _aCelular = valor),
                         ),
                         if (_aCelular) ...[
                           const SizedBox(height: TfSpace.s4),
@@ -327,11 +318,37 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   }
 }
 
-/// Tarjeta del monto: borde primary de 2 px, etiqueta y cifra grande.
-class _CampoMonto extends StatelessWidget {
+/// Tarjeta del monto: borde primary de 2 px, anillo de foco y cifra grande.
+class _CampoMonto extends StatefulWidget {
   const _CampoMonto({required this.controller});
 
   final TextEditingController controller;
+
+  @override
+  State<_CampoMonto> createState() => _CampoMontoState();
+}
+
+class _CampoMontoState extends State<_CampoMonto> {
+  final _foco = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _foco.addListener(_alCambiarFoco);
+  }
+
+  void _alCambiarFoco() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _foco.removeListener(_alCambiarFoco);
+    _foco.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -341,83 +358,100 @@ class _CampoMonto extends StatelessWidget {
     final estiloMonto = tema.textTheme.displaySmall?.copyWith(
       fontWeight: FontWeight.w800,
     );
+    final controller = widget.controller;
 
     return FormField<String>(
       autovalidateMode: AutovalidateMode.onUserInteraction,
       validator: (_) => validarMontoVenta(controller.text),
       builder: (estado) {
         final hayError = estado.hasError;
+        final colorBorde = hayError ? tf.expired : colores.primary;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: TfSpace.s4,
-                vertical: TfSpace.s3,
-              ),
+              padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                color: tema.cardTheme.color ?? colores.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(TfRadius.md),
+                borderRadius: BorderRadius.circular(TfRadius.md + 5),
                 border: Border.all(
-                  color: hayError ? tf.expired : colores.primary,
-                  width: 2,
+                  color: _foco.hasFocus ? colorBorde : Colors.transparent,
+                  width: 3,
                 ),
               ),
-              child: Column(
-                children: [
-                  Text(
-                    '¿Cuánto vas a cobrar?',
-                    style: tema.textTheme.bodyMedium?.copyWith(
-                      color: colores.onSurfaceVariant,
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        '\$',
-                        style: estiloMonto?.copyWith(
-                          color: colores.onSurfaceVariant,
-                        ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: TfSpace.s4,
+                  vertical: TfSpace.s3,
+                ),
+                decoration: BoxDecoration(
+                  color: tema.cardTheme.color ?? colores.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(TfRadius.md),
+                  border: Border.all(color: colorBorde, width: 2),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '¿Cuánto vas a cobrar?',
+                      style: tema.textTheme.bodyMedium?.copyWith(
+                        color: colores.onSurfaceVariant,
                       ),
-                      const SizedBox(width: TfSpace.s1),
-                      Flexible(
-                        child: IntrinsicWidth(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minWidth: 96),
-                            child: TextField(
-                              key: const Key('campo_monto'),
-                              controller: controller,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                              textAlign: TextAlign.center,
-                              style: estiloMonto,
-                              onChanged: estado.didChange,
-                              decoration: InputDecoration(
-                                hintText: '0.00',
-                                hintStyle: estiloMonto?.copyWith(
-                                  color: colores.onSurfaceVariant
-                                      .withValues(alpha: 0.5),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: TfSpace.s1),
+                          child: Text(
+                            '\$',
+                            style: estiloMonto?.copyWith(
+                              color: colores.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        Flexible(
+                          child: IntrinsicWidth(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minWidth: 96),
+                              child: TextField(
+                                key: const Key('campo_monto'),
+                                focusNode: _foco,
+                                controller: controller,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
                                 ),
-                                filled: false,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                errorBorder: InputBorder.none,
-                                focusedErrorBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.zero,
-                                isDense: true,
+                                textAlign: TextAlign.center,
+                                style: estiloMonto,
+                                onChanged: estado.didChange,
+                                decoration: const InputDecoration(
+                                  hintText: '0.00',
+                                  isCollapsed: true,
+                                  filled: false,
+                                  constraints: BoxConstraints(
+                                    minWidth: 0,
+                                    minHeight: 0,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ).copyWith(
+                                  hintStyle: estiloMonto?.copyWith(
+                                    color: colores.onSurfaceVariant,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             if (hayError)
