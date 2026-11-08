@@ -1,0 +1,280 @@
+---
+import { obtenerVideo } from '../../lib/videos';
+
+interface Props {
+  nombre: string;
+  titulo: string;
+  desc: string;
+  aspecto?: string;
+  eager?: boolean;
+}
+
+const { nombre, titulo, desc, aspecto = '16/9', eager = false } = Astro.props;
+
+const aspectoSeguro = /^\d+(\.\d+)?\s*\/\s*\d+(\.\d+)?$/.test(aspecto)
+  ? aspecto.replace(/\s+/g, '')
+  : '16/9';
+
+const video = obtenerVideo(nombre);
+const hayVideo = video.estado === 'listo' && Boolean(video.mp4);
+const idBase = `clip-${nombre.replace(/[^a-z0-9]+/gi, '-')}`;
+const idDesc = `${idBase}-desc`;
+---
+
+<div
+  class="clip"
+  style={`--clip-aspect: ${aspectoSeguro};`}
+  data-videoclip={hayVideo ? 'listo' : undefined}
+  data-eager={eager ? 'true' : undefined}
+  data-estado={video.estado}
+>
+  <p id={idDesc} class="sr-only">{desc}</p>
+  <div class="clip-screen">
+    {
+      hayVideo ? (
+        <video
+          class="clip-video"
+          muted
+          loop
+          playsinline
+          preload="none"
+          poster={video.poster ?? undefined}
+          aria-label={titulo}
+          aria-describedby={idDesc}
+        >
+          <source data-src={video.mp4} type="video/mp4" />
+        </video>
+      ) : (
+        <div class="clip-ph">
+          <span class="clip-ph-icono" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28">
+              <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.75" />
+              <path d="M10.2 8.6v6.8l5.6-3.4-5.6-3.4z" fill="currentColor" />
+            </svg>
+          </span>
+          <p class="clip-pronto">Video próximamente</p>
+        </div>
+      )
+    }
+    {
+      hayVideo && (
+        <button type="button" class="clip-play" data-reproducir aria-label={`Reproducir ${titulo}`}>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" />
+          </svg>
+          <span>Reproducir</span>
+        </button>
+      )
+    }
+  </div>
+</div>
+
+<style>
+  .clip {
+    position: relative;
+    width: min(100%, var(--clip-ancho, 100%));
+    min-width: 0;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .clip-screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--clip-aspect, 16 / 9);
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--outline-soft);
+    background: var(--surface-2);
+  }
+
+  .clip-video,
+  .clip-ph {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .clip-video {
+    object-fit: contain;
+    background: var(--surface-2);
+  }
+
+  .clip-ph {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .clip-ph-icono {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--surface) 72%, var(--surface-2));
+    color: var(--primary);
+  }
+
+  .clip-ph-icono svg,
+  .clip-play svg {
+    display: block;
+    width: 28px;
+    height: 28px;
+    max-width: none;
+  }
+
+  .clip-play svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .clip-pronto {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: var(--type-etiqueta-size);
+    line-height: var(--type-etiqueta-line);
+    font-weight: var(--type-etiqueta-weight);
+  }
+
+  .clip-play {
+    display: none;
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-width: var(--touch-min);
+    min-height: var(--touch-min);
+    max-width: calc(100% - var(--space-4));
+    padding: var(--space-3) var(--space-5);
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: var(--on-primary);
+    font-family: var(--font-ui);
+    font-size: var(--type-boton-size);
+    line-height: var(--type-boton-line);
+    font-weight: var(--type-boton-weight);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .clip.is-activado .clip-play {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .clip-play {
+      display: inline-flex;
+    }
+
+    .clip.is-activado .clip-play {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) and (hover: hover) {
+    .clip-play:hover {
+      transform: translate(-50%, calc(-50% - 2px));
+    }
+  }
+</style>
+
+<script>
+  const clips = document.querySelectorAll<HTMLElement>('[data-videoclip="listo"]');
+  const prefiereQuieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const activarFuentes = (video: HTMLVideoElement): boolean => {
+    let cambio = false;
+    video.querySelectorAll('source[data-src]').forEach((nodo) => {
+      if (!(nodo instanceof HTMLSourceElement)) return;
+      const src = nodo.dataset.src;
+      if (!src || nodo.getAttribute('src')) return;
+      nodo.src = src;
+      cambio = true;
+    });
+    if (cambio) video.load();
+    return cambio;
+  };
+
+  const reproducir = (video: HTMLVideoElement): void => {
+    video.muted = true;
+    if (!video.paused) return;
+    video.play().catch(() => {
+      /* Autoplay bloqueado: se queda el póster. */
+    });
+  };
+
+  clips.forEach((clip) => {
+    const video = clip.querySelector('video');
+    if (!(video instanceof HTMLVideoElement)) return;
+
+    const boton = clip.querySelector('[data-reproducir]');
+    let fuentesListas = false;
+
+    const arrancar = (): void => {
+      if (!fuentesListas) {
+        activarFuentes(video);
+        fuentesListas = true;
+      }
+      reproducir(video);
+    };
+
+    let puedeReproducir = !prefiereQuieto;
+
+    if (boton instanceof HTMLButtonElement) {
+      boton.addEventListener('click', () => {
+        puedeReproducir = true;
+        arrancar();
+        video.controls = true;
+        clip.classList.add('is-activado');
+        boton.hidden = true;
+      });
+    }
+
+    if (!('IntersectionObserver' in window)) {
+      if (puedeReproducir) arrancar();
+      return;
+    }
+
+    if (clip.dataset.eager === 'true' && puedeReproducir) arrancar();
+
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        entradas.forEach((entrada) => {
+          if (entrada.isIntersecting) {
+            if (puedeReproducir) arrancar();
+          } else {
+            video.pause();
+          }
+        });
+      },
+      { rootMargin: '120px 0px', threshold: 0.2 },
+    );
+
+    observador.observe(clip);
+  });
+</script>

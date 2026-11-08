@@ -1,0 +1,222 @@
+<section id="seguridad" aria-labelledby="seguridad-titulo">
+  <div class="container seg">
+    <p class="seg-sobre">Seguridad</p>
+    <h2 id="seguridad-titulo" class="seg-titulo reveal">
+      <span>Cobras por CoDi.</span>
+      <span>El dinero llega</span>
+      <span class="seg-marca">a tu CLABE.</span>
+    </h2>
+    <p class="seg-intro reveal">
+      CoDi es la plataforma de cobro digital del Banco de México. Tu cliente aprueba el pago en la app de su banco y el
+      depósito va a la cuenta CLABE que registraste.
+    </p>
+    <dl class="seg-libro">
+      <div class="seg-fila reveal">
+        <dt>CoDi de Banxico</dt>
+        <dd>El cobro viaja por la infraestructura del Banco de México, no por una pasarela de tarjetas.</dd>
+      </div>
+      <div class="seg-fila reveal">
+        <dt>Directo a tu CLABE</dt>
+        <dd>Cada pago entra a la cuenta que registras. No tienes que entrar a los menús de tu banco para saber si ya te pagaron.</dd>
+      </div>
+      <div class="seg-fila reveal">
+        <dt>Sin terminal</dt>
+        <dd>Tu celular y el QR impreso del mostrador. No compras ni rentas equipo.</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<style>
+  #seguridad {
+    background: var(--surface);
+    color: var(--ink);
+    padding-block: 64px;
+    scroll-margin-top: 88px;
+  }
+
+  .seg-sobre {
+    margin: 0 0 var(--space-3);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: var(--type-sobretitulo-line);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .seg-titulo {
+    max-width: 14ch;
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.25rem, 1.2rem + 4.4vw, 4.75rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    text-align: left;
+  }
+
+  .seg-titulo span {
+    display: block;
+  }
+
+  .seg-marca {
+    color: var(--primary);
+  }
+
+  .seg-intro {
+    max-width: 34rem;
+    margin: 24px 0 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
+  }
+
+  .seg-libro {
+    margin: 48px 0 0;
+  }
+
+  .seg-fila {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding-block: 24px;
+  }
+
+  .seg-fila::before,
+  .seg-fila:last-child::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--outline-soft);
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+
+  .seg-fila::before {
+    top: 0;
+  }
+
+  .seg-fila:last-child::after {
+    bottom: 0;
+  }
+
+  .seg-fila dt {
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 28px;
+    letter-spacing: -0.01em;
+  }
+
+  .seg-fila dd {
+    max-width: 36rem;
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
+  }
+
+  @media (min-width: 768px) {
+    .seg-fila {
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+      column-gap: var(--space-8);
+      align-items: baseline;
+    }
+  }
+
+  @media (min-width: 960px) {
+    #seguridad {
+      padding-block: 128px;
+    }
+
+    .seg {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 32px;
+    }
+
+    .seg-sobre,
+    .seg-titulo {
+      grid-column: 1 / 9;
+      margin-bottom: 0;
+    }
+
+    .seg-intro {
+      grid-column: 1 / 7;
+      margin-top: 24px;
+    }
+
+    .seg-libro {
+      grid-column: 5 / 13;
+      margin-top: 80px;
+    }
+
+    .seg-fila dt {
+      font-size: 26px;
+      line-height: 32px;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html:not(.no-js) .seg-fila:nth-child(1) {
+      transition-delay: 0ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(2) {
+      transition-delay: 120ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(3) {
+      transition-delay: 240ms;
+    }
+
+    html:not(.no-js) .seg-fila::before,
+    html:not(.no-js) .seg-fila:last-child::after {
+      transform: scaleX(0);
+      transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(1)::before,
+    html:not(.no-js) .seg-fila:nth-child(1)::after {
+      transition-delay: 0ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(2)::before,
+    html:not(.no-js) .seg-fila:nth-child(2)::after {
+      transition-delay: 120ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(3)::before,
+    html:not(.no-js) .seg-fila:nth-child(3)::after {
+      transition-delay: 240ms;
+    }
+
+    html:not(.no-js) .seg-fila.is-visible::before,
+    html:not(.no-js) .seg-fila.is-visible:last-child::after {
+      transform: scaleX(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seg-fila,
+    .seg-fila::before,
+    .seg-fila::after {
+      transition-delay: 0ms;
+      animation: none;
+    }
+
+    .seg-fila::before,
+    .seg-fila::after {
+      transform: scaleX(1);
+    }
+  }
+</style>

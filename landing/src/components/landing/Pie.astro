@@ -1,0 +1,117 @@
+---
+// Pie.astro — Pie de página
+---
+
+<footer class="pie-footer">
+  <div class="container pie-container">
+    <div class="pie-brand">
+      <a href="/" class="pie-logo" aria-label="Transfiéreme - Inicio">
+        <picture>
+          <source srcset="/logos/acento-logo-oscuro.svg" media="(prefers-color-scheme: dark)" />
+          <img
+            src="/logos/acento-logo-claro.svg"
+            alt="Transfiéreme"
+            width="160"
+            height="36"
+            loading="lazy"
+            decoding="async"
+          />
+        </picture>
+      </a>
+      <p class="pie-lema">Cobros con CoDi de Banxico</p>
+    </div>
+
+    <div class="pie-links">
+      <a href="https://transfiereme.asware.com.mx/" class="pie-link">
+        Ir a la app
+      </a>
+    </div>
+
+    <div class="pie-copyright">
+      <p>© 2026 transfiéreme</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .pie-footer {
+    background-color: var(--surface);
+    border-top: 1px solid var(--outline-soft);
+    padding-block: var(--space-8);
+    margin-top: var(--space-16);
+  }
+
+  .pie-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-6);
+    text-align: center;
+  }
+
+  @media (min-width: 720px) {
+    .pie-container {
+      flex-direction: row;
+      justify-content: space-between;
+      text-align: left;
+    }
+  }
+
+  .pie-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  @media (min-width: 720px) {
+    .pie-brand {
+      align-items: flex-start;
+    }
+  }
+
+  .pie-logo {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-min);
+  }
+
+  .pie-logo img {
+    height: 32px;
+    width: auto;
+  }
+
+  .pie-lema {
+    font-size: var(--type-cuerpo-s-size);
+    line-height: var(--type-cuerpo-s-line);
+    color: var(--ink-muted);
+  }
+
+  .pie-links {
+    display: flex;
+    align-items: center;
+  }
+
+  .pie-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    font-size: var(--type-cuerpo-size);
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .pie-link:hover {
+    text-decoration: underline;
+  }
+
+  .pie-copyright {
+    font-size: var(--type-cuerpo-s-size);
+    line-height: var(--type-cuerpo-s-line);
+    color: var(--ink-muted);
+  }
+</style>

@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "nota": "Videos demo de la app Cody (marca transfiereme). Son 16:9 y ya traen el teléfono dibujado y la columna de pasos: no los metas en otro marco de teléfono ni los recortes a vertical. Sin audio; usar muted loop playsinline con el póster.",
+  "videos": [
+    {
+      "nombre": "venta-qr",
+      "titulo": "Cobra con QR",
+      "descripcion": "Escribes el monto, el cliente escanea el QR con la app de su banco y ves «¡Te pagaron!» al momento.",
+      "duracion_s": 22.0,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/venta-qr.mp4",
+        "webm": "/videos/venta-qr.webm",
+        "poster": "/videos/venta-qr-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 1005,
+        "webm": 1485,
+        "poster": 124
+      }
+    },
+    {
+      "nombre": "venta-notificacion",
+      "titulo": "Cobra a su celular",
+      "descripcion": "Escribes el celular del cliente, le llega la solicitud de cobro a su banco y paga ahí mismo.",
+      "duracion_s": 21.6,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/venta-notificacion.mp4",
+        "webm": "/videos/venta-notificacion.webm",
+        "poster": "/videos/venta-notificacion-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 942,
+        "webm": 1371,
+        "poster": 97
+      }
+    },
+    {
+      "nombre": "mi-qr",
+      "titulo": "Tu QR del mostrador",
+      "descripcion": "Un QR fijo para imprimir; cada pago que entra aparece solo en tus movimientos.",
+      "duracion_s": 19.2,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/mi-qr.mp4",
+        "webm": "/videos/mi-qr.webm",
+        "poster": "/videos/mi-qr-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 937,
+        "webm": 1537,
+        "poster": 146
+      }
+    },
+    {
+      "nombre": "movimientos-tablero",
+      "titulo": "Movimientos y tablero",
+      "descripcion": "Cada cobro con su estado (Pagado, Pendiente, Vencido) y en el tablero lo cobrado en la semana.",
+      "duracion_s": 19.8,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/movimientos-tablero.mp4",
+        "webm": "/videos/movimientos-tablero.webm",
+        "poster": "/videos/movimientos-tablero-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 744,
+        "webm": 1164,
+        "poster": 94
+      }
+    },
+    {
+      "nombre": "demo-completo",
+      "titulo": "Así se cobra con Transfiéreme",
+      "descripcion": "Los cuatro flujos de la app seguidos y un cierre con QR a transfiereme.asware.com.mx.",
+      "duracion_s": 73.3,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/demo-completo.mp4",
+        "webm": "/videos/demo-completo.webm",
+        "poster": "/videos/demo-completo-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 3070,
+        "webm": 4312,
+        "poster": 104
+      }
+    }
+  ]
+}

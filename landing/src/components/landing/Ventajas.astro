@@ -1,0 +1,226 @@
+---
+---
+
+<section id="ventajas" aria-labelledby="ventajas-titulo">
+  <div class="container vt">
+    <p class="vt-sobre">Ventajas</p>
+    <h2 id="ventajas-titulo" class="vt-titulo reveal"><span>Cobra completo.</span><span class="vt-marca">Sin comisiones.</span></h2>
+    <p class="vt-intro reveal">Con terminal, el banco se queda con un porcentaje de cada venta. Con transfiéreme no pagas comisión: tu cliente te transfiere por CoDi y recibes el monto completo en tu CLABE.</p>
+    <table class="vt-tabla reveal">
+      <caption class="sr-only">Cobrar con terminal contra cobrar con CoDi</caption>
+      <thead><tr><th scope="col"><span class="sr-only">Concepto</span></th><th scope="col">Con terminal</th><th scope="col">Con transfiéreme</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Comisión por venta</th><td data-etiqueta="Con terminal">Un porcentaje de cada cobro, más IVA</td><td data-etiqueta="Con transfiéreme">Ninguna. transfiéreme no cobra comisión</td></tr>
+        <tr><th scope="row">Equipo</th><td data-etiqueta="Con terminal">Compras o rentas la terminal</td><td data-etiqueta="Con transfiéreme">Tu celular y tu QR impreso</td></tr>
+        <tr><th scope="row">Cuándo ves el dinero</th><td data-etiqueta="Con terminal">Depósito posterior, según tu banco</td><td data-etiqueta="Con transfiéreme">Llega a tu CLABE y ves «¡Te pagaron!» al momento</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  #ventajas {
+    background: var(--bg);
+    padding-block: 64px;
+    scroll-margin-top: 88px;
+  }
+
+  .vt {
+    text-align: left;
+  }
+
+  .vt-sobre {
+    margin: 0 0 var(--space-3);
+    color: var(--primary);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: var(--type-sobretitulo-line);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .vt-titulo {
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.25rem, 1.2rem + 4.4vw, 4.5rem);
+    line-height: 1.0;
+    letter-spacing: -0.035em;
+  }
+
+  .vt-titulo span {
+    display: block;
+  }
+
+  .vt-marca {
+    color: var(--primary);
+  }
+
+  .vt-intro {
+    max-width: 36rem;
+    margin: 24px 0 0;
+    color: var(--ink-muted);
+    font-family: var(--font-ui);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
+  }
+
+  .vt-tabla {
+    width: 100%;
+    margin-top: 56px;
+    border-collapse: collapse;
+    background: transparent;
+    border: none;
+  }
+
+  .vt-tabla tr {
+    border-top: 1px solid var(--outline-soft);
+  }
+
+  .vt-tabla tbody tr:last-child {
+    border-bottom: 1px solid var(--outline-soft);
+  }
+
+  .vt-tabla th,
+  .vt-tabla td {
+    padding: 20px 16px 20px 0;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .vt-tabla thead th {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+
+  .vt-tabla thead th:nth-child(3) {
+    color: var(--primary);
+  }
+
+  .vt-tabla th[scope='row'] {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 24px;
+    color: var(--ink);
+  }
+
+  .vt-tabla td:nth-of-type(1) {
+    font-family: var(--font-ui);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
+    color: var(--ink-muted);
+  }
+
+  .vt-tabla td:nth-of-type(2) {
+    font-family: var(--font-display);
+    font-size: 20px;
+    line-height: 26px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (min-width: 720px) {
+    .vt-tabla th[scope='row'],
+    .vt-tabla thead th:first-child {
+      width: 28%;
+    }
+
+    .vt-tabla thead th:nth-child(2),
+    .vt-tabla td:nth-of-type(1) {
+      width: 36%;
+    }
+
+    .vt-tabla thead th:nth-child(3),
+    .vt-tabla td:nth-of-type(2) {
+      width: 36%;
+    }
+  }
+
+  @media (max-width: 719px) {
+    .vt-tabla thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .vt-tabla,
+    .vt-tabla tbody,
+    .vt-tabla tr,
+    .vt-tabla th,
+    .vt-tabla td {
+      display: block;
+    }
+
+    .vt-tabla tbody tr {
+      padding-block: 20px;
+      border-top: 1px solid var(--outline-soft);
+    }
+
+    .vt-tabla tbody tr:last-child {
+      border-bottom: 1px solid var(--outline-soft);
+    }
+
+    .vt-tabla th[scope='row'] {
+      width: 100%;
+      padding: 0 0 12px 0;
+    }
+
+    .vt-tabla td {
+      width: 100%;
+      padding: 12px 0 0 0;
+    }
+
+    .vt-tabla td::before {
+      content: attr(data-etiqueta);
+      display: block;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-muted);
+      margin-bottom: 4px;
+    }
+  }
+
+  @media (min-width: 960px) {
+    #ventajas {
+      padding-block: 120px;
+    }
+
+    .vt-tabla td:nth-of-type(2) {
+      font-size: 24px;
+      line-height: 30px;
+    }
+  }
+</style>

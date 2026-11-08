@@ -1,0 +1,114 @@
+---
+// Nav.astro — Barra superior de navegación
+---
+
+<header class="nav-header">
+  <div class="container nav-container">
+    <a href="/" class="nav-logo" aria-label="Transfiéreme - Inicio">
+      <picture>
+        <source srcset="/logos/acento-logo-oscuro.svg" media="(prefers-color-scheme: dark)" />
+        <img
+          src="/logos/acento-logo-claro.svg"
+          alt="Transfiéreme"
+          width="180"
+          height="40"
+          loading="eager"
+          decoding="async"
+        />
+      </picture>
+    </a>
+
+    <nav class="nav-links" aria-label="Navegación principal">
+      <a href="#como-funciona" class="nav-link">Cómo funciona</a>
+      <a href="#funciones" class="nav-link">Funciones</a>
+      <a href="#preguntas" class="nav-link">Preguntas</a>
+      <a href="https://transfiereme.asware.com.mx/" class="nav-link nav-link-entrar">Entrar</a>
+    </nav>
+
+    <div class="nav-actions">
+      <a href="https://transfiereme.asware.com.mx/" class="btn btn-primary nav-btn-cta">
+        Crear cuenta
+      </a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .nav-header {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    background-color: var(--surface);
+    border-bottom: 1px solid var(--outline-soft);
+  }
+
+  .nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 72px;
+    gap: var(--space-4);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    text-decoration: none;
+  }
+
+  .nav-logo img {
+    height: 36px;
+    width: auto;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    padding: 0 var(--space-2);
+    font-size: var(--type-boton-size);
+    line-height: var(--type-boton-line);
+    font-weight: 600;
+    color: var(--ink-muted);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+
+  .nav-link:hover {
+    color: var(--primary);
+  }
+
+  .nav-link-entrar {
+    color: var(--primary);
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-btn-cta {
+    min-height: 48px;
+    height: 48px;
+    padding-inline: var(--space-5);
+    font-size: var(--type-boton-size);
+    line-height: var(--type-boton-line);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 719px) {
+    .nav-links {
+      display: none;
+    }
+  }
+</style>

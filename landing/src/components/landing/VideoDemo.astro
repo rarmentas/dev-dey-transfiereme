@@ -1,0 +1,64 @@
+---
+import VideoClip from './VideoClip.astro';
+---
+
+<section id="demo" class="demo" aria-labelledby="demo-titulo">
+  <div class="container">
+    <div class="demo-copy reveal">
+      <h2 id="demo-titulo">Míralo en acción</h2>
+      <p class="lead">Un cobro con CoDi, de la venta al aviso de pago.</p>
+    </div>
+
+    <div class="demo-media reveal">
+      <VideoClip
+        nombre="demo-completo"
+        titulo="Míralo en acción"
+        desc="Un cobro con CoDi, de la venta al aviso de pago."
+        aspecto="16/9"
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  .demo {
+    scroll-margin-top: calc(var(--space-16) + var(--space-6));
+    padding-block: var(--space-16);
+  }
+
+  .demo-copy {
+    min-width: 0;
+    max-width: 36rem;
+  }
+
+  .demo-copy h2 {
+    font-size: clamp(var(--type-titulo-1-size), 2.2vw + 1rem, var(--type-display-size));
+    line-height: 1.12;
+    font-weight: var(--type-display-weight);
+    letter-spacing: var(--type-display-tracking);
+    text-wrap: balance;
+  }
+
+  .lead {
+    margin-top: var(--space-4);
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+  }
+
+  .demo-media {
+    width: 100%;
+    min-width: 0;
+    margin-top: var(--space-8);
+  }
+
+  @media (min-width: 900px) {
+    .demo {
+      padding-block: calc(var(--space-16) + var(--space-10));
+    }
+
+    .demo-media {
+      margin-top: var(--space-10);
+    }
+  }
+</style>
