@@ -38,7 +38,13 @@ class ResumenMovimientosPage extends ConsumerWidget {
               itemCount: movimientos.length,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                return _TarjetaMovimiento(movimiento: movimientos[index]);
+                final movimiento = movimientos[index];
+                return _TarjetaMovimiento(
+                  movimiento: movimiento,
+                  onRenombrar: movimiento.estado == 'pagado'
+                      ? () => _renombrar(context, ref, movimiento)
+                      : null,
+                );
               },
             );
           },
@@ -53,6 +59,32 @@ String mensajeErrorMovimientos(Object error) {
     return error.mensaje;
   }
   return 'No pudimos cargar los movimientos. Intente de nuevo.';
+}
+
+Future<void> _renombrar(
+  BuildContext context,
+  WidgetRef ref,
+  Movimiento movimiento,
+) async {
+  final nuevo = await showDialog<String>(
+    context: context,
+    builder: (context) =>
+        _DialogoRenombrar(inicial: movimiento.conceptoVisible),
+  );
+  if (nuevo == null || !context.mounted) {
+    return;
+  }
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref
+        .read(movimientosRepositoryProvider)
+        .renombrarConcepto(movimiento.id, nuevo);
+    ref.invalidate(movimientosProvider);
+  } catch (error) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(mensajeErrorMovimientos(error))),
+    );
+  }
 }
 
 Future<void> _recargar(WidgetRef ref) async {
@@ -121,10 +153,54 @@ class _ErrorMovimientos extends StatelessWidget {
   }
 }
 
+class _DialogoRenombrar extends StatefulWidget {
+  const _DialogoRenombrar({required this.inicial});
+
+  final String inicial;
+
+  @override
+  State<_DialogoRenombrar> createState() => _DialogoRenombrarState();
+}
+
+class _DialogoRenombrarState extends State<_DialogoRenombrar> {
+  late final TextEditingController _control = TextEditingController(
+    text: widget.inicial,
+  );
+
+  @override
+  void dispose() {
+    _control.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Renombrar'),
+      content: TextField(
+        controller: _control,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Concepto visible'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _control.text),
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
 class _TarjetaMovimiento extends StatelessWidget {
-  const _TarjetaMovimiento({required this.movimiento});
+  const _TarjetaMovimiento({required this.movimiento, this.onRenombrar});
 
   final Movimiento movimiento;
+  final VoidCallback? onRenombrar;
 
   @override
   Widget build(BuildContext context) {
@@ -147,6 +223,13 @@ class _TarjetaMovimiento extends StatelessWidget {
                     style: tema.textTheme.titleMedium,
                   ),
                 ),
+                if (onRenombrar != null)
+                  IconButton(
+                    tooltip: 'Renombrar',
+                    onPressed: onRenombrar,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
                 const SizedBox(width: 12),
                 Text(
                   movimiento.montoFormateado,
@@ -154,6 +237,15 @@ class _TarjetaMovimiento extends StatelessWidget {
                 ),
               ],
             ),
+            if (movimiento.muestraEnviado) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Enviado: ${movimiento.concepto}',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,

@@ -58,6 +58,9 @@ class MockMovimientosApi {
           if (options.path.contains(rutaMovimientosPrueba)) {
             llamadas++;
           }
+          if (options.method == 'PATCH') {
+            parches.add(options);
+          }
           handler.next(options);
         },
       ),
@@ -67,6 +70,7 @@ class MockMovimientosApi {
   final Dio dio;
   final DioAdapter adapter;
   int llamadas = 0;
+  final List<RequestOptions> parches = [];
 
   void responderLista(List<Map<String, dynamic>> movimientos) {
     adapter.reset();
@@ -78,6 +82,33 @@ class MockMovimientosApi {
 
   void responderVacio() {
     responderLista(const []);
+  }
+
+  /// El primer GET devuelve [antes]; los siguientes, [despues].
+  void prepararRenombre({
+    required List<Map<String, dynamic>> antes,
+    required List<Map<String, dynamic>> despues,
+    required int id,
+    int statusPatch = 200,
+    Map<String, dynamic>? cuerpoPatch,
+    Map<String, dynamic>? dataEsperada,
+  }) {
+    adapter.reset();
+    var lecturas = 0;
+    adapter.onGet(rutaMovimientosPrueba, (server) {
+      server.replyCallback(200, (_) {
+        lecturas += 1;
+        return lecturas == 1 ? antes : despues;
+      });
+    });
+    adapter.onPatch(
+      '$rutaMovimientosPrueba$id/',
+      (server) => server.reply(
+        statusPatch,
+        cuerpoPatch ?? <String, dynamic>{},
+      ),
+      data: dataEsperada,
+    );
   }
 
   void responderError(int status) {
