@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
+import '../../../core/ui/ui.dart';
 import 'olvido_contrasena_modal.dart';
 import 'registro_cuenta_modal.dart';
 
@@ -71,40 +72,40 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final sesion = ref.watch(sesionNotifierProvider);
     final tema = Theme.of(context);
-    final esOscuro = tema.brightness == Brightness.dark;
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
+            child: TfPantalla(
+              padding: const EdgeInsets.symmetric(
+                horizontal: kMargenPantalla,
+                vertical: TfSpace.s6,
+              ),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Image.asset(
-                      esOscuro
-                          ? 'assets/brand/logo-oscuro.png'
-                          : 'assets/brand/logo-claro.png',
-                      width: 200,
-                      semanticLabel: 'Transfiéreme',
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: TfLogo(width: 190),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: TfSpace.s8),
                     Text(
                       'Entra a cobrar',
-                      style: tema.textTheme.headlineMedium,
-                      textAlign: TextAlign.center,
+                      style: tema.textTheme.headlineLarge,
+                      textAlign: TextAlign.start,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: TfSpace.s2),
                     Text(
                       'Con su correo y contraseña de Transfiéreme.',
-                      style: tema.textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
+                      style: tema.textTheme.bodyMedium?.copyWith(
+                        color: tema.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.start,
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: TfSpace.s6),
                     TextFormField(
                       key: const Key('campo_correo'),
                       controller: _correoController,
@@ -112,7 +113,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       autocorrect: false,
                       decoration: const InputDecoration(
                         labelText: 'Correo',
-                        prefixIcon: Icon(Icons.mail_outline),
+                        prefixIcon: Icon(Icons.mail_outline_rounded),
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
@@ -121,14 +122,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: TfSpace.s4),
                     TextFormField(
                       key: const Key('campo_contrasena'),
                       controller: _contrasenaController,
                       obscureText: true,
                       decoration: const InputDecoration(
                         labelText: 'Contraseña',
-                        prefixIcon: Icon(Icons.lock_outline),
+                        prefixIcon: Icon(Icons.lock_outline_rounded),
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
@@ -138,55 +139,59 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       },
                     ),
                     if (sesion.errorMensaje != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        sesion.errorMensaje!,
-                        style: tema.textTheme.bodySmall?.copyWith(
-                          color: tema.colorScheme.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                      const SizedBox(height: TfSpace.s4),
+                      TfAvisoError(titulo: sesion.errorMensaje!),
                     ],
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      key: const Key('boton_entrar'),
-                      onPressed: sesion.cargando ? null : _enviar,
-                      child: sesion.cargando
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Entrar'),
+                    const SizedBox(height: TfSpace.s6),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton(
+                        key: const Key('boton_entrar'),
+                        onPressed: sesion.cargando ? null : _enviar,
+                        child: sesion.cargando
+                            ? const SizedBox(
+                                height: 22,
+                                width: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Entrar'),
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: sesion.cargando ? null : _abrirOlvido,
-                      child: const Text('¿Olvidó su contraseña?'),
+                    const SizedBox(height: TfSpace.s4),
+                    Center(
+                      child: TextButton(
+                        onPressed: sesion.cargando ? null : _abrirOlvido,
+                        child: const Text('¿Olvidó su contraseña?'),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          '¿Nuevo? ',
-                          style: tema.textTheme.bodyMedium,
-                        ),
-                        TextButton(
-                          onPressed: sesion.cargando
-                              ? null
-                              : () => mostrarRegistroCuentaModal(
-                                    context: context,
-                                  ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    const SizedBox(height: TfSpace.s2),
+                    Center(
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '¿Nuevo? ',
+                            style: tema.textTheme.bodyMedium?.copyWith(
+                              color: tema.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                          child: const Text('Cree su cuenta'),
-                        ),
-                      ],
+                          TextButton(
+                            onPressed: sesion.cargando
+                               ? null
+                                : () => mostrarRegistroCuentaModal(
+                                      context: context,
+                                    ),
+                            style: TextButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(48, 48),
+                            ),
+                            child: const Text('Cree su cuenta'),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
