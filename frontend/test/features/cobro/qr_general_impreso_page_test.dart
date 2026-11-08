@@ -11,15 +11,61 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: TfTheme.light,
-        home: const QrGeneralImpresoPage(qrString: qrStringMock),
+        home: const QrGeneralImpresoPage(
+          puedeMostrarQr: true,
+          qrString: qrStringMock,
+        ),
       ),
     );
     await tester.pump();
 
     expect(find.byType(QrImageView), findsOneWidget);
     expect(find.text('Mi QR'), findsOneWidget);
+    expect(
+      find.text(
+        'Su cliente puede pagar con CoDi desde la aplicación de su banco.',
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('Esperando'), findsNothing);
     expect(find.textContaining('venció'), findsNothing);
     expect(find.textContaining('vencimiento'), findsNothing);
   });
+
+  testWidgets('cuenta pendiente sin QR cobrable muestra mensaje claro',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TfTheme.light,
+        home: const QrGeneralImpresoPage(puedeMostrarQr: false),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(QrImageView), findsNothing);
+    expect(find.text('Mi QR'), findsOneWidget);
+    expect(find.text(kMensajeCuentaNoActivaQr), findsOneWidget);
+    expect(
+      find.textContaining('Su cliente puede pagar'),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+    'cuenta pendiente en tema oscuro usa tinta oscura sobre tarjeta blanca',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: TfTheme.dark,
+          home: const QrGeneralImpresoPage(puedeMostrarQr: false),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(kMensajeCuentaNoActivaQr), findsOneWidget);
+
+      final texto = tester.widget<Text>(find.text(kMensajeCuentaNoActivaQr));
+      expect(texto.style?.color, TfColors.light.pendingText);
+    },
+  );
 }
