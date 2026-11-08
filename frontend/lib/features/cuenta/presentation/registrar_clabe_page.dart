@@ -70,13 +70,16 @@ class _RegistrarClabePageState extends ConsumerState<RegistrarClabePage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Registrar CLABE')),
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxAnchoContenido),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: kMargenPantalla,
-                vertical: TfSpace.s6,
+              padding: const EdgeInsets.fromLTRB(
+                kMargenPantalla,
+                24,
+                kMargenPantalla,
+                TfSpace.s6,
               ),
               child: Form(
                 key: _formKey,

@@ -260,43 +260,60 @@ class _TarjetaMovimiento extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          movimiento.conceptoVisible,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          style: (tema.textTheme.titleSmall ?? const TextStyle()).copyWith(
-                            fontWeight: FontWeight.w600,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxMontoWidth = constraints.maxWidth * 0.45;
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    movimiento.conceptoVisible,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                    style: (tema.textTheme.titleSmall ??
+                                            const TextStyle())
+                                        .copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (onRenombrar != null)
+                                  IconButton(
+                                    tooltip: 'Renombrar',
+                                    onPressed: onRenombrar,
+                                    visualDensity: VisualDensity.compact,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 48,
+                                      minHeight: 48,
+                                    ),
+                                    icon: const Icon(Icons.edit_rounded,
+                                        size: 18),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
-                      if (onRenombrar != null)
-                        IconButton(
-                          tooltip: 'Renombrar',
-                          onPressed: onRenombrar,
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 48,
-                            minHeight: 48,
+                          const SizedBox(width: 12),
+                          ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: maxMontoWidth),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                movimiento.montoFormateado,
+                                style: estiloMonto,
+                              ),
+                            ),
                           ),
-                          icon: const Icon(Icons.edit_rounded, size: 18),
-                        ),
-                      const SizedBox(width: TfSpace.s2),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            movimiento.montoFormateado,
-                            style: estiloMonto,
-                          ),
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                   if (movimiento.muestraEnviado) ...[
                     const SizedBox(height: TfSpace.s1),

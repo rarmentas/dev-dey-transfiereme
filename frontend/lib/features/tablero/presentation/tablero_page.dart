@@ -265,34 +265,45 @@ class _FilaTableroTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          fila.etiqueta,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          style: (tema.textTheme.titleMedium ?? const TextStyle()).copyWith(
-                            color: color,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: TfSpace.s3),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            fila.totalFormateado,
-                            style: (tema.textTheme.titleMedium ?? const TextStyle()).copyWith(
-                              color: color,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxMontoWidth = constraints.maxWidth * 0.45;
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              fila.etiqueta,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: (tema.textTheme.titleMedium ??
+                                      const TextStyle())
+                                  .copyWith(
+                                color: color,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    ],
+                          const SizedBox(width: 12),
+                          ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: maxMontoWidth),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                fila.totalFormateado,
+                                style: (tema.textTheme.titleMedium ??
+                                        const TextStyle())
+                                    .copyWith(
+                                  color: color,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: TfSpace.s1),
                   Row(
