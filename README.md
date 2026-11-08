@@ -6,7 +6,7 @@ Proyecto para el **DevDay Exchange Community Hackathon CDMX** (7 de noviembre de
 
 Reto: construir con CoDi usando la API abierta de pey. Documentación: [https://docs.pey.mx](https://docs.pey.mx). Base: `https://api.pey.mx`.
 
-> **Estado: propuesta, sin implementar.** Este repositorio solo contiene documentación. No hay aplicación, endpoints ni resultados. Lo descrito abajo es el plan del día. Donde algo aún no existe, está marcado como **pendiente**.
+> **Estado: scaffold local en desarrollo.** Ya hay backend Django, app Flutter (web y Android) y arranque local documentado. El cobro con pey, sesión del vendedor y tablero siguen **pendientes** en MR posteriores.
 
 Nombre tentativo: **Cody**. Se puede cambiar durante el hackatón.
 
@@ -98,7 +98,7 @@ Resumen de ventas y tablero
 
 Cody usa la misma plataforma que dent-intec: Flutter (web y Android), Django 6 + DRF, Postgres 17, sesión por cookie y Gunicorn, más la API de pey para el cobro. El detalle y las versiones están en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md). BMAD no entra.
 
-Nada de eso está instalado en este repositorio todavía.
+En este repositorio ya está el **scaffold local** del stack (Flutter web/Android, Django 6 + DRF, Postgres 17 en Docker). Cobro con pey, sesión del vendedor y tablero **aún no** están implementados.
 
 | Capa | Elección |
 | --- | --- |
@@ -110,29 +110,20 @@ Nada de eso está instalado en este repositorio todavía.
 
 ## Cómo correrlo
 
-**Pendiente.** Aún no hay código ni servidor. Cuando exista la app, el arranque previsto es:
+Requisitos: Docker, Python 3.12, Flutter 3.47.x (ver [stack](docs/stack-tecnologico/000-stack.md)).
 
-1. Clonar este repositorio e instalar dependencias (**pendiente**: aún no hay `backend/requirements.txt` ni `frontend/pubspec.yaml`; el stack ya está fijado en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md)).
-2. Crear un archivo `backend/.env` (no se incluye en el repo) con:
+1. Clonar el repositorio.
+2. Ejecutar `./scripts/upgrade.sh` (venv en `backend/.venv`, dependencias y `flutter pub get`).
+3. Copiar `backend/.env.example` a `backend/.env` y ajustar valores **locales** (sin credenciales de pey; véase [variables de entorno](docs/desarrollo/variables-entorno.md)).
+4. Ejecutar `./scripts/dev-start.sh` (incluye Postgres vía Compose en el puerto **5433**, migraciones, Django, Flutter web y proxy). Cuando el script confirme la API, use **http://127.0.0.1:8000** (origen único). Prueba: `curl http://127.0.0.1:8000/api/salud/`. La primera vez, Flutter puede seguir compilando unos minutos aunque la API ya responda.
 
-```bash
-PEY_API_KEY=tu_llave_de_pey
-# Secreto que da el portal de pey al crear el webhook (whsec_...).
-PEY_WEBHOOK_SECRET=tu_secreto_de_webhook
-# URL pública para que pey entregue los webhooks. Pendiente de definir.
-WEBHOOK_BASE_URL=https://tu-tunel-o-dominio.example
-```
-
-3. Levantar la app en local (**pendiente**: no hay comando de arranque definido) y exponer la ruta de webhooks con un túnel si pey debe alcanzar la máquina.
-4. Registrar esa URL en [portal.mipey.mx/developers](https://portal.mipey.mx/developers) (engrane de la API key → webhook) y guardar el secreto.
-
-Sustituye los placeholders por llaves reales. No subas esas llaves al repositorio.
+Para integración con pey más adelante: `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` y `WEBHOOK_BASE_URL` van solo en el servidor o en su `.env` local fuera del repo; no son necesarias para este scaffold.
 
 ## Nota de pruebas
 
 pey se prueba en **producción** (el ambiente de pruebas de pey todavía no está disponible). Usar montos de **$0.01**; lo que se paga no se devuelve.
 
-No hay suite de pruebas, cobros de ejemplo ni registro de pagos de este proyecto: **pendiente**.
+Pruebas **acotadas** del scaffold: `manage.py check`, `manage.py test config.tests`, `flutter analyze` y un smoke test en `frontend/test/widget_smoke_test.dart`. Cobros reales con pey, integración de punta a punta y registro de pagos: **pendiente**.
 
 ## Roadmap del día del hackatón
 
