@@ -38,6 +38,11 @@ class HomeAutenticadoPage extends ConsumerWidget {
                 style: tema.textTheme.bodyLarge,
               ),
               const Spacer(),
+              OutlinedButton(
+                onPressed: () => context.push(kRutaMovimientos),
+                child: const Text('Ver movimientos'),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: sesion.cargando
                     ? null
