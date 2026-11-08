@@ -1,7 +1,194 @@
 ---
-// Funciones.astro — Placeholder (será completado por el builder correspondiente)
+import VideoClip from './VideoClip.astro';
+
+const funciones = [
+  {
+    nombre: 'venta-qr',
+    titulo: 'Venta por QR',
+    desc: 'Arma la venta con el monto y muestra el QR. Tu cliente lo escanea con la app de su banco.',
+    canal: 'QR de venta',
+    tono: 'venta',
+  },
+  {
+    nombre: 'venta-notificacion',
+    titulo: 'Venta por notificación',
+    desc: 'Captura el número de tu cliente y le llega la solicitud de cobro a su banco.',
+    canal: 'Notificación',
+    tono: 'notificacion',
+  },
+  {
+    nombre: 'mi-qr',
+    titulo: 'Mi QR',
+    desc: 'Un QR fijo tuyo para tenerlo en el mostrador, también listo para imprimir.',
+    canal: 'Mi QR',
+    tono: 'general',
+  },
+  {
+    nombre: 'movimientos-tablero',
+    titulo: 'Movimientos y tablero',
+    desc: 'Consulta cada cobro y su estado, y revisa en el tablero cuánto llevas.',
+    canal: 'Tablero',
+    tono: 'tablero',
+  },
+] as const;
 ---
 
-<section id="funciones">
-  <h2></h2>
+<section id="funciones" class="fn" aria-labelledby="fn-titulo">
+  <div class="container">
+    <header class="fn-encabezado reveal">
+      <h2 id="fn-titulo">Todo lo que necesitas para cobrar</h2>
+      <p class="lead">Por QR, por notificación, con tu QR del mostrador y en el tablero.</p>
+    </header>
+
+    <div class="fn-lista">
+      {
+        funciones.map((fn, indice) => (
+          <article
+            class:list={['fn-fila', 'reveal', `tono-${fn.tono}`]}
+            style={`transition-delay: ${indice * 120}ms`}
+          >
+            <div class="fn-copy">
+              <span class:list={['chip', 'chip-canal']}>{fn.canal}</span>
+              <h3>{fn.titulo}</h3>
+              <p>{fn.desc}</p>
+            </div>
+            <div class="fn-media">
+              <VideoClip nombre={fn.nombre} titulo={fn.titulo} desc={fn.desc} aspecto="9/19.5" />
+            </div>
+          </article>
+        ))
+      }
+    </div>
+  </div>
 </section>
+
+<style>
+  .fn {
+    scroll-margin-top: calc(var(--space-16) + var(--space-6));
+    padding-block: var(--space-16);
+    background: var(--surface);
+  }
+
+  .fn-encabezado {
+    max-width: 40rem;
+    margin-bottom: var(--space-12);
+  }
+
+  .fn-encabezado h2 {
+    font-size: clamp(var(--type-titulo-1-size), 2.2vw + 1rem, var(--type-display-size));
+    line-height: 1.12;
+    font-weight: var(--type-display-weight);
+    letter-spacing: var(--type-display-tracking);
+    text-wrap: balance;
+  }
+
+  .lead {
+    margin-top: var(--space-4);
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+  }
+
+  .fn-lista {
+    display: grid;
+    gap: var(--space-12);
+  }
+
+  .fn-fila {
+    --canal: var(--primary);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+  }
+
+  .tono-venta {
+    --canal: var(--chan-qr-venta);
+  }
+
+  .tono-notificacion {
+    --canal: var(--chan-notificacion);
+  }
+
+  .tono-general {
+    --canal: var(--chan-qr-general);
+  }
+
+  .tono-tablero {
+    --canal: var(--primary);
+  }
+
+  .fn-copy {
+    min-width: 0;
+    max-width: 38rem;
+  }
+
+  .chip-canal {
+    background: color-mix(in srgb, var(--canal) 14%, var(--surface));
+    color: var(--ink);
+    border: 1px solid color-mix(in srgb, var(--canal) 36%, var(--outline-soft));
+  }
+
+  .chip-canal::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: var(--radius-full);
+    background: var(--canal);
+  }
+
+  .fn-copy h3 {
+    margin-top: var(--space-3);
+    font-size: var(--type-titulo-2-size);
+    line-height: var(--type-titulo-2-line);
+    font-weight: var(--type-titulo-2-weight);
+  }
+
+  .fn-copy p {
+    margin-top: var(--space-3);
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+  }
+
+  .fn-media {
+    --clip-ancho: 220px;
+    order: -1;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  @media (min-width: 900px) {
+    .fn {
+      padding-block: calc(var(--space-16) + var(--space-10));
+    }
+
+    .fn-lista {
+      gap: var(--space-16);
+    }
+
+    .fn-fila {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: var(--space-12);
+    }
+
+    .fn-media {
+      --clip-ancho: 240px;
+    }
+
+    .fn-fila:nth-child(odd) .fn-media {
+      order: 1;
+    }
+
+    .fn-fila:nth-child(even) .fn-media {
+      order: 0;
+    }
+
+    .fn-fila:nth-child(even) .fn-copy {
+      order: 1;
+    }
+  }
+</style>
