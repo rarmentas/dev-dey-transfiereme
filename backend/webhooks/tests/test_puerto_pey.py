@@ -2,7 +2,6 @@ import base64
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from math import floor
 from unittest.mock import patch
 
 from django.db import IntegrityError
@@ -12,40 +11,13 @@ from standardwebhooks import Webhook
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
 from webhooks.models import AvisoRecibido
-
-SECRETO = "whsec_" + base64.b64encode(
-    b"prueba-historia-1.5-no-es-secreto-real"
-).decode()
-
-RUTA = "/api/webhooks/pey/"
-
-
-def _encabezados(cuerpo: str, msg_id: str, cuando: datetime) -> dict[str, str]:
-    firma = Webhook(SECRETO).sign(msg_id, cuando, cuerpo)
-    marca = str(floor(cuando.replace(tzinfo=timezone.utc).timestamp()))
-    return {
-        "webhook-id": msg_id,
-        "webhook-timestamp": marca,
-        "webhook-signature": firma,
-    }
-
-
-def _cuerpo_qr(
-    *,
-    transaction_id: str,
-    codi_qr_id: str,
-    amount: object = 25,
-) -> str:
-    return json.dumps(
-        {
-            "type": "codi.qr.payment_received",
-            "amount": amount,
-            "concept": "Transferencia",
-            "transactionId": transaction_id,
-            "codiQrId": codi_qr_id,
-        },
-        separators=(",", ":"),
-    )
+from webhooks.tests.support.pey_webhook import (
+    RUTA,
+    SECRETO,
+    cuerpo_qr as _cuerpo_qr,
+    encabezados as _encabezados,
+    post_firmado,
+)
 
 
 @override_settings(PEY_WEBHOOK_SECRET=SECRETO)
@@ -61,13 +33,11 @@ class PuertoWebhookPeyTests(TestCase):
         cuando: datetime | None = None,
         headers: dict[str, str] | None = None,
     ):
-        cuando = cuando or datetime.now(timezone.utc)
-        if headers is None:
-            headers = _encabezados(cuerpo, msg_id, cuando)
-        return self.client.post(
-            RUTA,
-            data=cuerpo,
-            content_type="application/json",
+        return post_firmado(
+            self.client,
+            cuerpo,
+            msg_id,
+            cuando=cuando,
             headers=headers,
         )
 
@@ -78,6 +48,7 @@ class PuertoWebhookPeyTests(TestCase):
             monto=Decimal("25.00"),
             concepto="Transferencia",
             pey_qr_id=pey_qr_id,
+            qr_string=f"qr-test-venta-{pey_qr_id}",
         )
         return Movimiento.objects.create(
             comercio=self.comercio,
@@ -95,6 +66,7 @@ class PuertoWebhookPeyTests(TestCase):
             monto=Decimal("0.00"),
             concepto="Transferencia",
             pey_qr_id=pey_qr_id,
+            qr_string=f"qr-test-general-{pey_qr_id}",
         )
 
     def test_firma_invalida_no_escribe_ni_marca_pagado(self) -> None:

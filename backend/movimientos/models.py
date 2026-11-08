@@ -1,5 +1,6 @@
 """Cobro enviado a pey y movimiento que ve el vendedor. No llama a pey ni a la red."""
 
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -247,6 +248,12 @@ class Cobro(models.Model):
         unique=True,
         verbose_name="id de transacción en pey",
     )
+    qr_string = models.CharField(
+        max_length=4096,
+        blank=True,
+        default="",
+        verbose_name="cadena del QR",
+    )
 
     class Meta:
         verbose_name = "cobro"
@@ -288,6 +295,11 @@ class Cobro(models.Model):
                 ),
                 name="cobro_ids_pey_segun_canal",
             ),
+            models.UniqueConstraint(
+                fields=["comercio"],
+                condition=models.Q(canal=Movimiento.Canal.QR_GENERAL),
+                name="cobro_qr_general_unico_por_comercio",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -298,4 +310,9 @@ class Cobro(models.Model):
             self.pey_qr_id = None
         if self.pey_transaction_id == "":
             self.pey_transaction_id = None
+        if self.canal in (
+            Movimiento.Canal.QR_GENERAL,
+            Movimiento.Canal.QR_VENTA,
+        ) and not self.qr_string.strip():
+            raise ValidationError("Los cobros por QR requieren qr_string.")
         super().save(*args, **kwargs)

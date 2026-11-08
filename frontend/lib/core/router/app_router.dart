@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
 import '../../features/sesion/presentation/olvido_contrasena_page.dart';
@@ -17,6 +18,7 @@ const kRutaRegistro = '/registro';
 const kRutaRegistroConfirmar = '/registro/confirmar';
 const kRutaOlvido = '/olvido-contrasena';
 const kRutaOlvidoRestablecer = '/olvido-contrasena/restablecer';
+const kRutaMovimientos = '/movimientos';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -100,6 +102,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           }
           return OlvidoRestablecerPage(correo: correo);
         },
+      ),
+      GoRoute(
+        path: kRutaMovimientos,
+        builder: (context, state) => const ResumenMovimientosPage(),
       ),
     ],
   );
