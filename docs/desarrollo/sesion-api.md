@@ -23,7 +23,7 @@ Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión 
 
 ## Webhook de pey
 
-`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`.
+`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`. En QR general, el `codiQrId` del aviso debe coincidir con el `pey_qr_id` del cobro persistido en el alta; el movimiento pagado se crea con ese aviso, no en el `POST /api/cobro/qr-general/`.
 
 ## Entrar
 
@@ -115,6 +115,22 @@ Cuerpo JSON: `{}` (sin campos de negocio obligatorios).
 Respuesta `201` en la primera alta: `{ "qr_string": "...", "pey_qr_id": "..." }`. Si el QR general ya existe para ese comercio, `200` con los mismos campos (sin volver a llamar a pey). Cuenta inactiva: `400` con `{"detail": "...", "tipo": "INVALID_STATE"}` y sin persistir cobro. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 
 El alta no crea movimientos; los pagos sobre ese QR se registran vía webhook (historias posteriores).
+
+## Alta de venta (QR)
+
+`POST /api/ventas/` crea un cobro `qr_venta` pendiente y su movimiento. El comercio sale de la sesión; `comercio` o `comercio_id` en el cuerpo o en la cadena de consulta responden `400`.
+
+| Método | Ruta | Autenticación |
+| --- | --- | --- |
+| `POST` | `/api/ventas/` | Sesión activa |
+
+Cuerpo JSON: `monto` (cadena o número, por ejemplo `"0.01"`), `concepto` (opcional) y `referencia` (opcional). El monto tiene que ser mayor que 0, con hasta 2 decimales. Concepto vacío, en blanco o null se envía y se guarda como `Transferencia`. Referencia vacía o null se envía como `"0"`; si viene, tiene que ser numérica de 1 a 7 dígitos. Un cuerpo que no es JSON legible (entero enorme o exponente fuera de rango) responde `400`. El QR vence a los 600 segundos.
+
+Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`qr_venta`), `monto` (cadena con dos decimales), `concepto`, `estado` (`pendiente`), `vence_en`, `qr_string` y `origen`.
+
+Sin sesión: `403` del middleware. Usuario sin membresía: `403`. Monto, referencia o concepto inválidos: `400`. Cuenta que no está ACTIVE: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el cobro: `502` con `detail` (`pey no pudo crear el cobro.`), `tipo`, `request_id` y `puede_haberse_creado`; no queda cobro ni movimiento. La respuesta no incluye la API key.
+
+El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respuesta del alta. La referencia se envía a pey como `numRef` y no se guarda en el movimiento.
 
 ## Semilla de desarrollo
 
