@@ -114,7 +114,7 @@ backend:test:
       - .cache/pip
   script:
     - .venv/bin/python manage.py migrate --noinput
-    - .venv/bin/python manage.py test config.tests ambito.tests sesion.tests movimientos.tests
+    - .venv/bin/python manage.py test config.tests ambito.tests sesion.tests movimientos.tests webhooks.tests
   needs:
     - backend:check
 

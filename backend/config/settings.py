@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "ambito",
     "sesion",
     "movimientos",
+    "webhooks",
 ]
 
 MIDDLEWARE = [
@@ -114,6 +115,9 @@ else:
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Vacío: POST /api/webhooks/pey/ rechaza todo con 401. No hay modo sin firma.
+PEY_WEBHOOK_SECRET = os.environ.get("PEY_WEBHOOK_SECRET", "")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

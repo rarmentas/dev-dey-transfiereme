@@ -10,7 +10,7 @@ El middleware `CierraApiSinSesionMiddleware` responde `403` con `{"detail": "Deb
 | --- | --- | --- |
 | `/api/sesion/entrar/` | `POST` | Inicio de sesión |
 | `/api/sesion/estado/` | Cualquiera | El propio endpoint devuelve `403` sin sesión |
-| `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login) |
+| `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login). La ruta concreta es `POST /api/webhooks/pey/` |
 | `/api/salud/` | `GET` | Comprobación de despliegue y base de datos |
 
 Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión activa antes de ejecutar la vista.
@@ -20,6 +20,10 @@ Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión 
 | `POST` | `/api/sesion/entrar/` | No requiere sesión previa |
 | `POST` | `/api/sesion/salir/` | Sesión activa |
 | `GET` | `/api/sesion/estado/` | Sesión activa |
+
+## Webhook de pey
+
+`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`.
 
 ## Entrar
 

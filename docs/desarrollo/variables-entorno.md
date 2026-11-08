@@ -37,7 +37,7 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `ALLOWED_HOSTS` | No | Dominios del despliegue |
 | `WEBHOOK_BASE_URL` | No (URL pública) | Avisos; en producción `https://transfiereme.asware.com.mx` |
 | `PEY_API_KEY` | Sí | Bearer contra `https://api.pey.mx` |
-| `PEY_WEBHOOK_SECRET` | Sí | Firma Standard Webhooks (`whsec_...`) |
+| `PEY_WEBHOOK_SECRET` | Sí | Firma Standard Webhooks (`whsec_...`) de `POST /api/webhooks/pey/`. Vacío: la ruta rechaza todo con 401 |
 
 Esas cuatro secretas no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
 
