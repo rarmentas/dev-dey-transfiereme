@@ -3,6 +3,7 @@ class Movimiento {
   const Movimiento({
     required this.id,
     required this.monto,
+    required this.concepto,
     required this.conceptoVisible,
     required this.canal,
     required this.estado,
@@ -13,6 +14,9 @@ class Movimiento {
 
   final int id;
   final String monto;
+
+  /// Concepto enviado al pagador. No cambia al renombrar.
+  final String concepto;
   final String conceptoVisible;
   final String canal;
   final String estado;
@@ -26,6 +30,10 @@ class Movimiento {
     return Movimiento(
       id: json['id'] as int,
       monto: json['monto'] as String,
+      concepto:
+          json['concepto'] as String? ??
+          json['concepto_visible'] as String? ??
+          '',
       conceptoVisible: json['concepto_visible'] as String? ?? '',
       canal: json['canal'] as String? ?? '',
       estado: json['estado'] as String? ?? '',
@@ -36,6 +44,9 @@ class Movimiento {
   }
 
   bool get esPrueba => origen == origenDesarrollo;
+
+  /// El vendedor ya le puso un nombre distinto al que vio el pagador.
+  bool get muestraEnviado => conceptoVisible != concepto;
 
   /// Fecha que ve el vendedor: el pago si ya existe, si no la de alta.
   DateTime get fechaMostrada => pagadoEn ?? creadoEn;
