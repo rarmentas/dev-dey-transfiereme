@@ -83,3 +83,19 @@ class CierraApiSinSesionMiddlewareTests(TestCase):
         respuesta = _ejecutar_middleware(request)
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.content.decode(), "ok")
+
+    def test_alta_solicitar_sin_cookie_no_403_middleware(self) -> None:
+        respuesta = self.client.post(
+            "/api/sesion/alta/solicitar/",
+            {"correo": "prueba@ejemplo.mx", "contraseña": "Clave-segura-9"},
+            content_type="application/json",
+        )
+        self.assertNotEqual(respuesta.json().get("detail"), _MENSAJE_SIN_SESION)
+
+    def test_olvido_solicitar_sin_cookie_no_403_middleware(self) -> None:
+        respuesta = self.client.post(
+            "/api/sesion/olvido/solicitar/",
+            {"correo": "vendedor@demo.mx"},
+            content_type="application/json",
+        )
+        self.assertEqual(respuesta.status_code, 200)

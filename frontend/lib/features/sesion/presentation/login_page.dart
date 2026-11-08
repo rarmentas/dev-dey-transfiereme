@@ -6,7 +6,9 @@ import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.mensajeInicial});
+
+  final String? mensajeInicial;
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
@@ -16,6 +18,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _correoController = TextEditingController();
   final _contrasenaController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final aviso = widget.mensajeInicial;
+    if (aviso != null && aviso.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(aviso)),
+        );
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -35,14 +53,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (ok && mounted) {
       context.go(kRutaInicio);
     }
-  }
-
-  void _enlacePendiente() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Esta opción estará disponible pronto.'),
-      ),
-    );
   }
 
   @override
@@ -139,7 +149,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: sesion.cargando ? null : _enlacePendiente,
+                      onPressed: sesion.cargando
+                          ? null
+                          : () => context.push(kRutaOlvido),
                       child: const Text('¿Olvidó su contraseña?'),
                     ),
                     const SizedBox(height: 8),
@@ -152,8 +164,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           style: tema.textTheme.bodyMedium,
                         ),
                         TextButton(
-                          onPressed:
-                              sesion.cargando ? null : _enlacePendiente,
+                          onPressed: sesion.cargando
+                              ? null
+                              : () => context.push(kRutaRegistro),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             minimumSize: Size.zero,
