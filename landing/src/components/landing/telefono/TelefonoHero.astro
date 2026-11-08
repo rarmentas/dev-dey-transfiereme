@@ -80,8 +80,10 @@ const qr =
     const frame = () => {
       const animacion = escena.getAnimations()[0];
       const tiempo = animacion?.currentTime;
-      const ms = typeof tiempo === "number" ? tiempo : performance.now();
-      const t = (ms % ciclo) / ciclo;
+      const delay = animacion?.effect?.getTiming?.().delay;
+      const retraso = typeof delay === "number" ? delay : 0;
+      const ms = (typeof tiempo === "number" ? tiempo : performance.now()) - retraso;
+      const t = ((ms % ciclo) + ciclo) % ciclo / ciclo;
       let valor = 0;
       if (t >= fin && t < 0.96) {
         valor = 120;
