@@ -9,6 +9,7 @@ from ambito.scope import (
     filtrar_por_comercio,
     obtener_por_id_en_ambito,
     preparar_operacion_cobro,
+    rechazar_comercio_en_query,
     requerir_comercio,
 )
 
@@ -56,6 +57,16 @@ class DosComerciosTests(TestCase):
 
         comercio = preparar_operacion_cobro(request, {"monto": "0.01"})
         self.assertEqual(comercio, self.comercio_a)
+
+    def test_rechazar_comercio_en_query_rechaza_comercio_id(self) -> None:
+        query = self.factory.get(
+            "/api/movimientos/",
+            {"comercio_id": self.comercio_b.pk},
+        ).GET
+
+        with self.assertRaises(ComercioEnCuerpoError) as ctx:
+            rechazar_comercio_en_query(query)
+        self.assertIn("comercio_id", str(ctx.exception))
 
     def test_preparar_operacion_cobro_rechaza_comercio_en_cuerpo(self) -> None:
         request = self.factory.post("/api/cobro/")

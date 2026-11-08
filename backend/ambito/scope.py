@@ -3,12 +3,12 @@
 from typing import Any
 
 from django.db.models import Model, QuerySet
-from django.http import HttpRequest
+from django.http import HttpRequest, QueryDict
 
 from ambito.exceptions import ComercioEnCuerpoError, SinAmbitoError
 from ambito.models import Comercio
 
-# Claves prohibidas en el cuerpo (C5); case-sensitive.
+# Claves prohibidas en el cuerpo y en la query (C5); case-sensitive.
 _CLAVES_COMERCIO_EN_CUERPO = frozenset({"comercio", "comercio_id"})
 
 
@@ -19,6 +19,17 @@ def rechazar_comercio_en_cuerpo(datos: dict[str, Any]) -> None:
     Claves prohibidas: ``comercio``, ``comercio_id`` (case-sensitive).
     """
     for clave in datos:
+        if clave in _CLAVES_COMERCIO_EN_CUERPO:
+            raise ComercioEnCuerpoError(clave)
+
+
+def rechazar_comercio_en_query(parametros: QueryDict) -> None:
+    """
+    Rechaza si el cliente envía el comercio en la cadena de consulta.
+
+    Claves prohibidas: ``comercio``, ``comercio_id`` (case-sensitive).
+    """
+    for clave in parametros:
         if clave in _CLAVES_COMERCIO_EN_CUERPO:
             raise ComercioEnCuerpoError(clave)
 
