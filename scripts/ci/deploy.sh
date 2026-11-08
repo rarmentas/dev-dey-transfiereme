@@ -1,41 +1,52 @@
 #!/usr/bin/env bash
-# Deploy de producción desde GitLab CI. Lo invoca el job deploy:prod.
+# Deploy desde GitLab CI (test/prod). Lo invocan deploy:test y deploy:prod.
 # Requiere bash. La imagen alpine trae /bin/sh y no soporta arrays ni [[ ]].
 set -euo pipefail
 
 scope="${1:-}"
-if [[ "$scope" != "prod" ]]; then
-  echo "Indique prod." >&2
-  exit 2
-fi
+case "$scope" in
+  prod) prefix="PROD" ;;
+  test) prefix="TEST" ;;
+  *)
+    echo "Indique prod o test." >&2
+    exit 2
+    ;;
+esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 trap 'rm -f "${SSH_PRIVATE_KEY_FILE:-}"' EXIT
 # shellcheck disable=SC1091
-source "$ROOT/scripts/ci-install-env.sh" prod
+source "$ROOT/scripts/ci-install-env.sh" "$scope"
+
+ci_val() {
+  local name="${prefix}_$1"
+  printf '%s' "${!name}"
+}
 
 key_file="${SSH_PRIVATE_KEY_FILE:?}"
 app_env="$ROOT/backend/.env"
-remote_path="${PROD_DEPLOY_PATH%/}"
-ssh_port="$PROD_DEPLOY_PORT"
-ssh_host="$PROD_DEPLOY_HOST"
-ssh_user="$PROD_DEPLOY_USER"
-python_bin="${PROD_PYTHON:-python3.12}"
+remote_path="$(ci_val DEPLOY_PATH)"
+remote_path="${remote_path%/}"
+ssh_port="$(ci_val DEPLOY_PORT)"
+ssh_host="$(ci_val DEPLOY_HOST)"
+ssh_user="$(ci_val DEPLOY_USER)"
+python_var="${prefix}_PYTHON"
+python_bin="${!python_var:-python3.12}"
 
 if grep -Eq '^[[:space:]]*DEBUG[[:space:]]*=[[:space:]]*(True|true|1|yes|on)[[:space:]]*$' "$app_env"; then
-  echo "DEBUG debe ser False en producción." >&2
+  echo "DEBUG debe ser False en ${scope}." >&2
   exit 1
 fi
 
 if [[ ! "$remote_path" =~ ^(/[A-Za-z0-9._-]+){2,}$ || "$remote_path" == *..* ]]; then
-  echo "PROD_DEPLOY_PATH debe ser una ruta absoluta de al menos dos niveles, sin '..'." >&2
+  echo "${prefix}_DEPLOY_PATH debe ser una ruta absoluta de al menos dos niveles, sin '..'." >&2
   exit 1
 fi
 
 if [[ ! "$ssh_user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
-  echo "PROD_DEPLOY_USER no es un nombre de usuario válido." >&2
+  echo "${prefix}_DEPLOY_USER no es un nombre de usuario válido." >&2
   exit 1
 fi
 
@@ -86,11 +97,11 @@ ssh "${ssh_base[@]}" "$remote" mkdir -p "${remote_path}/backend" "${remote_path}
 
 remote_home="$(ssh "${ssh_base[@]}" "$remote" 'printf %s "$HOME"')"
 if [[ "$remote_path" == "$remote_home" ]]; then
-  echo "PROD_DEPLOY_PATH no puede ser el home del usuario." >&2
+  echo "${prefix}_DEPLOY_PATH no puede ser el home del usuario." >&2
   exit 1
 fi
 if ssh "${ssh_base[@]}" "$remote" test -e "${remote_path}/.ssh"; then
-  echo "PROD_DEPLOY_PATH contiene .ssh. Use un directorio solo para la app." >&2
+  echo "${prefix}_DEPLOY_PATH contiene .ssh. Use un directorio solo para la app." >&2
   exit 1
 fi
 

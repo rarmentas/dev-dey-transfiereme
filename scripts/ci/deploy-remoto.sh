@@ -44,7 +44,7 @@ if [[ "$(id -u)" -ne 0 ]] && ! sudo -n true; then
 fi
 
 if ! command -v "$python_bin" >/dev/null 2>&1 && [[ ! -x "$python_bin" ]]; then
-  echo "No está el intérprete ${python_bin}. Defina PROD_PYTHON en GitLab." >&2
+  echo "No está el intérprete ${python_bin}. Defina PROD_PYTHON o TEST_PYTHON en GitLab." >&2
   exit 1
 fi
 
