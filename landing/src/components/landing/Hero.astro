@@ -29,6 +29,8 @@ import TelefonoHero from './telefono/TelefonoHero.astro';
         <a class="btn btn-outline" href="#demo">Ver cómo funciona</a>
       </div>
 
+      <p class="hero__sesion reveal">¿Ya tienes cuenta? <a href="/entrar">Inicia sesión</a></p>
+
       <ul class="hero__pruebas reveal">
         <li>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -287,5 +289,18 @@ import TelefonoHero from './telefono/TelefonoHero.astro';
       animation: none;
       transform: none;
     }
+  }
+  .hero__sesion {
+    margin: var(--space-3) 0 0;
+    font-size: var(--type-boton-size);
+    color: var(--ink-muted);
+  }
+
+  .hero__sesion a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-min);
+    font-weight: 600;
+    color: var(--primary);
   }
 </style>

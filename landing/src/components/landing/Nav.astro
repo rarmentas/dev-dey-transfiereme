@@ -22,10 +22,10 @@
       <a href="#como-funciona" class="nav-link">Cómo funciona</a>
       <a href="#funciones" class="nav-link">Funciones</a>
       <a href="#preguntas" class="nav-link">Preguntas</a>
-      <a href="/entrar" class="nav-link nav-link-entrar">Entrar</a>
     </nav>
 
     <div class="nav-actions">
+      <a href="/entrar" class="nav-link nav-link-entrar">Iniciar sesión</a>
       <a href="/entrar" class="btn btn-primary nav-btn-cta">
         Crear cuenta
       </a>
@@ -90,11 +90,13 @@
 
   .nav-link-entrar {
     color: var(--primary);
+    white-space: nowrap;
   }
 
   .nav-actions {
     display: flex;
     align-items: center;
+    gap: var(--space-2);
   }
 
   .nav-btn-cta {
@@ -109,6 +111,39 @@
   @media (max-width: 719px) {
     .nav-links {
       display: none;
+    }
+
+    .nav-logo img {
+      height: 30px;
+    }
+
+    .nav-btn-cta {
+      padding-inline: var(--space-4);
+    }
+  }
+
+  @media (max-width: 439px) {
+    .nav-container {
+      gap: var(--space-2);
+    }
+
+    .nav-logo img {
+      height: 26px;
+    }
+
+    .nav-link-entrar,
+    .nav-btn-cta {
+      font-size: 0.875rem;
+    }
+
+    .nav-link-entrar {
+      padding: 0 var(--space-1);
+    }
+
+    .nav-btn-cta {
+      min-height: 44px;
+      height: 44px;
+      padding-inline: var(--space-3);
     }
   }
 </style>
