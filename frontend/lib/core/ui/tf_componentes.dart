@@ -166,8 +166,10 @@ class TfEstadoChip extends StatelessWidget {
         return TfEstadoChip.cancelado(key: key, etiqueta: etiqueta);
       case 'pendiente':
       case 'pending':
-      default:
         return TfEstadoChip.pendiente(key: key, etiqueta: etiqueta);
+      default:
+        // Estado desconocido: neutro, como el chip original.
+        return TfEstadoChip.cancelado(key: key, etiqueta: etiqueta);
     }
   }
 

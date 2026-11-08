@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../theme/transfiereme_theme.dart';
+import '../../../core/ui/ui.dart';
 import '../data/movimiento.dart';
 import '../data/movimientos_repository.dart';
 import 'movimientos_providers.dart';
@@ -11,43 +11,82 @@ class ResumenMovimientosPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tema = Theme.of(context);
     final asyncMovimientos = ref.watch(movimientosProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Movimientos')),
-      body: RefreshIndicator(
-        onRefresh: () => _recargar(ref),
-        child: asyncMovimientos.when(
-          loading: () =>
-              const _EstadoCentrado(child: CircularProgressIndicator()),
-          error: (error, _) => _EstadoCentrado(
-            child: _ErrorMovimientos(
-              mensaje: mensajeErrorMovimientos(error),
-              onReintentar: () => _recargar(ref),
-            ),
-          ),
-          data: (movimientos) {
-            if (movimientos.isEmpty) {
-              return const _EstadoCentrado(
-                child: Text('Aún no hay movimientos'),
-              );
-            }
-            return ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              itemCount: movimientos.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final movimiento = movimientos[index];
-                return _TarjetaMovimiento(
-                  movimiento: movimiento,
-                  onRenombrar: movimiento.estado == 'pagado'
-                      ? () => _renombrar(context, ref, movimiento)
-                      : null,
+      appBar: AppBar(
+        title: Text(
+          'Movimientos',
+          style: tema.textTheme.headlineLarge,
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: kMaxAnchoContenido),
+          child: RefreshIndicator(
+            onRefresh: () => _recargar(ref),
+            child: asyncMovimientos.when(
+              loading: () =>
+                  const _EstadoCentrado(child: CircularProgressIndicator()),
+              error: (error, _) => _EstadoCentrado(
+                child: _ErrorMovimientos(
+                  mensaje: mensajeErrorMovimientos(error),
+                  onReintentar: () => _recargar(ref),
+                ),
+              ),
+              data: (movimientos) {
+                if (movimientos.isEmpty) {
+                  return const _EstadoCentrado(
+                    child: TfVacio(
+                      icono: Icons.receipt_long_rounded,
+                      titulo: 'Aún no hay movimientos',
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
+                    kMargenPantalla,
+                    TfSpace.s3,
+                    kMargenPantalla,
+                    TfSpace.s6,
+                  ),
+                  itemCount: movimientos.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: TfSpace.s3),
+                  itemBuilder: (context, index) {
+                    final movimiento = movimientos[index];
+                    final mostrarSeparador = index == 0 ||
+                        movimiento.fechaCorta !=
+                            movimientos[index - 1].fechaCorta;
+                    final tarjeta = _TarjetaMovimiento(
+                      movimiento: movimiento,
+                      onRenombrar: movimiento.estado == 'pagado'
+                          ? () => _renombrar(context, ref, movimiento)
+                          : null,
+                    );
+                    if (mostrarSeparador) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: index == 0 ? TfSpace.s1 : TfSpace.s3,
+                              bottom: TfSpace.s2,
+                            ),
+                            child: TfSobretitulo(movimiento.fechaCorta),
+                          ),
+                          tarjeta,
+                        ],
+                      );
+                    }
+                    return tarjeta;
+                  },
                 );
               },
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
@@ -110,7 +149,12 @@ class _EstadoCentrado extends StatelessWidget {
           children: [
             ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(child: child),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: kMargenPantalla),
+                  child: child,
+                ),
+              ),
             ),
           ],
         );
@@ -127,27 +171,16 @@ class _ErrorMovimientos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            mensaje,
-            style: tema.textTheme.bodyLarge?.copyWith(
-              color: tema.colorScheme.error,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () async {
-              await onReintentar();
-            },
-            child: const Text('Reintentar'),
-          ),
-        ],
+      padding: const EdgeInsets.all(TfSpace.s4),
+      child: TfAvisoError(
+        titulo: mensaje,
+        accion: FilledButton(
+          onPressed: () async {
+            await onReintentar();
+          },
+          child: const Text('Reintentar'),
+        ),
       ),
     );
   }
@@ -205,84 +238,113 @@ class _TarjetaMovimiento extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final tf = tema.extension<TfColors>();
-    final colores = _coloresEstado(movimiento.estado, tf, tema.colorScheme);
+    final esVencido = movimiento.estado.toLowerCase().trim() == 'vencido';
+
+    final estiloMonto = (tema.textTheme.titleMedium ?? const TextStyle()).copyWith(
+      color: esVencido
+          ? tema.colorScheme.onSurfaceVariant
+          : tema.colorScheme.onSurface,
+      decoration: esVencido ? TextDecoration.lineThrough : null,
+      decorationColor: esVencido ? tema.colorScheme.onSurfaceVariant : null,
+    );
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
+        padding: const EdgeInsets.all(TfSpace.s4),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    movimiento.conceptoVisible,
-                    style: tema.textTheme.titleMedium,
+            TfIconoCanal(_iconoCanal(movimiento.canal)),
+            const SizedBox(width: TfSpace.s3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          movimiento.conceptoVisible,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: (tema.textTheme.titleSmall ?? const TextStyle()).copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (onRenombrar != null)
+                        IconButton(
+                          tooltip: 'Renombrar',
+                          onPressed: onRenombrar,
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                        ),
+                      const SizedBox(width: TfSpace.s2),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            movimiento.montoFormateado,
+                            style: estiloMonto,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                if (onRenombrar != null)
-                  IconButton(
-                    tooltip: 'Renombrar',
-                    onPressed: onRenombrar,
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                const SizedBox(width: 12),
-                Text(
-                  movimiento.montoFormateado,
-                  style: tema.textTheme.titleMedium,
-                ),
-              ],
-            ),
-            if (movimiento.muestraEnviado) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Enviado: ${movimiento.concepto}',
-                style: tema.textTheme.bodySmall?.copyWith(
-                  color: tema.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(movimiento.etiquetaCanal, style: tema.textTheme.bodySmall),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colores.fondo,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    child: Text(
-                      movimiento.etiquetaEstado,
-                      style: tema.textTheme.labelMedium?.copyWith(
-                        color: colores.texto,
+                  if (movimiento.muestraEnviado) ...[
+                    const SizedBox(height: TfSpace.s1),
+                    Text(
+                      'Enviado: ${movimiento.concepto}',
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                  ],
+                  const SizedBox(height: TfSpace.s2),
+                  Wrap(
+                    spacing: TfSpace.s2,
+                    runSpacing: TfSpace.s1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TfEstadoChip.desde(
+                        estado: movimiento.estado,
+                        etiqueta: movimiento.etiquetaEstado,
+                      ),
+                      if (movimiento.esPrueba)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          labelPadding:
+                              const EdgeInsets.symmetric(horizontal: TfSpace.s1),
+                          padding: EdgeInsets.zero,
+                          label: Text(
+                            'Prueba',
+                            style: tema.textTheme.labelSmall?.copyWith(
+                              color: tema.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        movimiento.etiquetaCanal,
+                        style: tema.textTheme.bodySmall,
+                      ),
+                      Text(
+                        movimiento.fechaCorta,
+                        style: tema.textTheme.bodySmall,
+                      ),
+                    ],
                   ),
-                ),
-                if (movimiento.esPrueba)
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                    padding: EdgeInsets.zero,
-                    label: Text('Prueba', style: tema.textTheme.labelSmall),
-                  ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(movimiento.fechaCorta, style: tema.textTheme.bodySmall),
           ],
         ),
       ),
@@ -290,34 +352,11 @@ class _TarjetaMovimiento extends StatelessWidget {
   }
 }
 
-class _ColoresEstado {
-  const _ColoresEstado(this.texto, this.fondo);
-
-  final Color texto;
-  final Color fondo;
-}
-
-_ColoresEstado _coloresEstado(String estado, TfColors? tf, ColorScheme scheme) {
-  switch (estado) {
-    case 'pagado':
-      return _ColoresEstado(
-        tf?.paidText ?? scheme.tertiary,
-        tf?.paidContainer ?? scheme.tertiaryContainer,
-      );
-    case 'pendiente':
-      return _ColoresEstado(
-        tf?.pendingText ?? scheme.onSecondaryContainer,
-        tf?.pendingContainer ?? scheme.secondaryContainer,
-      );
-    case 'vencido':
-      return _ColoresEstado(
-        tf?.expiredText ?? scheme.error,
-        tf?.expiredContainer ?? scheme.errorContainer,
-      );
-    default:
-      return _ColoresEstado(
-        scheme.onSurfaceVariant,
-        scheme.surfaceContainerHigh,
-      );
-  }
+IconData _iconoCanal(String canal) {
+  return switch (canal) {
+    'qr_general' => Icons.qr_code_2_rounded,
+    'qr_venta' => Icons.storefront_rounded,
+    'notificacion' => Icons.phonelink_ring_rounded,
+    _ => Icons.payment_rounded,
+  };
 }

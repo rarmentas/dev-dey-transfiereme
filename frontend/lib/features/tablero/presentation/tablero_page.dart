@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ui/ui.dart';
 import '../data/tablero.dart';
 import '../data/tablero_repository.dart';
 import 'tablero_providers.dart';
@@ -27,7 +28,12 @@ class TableroPage extends ConsumerWidget {
           ),
           data: (tablero) {
             if (tablero.estaVacio) {
-              return const _EstadoCentrado(child: Text('Aún no hay cobros'));
+              return const _EstadoCentrado(
+                child: TfVacio(
+                  icono: Icons.bar_chart_rounded,
+                  titulo: 'Aún no hay cobros',
+                ),
+              );
             }
             return _CuerpoTablero(tablero: tablero);
           },
@@ -61,38 +67,64 @@ class _CuerpoTablero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pruebas = tablero.desarrollo.filas.isNotEmpty;
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        _EncabezadoSeccion(
-          titulo: 'Cobrado',
-          total: tablero.confirmado.totalFormateado,
-        ),
-        const SizedBox(height: 8),
-        ..._bloques(tablero.confirmado.filas),
-        if (pruebas) ...[
-          const SizedBox(height: 24),
-          _EncabezadoSeccion(
-            titulo: 'Pruebas',
-            total: tablero.desarrollo.totalFormateado,
-            atenuado: true,
+    final totalConfirmado = double.tryParse(tablero.confirmado.total) ?? 0.0;
+    final totalDesarrollo = double.tryParse(tablero.desarrollo.total) ?? 0.0;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: kMaxAnchoContenido),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+            kMargenPantalla,
+            TfSpace.s3,
+            kMargenPantalla,
+            TfSpace.s6,
           ),
-          const SizedBox(height: 8),
-          ..._bloques(tablero.desarrollo.filas, atenuado: true),
-        ],
-      ],
+          children: [
+            _EncabezadoSeccion(
+              titulo: 'Cobrado',
+              total: tablero.confirmado.totalFormateado,
+            ),
+            const SizedBox(height: TfSpace.s2),
+            ..._bloques(tablero.confirmado.filas, totalConfirmado),
+            if (pruebas) ...[
+              const SizedBox(height: TfSpace.s4),
+              _EncabezadoSeccion(
+                titulo: 'Pruebas',
+                total: tablero.desarrollo.totalFormateado,
+                atenuado: true,
+              ),
+              const SizedBox(height: TfSpace.s2),
+              ..._bloques(
+                tablero.desarrollo.filas,
+                totalDesarrollo,
+                atenuado: true,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
 
-List<Widget> _bloques(List<FilaTablero> filas, {bool atenuado = false}) {
+List<Widget> _bloques(
+  List<FilaTablero> filas,
+  double totalSeccion, {
+  bool atenuado = false,
+}) {
   final bloques = <Widget>[];
   for (final grupo in _gruposPorDia(filas)) {
     bloques.add(
-      _BloqueDia(dia: grupo.dia, filas: grupo.filas, atenuado: atenuado),
+      _BloqueDia(
+        dia: grupo.dia,
+        filas: grupo.filas,
+        totalSeccion: totalSeccion,
+        atenuado: atenuado,
+      ),
     );
-    bloques.add(const SizedBox(height: 12));
+    bloques.add(const SizedBox(height: TfSpace.s3));
   }
   return bloques;
 }
@@ -133,12 +165,35 @@ class _EncabezadoSeccion extends StatelessWidget {
     final color = atenuado
         ? tema.colorScheme.onSurfaceVariant
         : tema.colorScheme.onSurface;
-    final estilo = tema.textTheme.headlineSmall?.copyWith(color: color);
-    return Row(
-      children: [
-        Expanded(child: Text(titulo, style: estilo)),
-        Text(total, style: estilo),
-      ],
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(TfSpace.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              titulo,
+              style: tema.textTheme.labelMedium?.copyWith(
+                color: atenuado
+                    ? tema.colorScheme.onSurfaceVariant
+                    : tema.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: TfSpace.s1),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                total,
+                style: (tema.textTheme.displaySmall ?? const TextStyle()).copyWith(
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -147,30 +202,33 @@ class _BloqueDia extends StatelessWidget {
   const _BloqueDia({
     required this.dia,
     required this.filas,
+    required this.totalSeccion,
     required this.atenuado,
   });
 
   final DateTime dia;
   final List<FilaTablero> filas;
+  final double totalSeccion;
   final bool atenuado;
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    final color = atenuado
-        ? tema.colorScheme.onSurfaceVariant
-        : tema.colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          _diaCorto(dia),
-          style: tema.textTheme.titleSmall?.copyWith(color: color),
+        Padding(
+          padding: const EdgeInsets.only(top: TfSpace.s2, bottom: TfSpace.s1),
+          child: TfSobretitulo(_diaCorto(dia)),
         ),
-        const SizedBox(height: 8),
         for (final fila in filas) ...[
-          _FilaTableroTile(fila: fila, atenuado: atenuado),
-          const SizedBox(height: 8),
+          _FilaTableroTile(
+            fila: fila,
+            proporcion: totalSeccion > 0
+                ? (double.tryParse(fila.total) ?? 0) / totalSeccion
+                : 0.0,
+            atenuado: atenuado,
+          ),
+          const SizedBox(height: TfSpace.s2),
         ],
       ],
     );
@@ -178,9 +236,14 @@ class _BloqueDia extends StatelessWidget {
 }
 
 class _FilaTableroTile extends StatelessWidget {
-  const _FilaTableroTile({required this.fila, required this.atenuado});
+  const _FilaTableroTile({
+    required this.fila,
+    required this.proporcion,
+    required this.atenuado,
+  });
 
   final FilaTablero fila;
+  final double proporcion;
   final bool atenuado;
 
   @override
@@ -189,31 +252,77 @@ class _FilaTableroTile extends StatelessWidget {
     final color = atenuado
         ? tema.colorScheme.onSurfaceVariant
         : tema.colorScheme.onSurface;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
+        padding: const EdgeInsets.all(TfSpace.s4),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    fila.etiqueta,
-                    style: tema.textTheme.titleMedium?.copyWith(color: color),
+            TfIconoCanal(_iconoCanal(fila.canal)),
+            const SizedBox(width: TfSpace.s3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          fila.etiqueta,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: (tema.textTheme.titleMedium ?? const TextStyle()).copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: TfSpace.s3),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            fila.totalFormateado,
+                            style: (tema.textTheme.titleMedium ?? const TextStyle()).copyWith(
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  fila.totalFormateado,
-                  style: tema.textTheme.titleMedium?.copyWith(color: color),
-                ),
-              ],
+                  const SizedBox(height: TfSpace.s1),
+                  Row(
+                    children: [
+                      Text(
+                        _etiquetaCanal(fila.canal),
+                        style: tema.textTheme.bodySmall,
+                      ),
+                      const SizedBox(width: TfSpace.s2),
+                      Text(
+                        '×${fila.cantidad}',
+                        style: tema.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: TfSpace.s2),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(TfRadius.full),
+                    child: LinearProgressIndicator(
+                      value: proporcion.clamp(0.0, 1.0),
+                      minHeight: 6,
+                      color: atenuado
+                          ? tema.colorScheme.outline
+                          : tema.colorScheme.primary,
+                      backgroundColor: tema.colorScheme.surfaceContainerHigh,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(_etiquetaCanal(fila.canal), style: tema.textTheme.bodySmall),
-            Text('×${fila.cantidad}', style: tema.textTheme.bodySmall),
           ],
         ),
       ),
@@ -236,6 +345,15 @@ String _etiquetaCanal(String canal) {
   };
 }
 
+IconData _iconoCanal(String canal) {
+  return switch (canal) {
+    'qr_general' => Icons.qr_code_2_rounded,
+    'qr_venta' => Icons.storefront_rounded,
+    'notificacion' => Icons.phonelink_ring_rounded,
+    _ => Icons.payment_rounded,
+  };
+}
+
 class _EstadoCentrado extends StatelessWidget {
   const _EstadoCentrado({required this.child});
 
@@ -250,7 +368,12 @@ class _EstadoCentrado extends StatelessWidget {
           children: [
             ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(child: child),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: kMargenPantalla),
+                  child: child,
+                ),
+              ),
             ),
           ],
         );
@@ -267,27 +390,16 @@ class _ErrorTablero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tema = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            mensaje,
-            style: tema.textTheme.bodyLarge?.copyWith(
-              color: tema.colorScheme.error,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () async {
-              await onReintentar();
-            },
-            child: const Text('Reintentar'),
-          ),
-        ],
+      padding: const EdgeInsets.all(TfSpace.s4),
+      child: TfAvisoError(
+        titulo: mensaje,
+        accion: FilledButton(
+          onPressed: () async {
+            await onReintentar();
+          },
+          child: const Text('Reintentar'),
+        ),
       ),
     );
   }
