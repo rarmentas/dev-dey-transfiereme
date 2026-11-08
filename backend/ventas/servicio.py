@@ -114,6 +114,7 @@ def crear_venta_qr(
                 concepto=concepto_ok,
                 vence_en=vence_en,
                 pey_qr_id=qr.id,
+                qr_string=qr.qr_string,
             )
             movimiento = Movimiento.objects.create(
                 comercio=comercio,

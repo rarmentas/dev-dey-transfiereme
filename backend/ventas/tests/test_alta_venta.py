@@ -237,6 +237,7 @@ class AltaVentaApiTests(TestCase):
         self.assertEqual(espia.qr_kwargs[0]["concepto"], "Tacos")
         self.assertEqual(espia.qr_kwargs[0]["monto"], Decimal("0.01"))
         self.assertEqual(cobro.pey_qr_id, espia.qr.id)
+        self.assertEqual(cobro.qr_string, espia.qr.qr_string)
         self.assertEqual(cobro.canal, Movimiento.Canal.QR_VENTA)
         self.assertEqual(cobro.comercio_id, self.comercio_a.pk)
         self.assertEqual(cobro.monto, Decimal("0.01"))

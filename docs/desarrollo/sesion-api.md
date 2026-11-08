@@ -127,7 +127,7 @@ Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`qr_venta`), `monto` (cad
 
 Sin sesión: `403` del middleware. Usuario sin membresía: `403`. Monto, referencia o concepto inválidos: `400`. Cuenta que no está ACTIVE: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el cobro: `502` con `detail` (`pey no pudo crear el cobro.`), `tipo`, `request_id` y `puede_haberse_creado`; no queda cobro ni movimiento. La respuesta no incluye la API key.
 
-El cobro guarda `pey_qr_id`. `qr_string` va en la respuesta del alta. La referencia se envía a pey como `numRef` y no se guarda en el movimiento.
+El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respuesta del alta. La referencia se envía a pey como `numRef` y no se guarda en el movimiento.
 
 ## Semilla de desarrollo
 
