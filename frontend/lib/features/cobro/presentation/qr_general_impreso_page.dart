@@ -51,10 +51,14 @@ class QrGeneralImpresoPage extends StatelessWidget {
     super.key,
     required this.puedeMostrarQr,
     this.qrString,
+    this.tituloBloqueo,
+    this.mensajeSiguiente,
   });
 
   final bool puedeMostrarQr;
   final String? qrString;
+  final String? tituloBloqueo;
+  final String? mensajeSiguiente;
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +95,10 @@ class QrGeneralImpresoPage extends StatelessWidget {
                         if (puedeMostrarQr)
                           Center(child: _MarcoQr(qrString: qrString!.trim()))
                         else
-                          const _EstadoCuentaPendiente(),
+                          _EstadoCuentaPendiente(
+                            titulo: tituloBloqueo ?? kMensajeCuentaNoActivaQr,
+                            mensaje: mensajeSiguiente ?? kMensajeQrAlActivar,
+                          ),
                         if (puedeMostrarQr) ...[
                           const SizedBox(height: TfSpace.s6),
                           Text(
@@ -146,7 +153,13 @@ class _MarcoQr extends StatelessWidget {
 }
 
 class _EstadoCuentaPendiente extends StatelessWidget {
-  const _EstadoCuentaPendiente();
+  const _EstadoCuentaPendiente({
+    required this.titulo,
+    required this.mensaje,
+  });
+
+  final String titulo;
+  final String mensaje;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +193,7 @@ class _EstadoCuentaPendiente extends StatelessWidget {
             ),
             const SizedBox(height: TfSpace.s5),
             Text(
-              kMensajeCuentaNoActivaQr,
+              titulo,
               textAlign: TextAlign.center,
               style: tema.textTheme.headlineSmall?.copyWith(
                 color: colores.onSurface,
@@ -188,7 +201,7 @@ class _EstadoCuentaPendiente extends StatelessWidget {
             ),
             const SizedBox(height: TfSpace.s2),
             Text(
-              kMensajeQrAlActivar,
+              mensaje,
               textAlign: TextAlign.center,
               style: tema.textTheme.bodyMedium?.copyWith(
                 color: colores.onSurfaceVariant,

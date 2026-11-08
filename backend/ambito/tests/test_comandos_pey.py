@@ -98,7 +98,7 @@ class ComandosPeyTests(TestCase):
         _vendedor("ana@ejemplo.mx")
         transporte = _Transporte()
         with patch("pey.cuentas.transporte_urllib", transporte):
-            with self.assertRaises(CommandError):
+            with self.assertRaises(CommandError) as ctx:
                 call_command(
                     "registrar_cuenta_pey",
                     correo="ana@ejemplo.mx",
@@ -107,6 +107,31 @@ class ComandosPeyTests(TestCase):
                     confirmar=True,
                 )
         self.assertEqual(transporte.llamadas, [])
+        self.assertIn(
+            "Este comando solo corre con PEY_ADAPTADOR=produccion.",
+            str(ctx.exception),
+        )
+
+    def test_confirmar_imprime_codi_status_crudo_de_pey(self) -> None:
+        comercio = _vendedor("ana@ejemplo.mx")
+        transporte = _Transporte(
+            200,
+            ('{"id": "' + _ULID_NUEVO + '", "codiStatus": "PROCESSING"}').encode(),
+        )
+        salida = StringIO()
+        with patch("pey.cuentas.transporte_urllib", transporte):
+            call_command(
+                "registrar_cuenta_pey",
+                correo="ana@ejemplo.mx",
+                nombre="Ana",
+                entidad="BUSINESS",
+                confirmar=True,
+                stdout=salida,
+            )
+        self.assertIn("codiStatus=PROCESSING", salida.getvalue())
+        comercio.refresh_from_db()
+        self.assertEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
+        self.assertEqual(comercio.pey_bank_account_id, _ULID_NUEVO)
 
     def test_diagnostico_no_imprime_secretos_y_sincroniza(self) -> None:
         comercio = _vendedor("ana@ejemplo.mx", pey_bank_account_id=_ULID)

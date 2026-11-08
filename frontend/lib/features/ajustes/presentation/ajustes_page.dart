@@ -6,6 +6,8 @@ import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 import '../../../core/ui/ui.dart';
 import 'editar_nombre_comercio_dialog.dart';
+import '../../cuenta/presentation/cuenta_providers.dart';
+import '../../cuenta/presentation/widgets/cuenta_pey_estado_card.dart';
 
 /// Ajustes: datos de la cuenta, opciones y salir.
 class AjustesPage extends ConsumerWidget {
@@ -155,6 +157,8 @@ class AjustesPage extends ConsumerWidget {
                     ),
                   ),
                 const SizedBox(height: TfSpace.s4),
+                const CuentaPeyEstadoCard(),
+                const SizedBox(height: TfSpace.s4),
                 Card(
                   margin: EdgeInsets.zero,
                   clipBehavior: Clip.antiAlias,
@@ -166,7 +170,10 @@ class AjustesPage extends ConsumerWidget {
                         leading: const Icon(Icons.account_balance_rounded),
                         title: const Text('Registrar CLABE'),
                         trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => context.push(kRutaRegistrarClabe),
+                        onTap: () async {
+                          await context.push(kRutaRegistrarClabe);
+                          ref.invalidate(cuentaEstadoProvider);
+                        },
                       ),
                       const Divider(height: 1),
                       ListTile(

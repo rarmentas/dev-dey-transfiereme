@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/ui.dart';
 import '../../../theme/transfiereme_theme.dart';
-import '../../cobro/presentation/qr_general_impreso_page.dart';
+import '../../cuenta/presentation/cuenta_pey_mensajes.dart';
+import '../../cuenta/presentation/cuenta_providers.dart';
 import '../../movimientos/data/movimiento.dart';
 import '../data/venta.dart';
 import '../data/venta_repository.dart';
@@ -153,6 +154,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
 
   @override
   Widget build(BuildContext context) {
+    final estadoCuenta = ref.watch(cuentaEstadoProvider).asData?.value;
     final tema = Theme.of(context);
     final tf = tema.extension<TfColors>()!;
     final colores = tema.colorScheme;
@@ -212,6 +214,13 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (estadoCuenta != null && !estadoCuenta.puedeCobrar) ...[
+                          TfAvisoError(
+                            titulo: tituloBloqueoCuenta(estadoCuenta),
+                            mensaje: mensajeSiguientePaso(estadoCuenta),
+                          ),
+                          const SizedBox(height: TfSpace.s4),
+                        ],
                         _CampoMonto(controller: _montoController),
                         const SizedBox(height: TfSpace.s5),
                         etiqueta('Concepto'),
@@ -266,8 +275,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                         ],
                         if (_cuentaInactiva) ...[
                           const SizedBox(height: TfSpace.s4),
-                          const TfAvisoError(
-                            titulo: kMensajeCuentaNoActivaQr,
+                          TfAvisoError(
+                            titulo: tituloBloqueoCuenta(estadoCuenta),
+                            mensaje: estadoCuenta == null
+                                ? null
+                                : mensajeSiguientePaso(estadoCuenta),
                           ),
                         ],
                         if (_pey != null) ...[
@@ -297,7 +309,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                 ),
                 child: TfCobrarButton(
                   key: const Key('boton_cobrar'),
-                  onPressed: _guardando ? null : _cobrar,
+                  onPressed:
+                      _guardando ||
+                          (estadoCuenta != null && !estadoCuenta.puedeCobrar)
+                      ? null
+                      : _cobrar,
                   child: _guardando
                       ? SizedBox(
                           height: TfSize.icon,

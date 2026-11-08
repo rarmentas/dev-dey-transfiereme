@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/mock_venta_api.dart';
+import '../../support/override_cuenta_estado.dart';
 
 Future<void> _montar(WidgetTester tester, MockVentaApi mock) async {
   final repositorio = VentaRepository(mock.dio);
@@ -41,6 +42,7 @@ Future<void> _montar(WidgetTester tester, MockVentaApi mock) async {
         ventaRepositoryProvider.overrideWith(
           (ref) => VentaRepository(mock.dio),
         ),
+        cuentaEstadoActivaOverride(),
       ],
       child: MaterialApp.router(theme: TfTheme.light, routerConfig: router),
     ),

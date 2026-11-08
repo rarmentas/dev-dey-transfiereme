@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../support/override_cuenta_estado.dart';
+
 class _RepoNombreFalso extends ComercioRepository {
   _RepoNombreFalso() : super(Dio(BaseOptions(baseUrl: 'http://test')));
 
@@ -62,6 +64,10 @@ class _SesionFija extends SesionNotifier {
 
 void main() {
   testWidgets('muestra datos de la cuenta y navega a Mi QR', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final router = GoRouter(
       initialLocation: kRutaAjustes,
       routes: [
@@ -78,13 +84,18 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sesionNotifierProvider.overrideWith(_SesionFija.new)],
+        overrides: [
+          cuentaEstadoActivaOverride(),
+          sesionNotifierProvider.overrideWith(_SesionFija.new),
+        ],
         child: MaterialApp.router(theme: TfTheme.light, routerConfig: router),
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Ajustes'), findsOneWidget);
+    expect(find.text('Cuenta activa'), findsOneWidget);
     expect(find.text('Lupe García'), findsOneWidget);
     expect(find.text('lupe@tortilleria.mx'), findsOneWidget);
     final correo = tester.widget<Text>(find.text('lupe@tortilleria.mx'));
@@ -119,6 +130,10 @@ void main() {
   });
 
   testWidgets('sin nombre el correo es un dato y no el título', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final router = GoRouter(
       initialLocation: kRutaAjustes,
       routes: [
@@ -131,11 +146,15 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sesionNotifierProvider.overrideWith(_SesionSinNombre.new)],
+        overrides: [
+          cuentaEstadoActivaOverride(),
+          sesionNotifierProvider.overrideWith(_SesionSinNombre.new),
+        ],
         child: MaterialApp.router(theme: TfTheme.light, routerConfig: router),
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     final correo = tester.widget<Text>(find.text('demo@cody.mx'));
     expect(correo.style?.color, TfTheme.light.colorScheme.onSurfaceVariant);

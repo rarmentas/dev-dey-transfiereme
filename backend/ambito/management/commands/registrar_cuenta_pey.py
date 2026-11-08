@@ -2,11 +2,14 @@
 
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
 
 from ambito.clabe import clabe_es_valida
-from ambito.models import Comercio
-from pey.cuentas import registrar_cuenta
+from ambito.cuenta_pey_servicio import (
+    CuentaPeyYaRegistrada,
+    SinClabeGuardada,
+    enmascarar_clabe,
+    registrar_cuenta_en_pey,
+)
 from pey.seleccion import modo_adaptador
 from pey.tipos import ErrorPey, ParametroInvalido
 
@@ -50,33 +53,27 @@ class Command(BaseCommand):
             self.stdout.write("Sin --confirmar no se llama a pey.")
             return
         try:
-            cuenta = registrar_cuenta(
-                alias=alias,
+            comercio, codi_status_pey = registrar_cuenta_en_pey(
+                comercio.pk,
                 nombre=nombre,
-                clabe=clabe,
                 entidad=entidad,
+                alias=alias,
+                reemplazar=options["reemplazar"],
             )
+        except SinClabeGuardada as exc:
+            raise CommandError("El comercio no tiene una CLABE válida guardada.") from exc
+        except CuentaPeyYaRegistrada as exc:
+            raise CommandError(
+                "El comercio ya tiene cuenta en pey. Use --reemplazar para registrar otra."
+            ) from exc
         except ParametroInvalido as exc:
             raise CommandError(str(exc)) from exc
         except ErrorPey as exc:
             raise CommandError(
                 f"pey no registró la cuenta tipo={exc.tipo} request_id={exc.request_id}"
             ) from exc
-        if cuenta.codi_status == "ACTIVE":
-            comercio.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
-        else:
-            comercio.pey_codi_status = Comercio.PeyCodiStatus.PENDING
-        comercio.pey_bank_account_id = cuenta.id
-        comercio.pey_codi_status_actualizado_en = timezone.now()
-        comercio.save(
-            update_fields=[
-                "pey_bank_account_id",
-                "pey_codi_status",
-                "pey_codi_status_actualizado_en",
-            ]
-        )
         self.stdout.write(
-            f"Cuenta registrada id={cuenta.id} codiStatus={cuenta.codi_status}"
+            f"Cuenta registrada id={comercio.pey_bank_account_id} codiStatus={codi_status_pey}"
         )
 
     def _exigir_produccion(self) -> None:
@@ -86,14 +83,6 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
         if modo != "produccion":
             raise CommandError("Este comando solo corre con PEY_ADAPTADOR=produccion.")
-
-
-def enmascarar_clabe(clabe: str) -> str:
-    """14 asteriscos y los 4 últimos dígitos. Nunca la CLABE completa."""
-    digitos = clabe or ""
-    if len(digitos) <= 4:
-        return "*" * len(digitos)
-    return "*" * (len(digitos) - 4) + digitos[-4:]
 
 
 def _comercio_de_correo(correo: str):

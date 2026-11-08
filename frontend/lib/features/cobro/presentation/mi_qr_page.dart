@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/ui.dart';
+import '../../cuenta/presentation/cuenta_pey_mensajes.dart';
+import '../../cuenta/presentation/cuenta_providers.dart';
 import 'cobro_providers.dart';
 import 'qr_general_impreso_page.dart';
 
@@ -12,11 +14,17 @@ class MiQrPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final qr = ref.watch(qrGeneralProvider);
+    final estado = ref.watch(cuentaEstadoProvider);
+    final est = estado.asData?.value;
 
     return qr.when(
       skipLoadingOnRefresh: false,
       data: (resultado) => resultado.cuentaNoActiva
-          ? const QrGeneralImpresoPage(puedeMostrarQr: false)
+          ? QrGeneralImpresoPage(
+              puedeMostrarQr: false,
+              tituloBloqueo: tituloBloqueoCuenta(est),
+              mensajeSiguiente: mensajeSiguientePaso(est),
+            )
           : QrGeneralImpresoPage(
               puedeMostrarQr: true,
               qrString: resultado.qrString,
