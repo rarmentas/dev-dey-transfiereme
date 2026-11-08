@@ -533,6 +533,8 @@ class AltaVentaApiTests(TestCase):
 
     @override_settings(PEY_API_KEY=_LLAVE_PRUEBA)
     def test_adaptador_produccion_marca_origen_pey(self) -> None:
+        self.comercio_a.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        self.comercio_a.save(update_fields=["pey_bank_account_id"])
         self._entrar(self.usuario_a)
         llamadas: list[tuple] = []
 
@@ -558,6 +560,10 @@ class AltaVentaApiTests(TestCase):
         self.assertEqual(llamadas[0][0], "POST")
         self.assertIn("/codi/qr", llamadas[0][1])
         self.assertIn(_LLAVE_PRUEBA, llamadas[0][2]["Authorization"])
+        self.assertIn(
+            b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"',
+            llamadas[0][3],
+        )
         movimiento = Movimiento.objects.get(pk=cuerpo["movimiento_id"])
         self.assertEqual(movimiento.origen, Movimiento.Origen.ORIGEN_PEY)
         self.assertEqual(movimiento.comercio_id, self.comercio_a.pk)

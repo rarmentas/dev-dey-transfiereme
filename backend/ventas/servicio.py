@@ -12,6 +12,7 @@ from django.utils import timezone
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
+from pey.produccion import AdaptadorProduccion
 from pey.puerto import PuertoPey
 from pey.seleccion import obtener_puerto
 from ventas.canal import exigir_sin_venta_viva, vencer_pendientes
@@ -109,11 +110,13 @@ def crear_venta_qr(
             exigir_sin_venta_viva(comercio)
             if not puerto.cuenta_active(comercio):
                 raise CuentaNoActive()
+            cuenta = _cuenta_de_produccion(puerto, comercio)
             qr = puerto.crear_qr(
                 monto=monto_ok,
                 concepto=concepto_ok,
                 expiracion_s=VENTA_EXPIRACION_S,
                 num_ref=referencia_ok,
+                **cuenta,
             )
             vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
             cobro = Cobro.objects.create(
@@ -124,6 +127,7 @@ def crear_venta_qr(
                 vence_en=vence_en,
                 pey_qr_id=qr.id,
                 qr_string=qr.qr_string,
+                pey_bank_account_id=cuenta.get("bank_account_id", ""),
             )
             movimiento = Movimiento.objects.create(
                 comercio=comercio,
@@ -173,12 +177,14 @@ def crear_venta_notificacion(
             exigir_sin_venta_viva(comercio)
             if not puerto.cuenta_active(comercio):
                 raise CuentaNoActive()
+            cuenta = _cuenta_de_produccion(puerto, comercio)
             aviso = puerto.crear_notificacion(
                 monto=monto_ok,
                 telefono=telefono_ok,
                 concepto=concepto_ok,
                 expiracion_s=VENTA_EXPIRACION_S,
                 num_ref=referencia_ok,
+                **cuenta,
             )
             vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
             cobro = Cobro.objects.create(
@@ -188,6 +194,7 @@ def crear_venta_notificacion(
                 concepto=concepto_ok,
                 vence_en=vence_en,
                 pey_transaction_id=aviso.transaction_id,
+                pey_bank_account_id=cuenta.get("bank_account_id", ""),
             )
             movimiento = Movimiento.objects.create(
                 comercio=comercio,
@@ -221,6 +228,16 @@ def crear_venta_notificacion(
         qr_string="",
         transaction_id=aviso.transaction_id,
     )
+
+
+def _cuenta_de_produccion(puerto: PuertoPey, comercio: Comercio) -> dict[str, str]:
+    """En producción el cobro va a la cuenta del comercio. En desarrollo no se exige."""
+    if not isinstance(puerto, AdaptadorProduccion):
+        return {}
+    ident = (comercio.pey_bank_account_id or "").strip()
+    if not ident:
+        raise CuentaNoActive()
+    return {"bank_account_id": ident}
 
 
 def _origen(puerto: PuertoPey) -> str:
