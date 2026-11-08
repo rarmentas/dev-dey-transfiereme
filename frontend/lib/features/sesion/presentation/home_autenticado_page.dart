@@ -53,6 +53,13 @@ class HomeAutenticadoPage extends ConsumerWidget {
                 child: const Text('Ver tablero'),
               ),
               const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const Key('boton_registrar_clabe'),
+                onPressed: () => context.push(kRutaRegistrarClabe),
+                icon: const Icon(Icons.settings),
+                label: const Text('Registrar CLABE'),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: sesion.cargando
                     ? null
