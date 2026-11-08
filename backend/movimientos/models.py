@@ -1,4 +1,4 @@
-"""Movimiento que ve el vendedor. No llama a pey ni a la red."""
+"""Cobro enviado a pey y movimiento que ve el vendedor. No llama a pey ni a la red."""
 
 from django.db import models, transaction
 from django.utils import timezone
@@ -60,6 +60,26 @@ class Movimiento(models.Model):
         choices=Origen.choices,
         verbose_name="origen",
     )
+    # Nullable: los movimientos de la 1.3 no tienen cobro. PROTECT para no
+    # borrar el cobro si ya hay historial.
+    cobro = models.ForeignKey(
+        "Cobro",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="movimientos",
+        verbose_name="cobro",
+    )
+    # transactionId del pago que lo marcó pagado. En el QR general cada pago
+    # es un movimiento nuevo. Vacío se guarda como NULL para que la unicidad
+    # permita varios movimientos todavía sin pago.
+    pey_transaction_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="id de transacción en pey",
+    )
     creado_en = models.DateTimeField(auto_now_add=True, verbose_name="creado en")
     actualizado_en = models.DateTimeField(auto_now=True, verbose_name="actualizado en")
 
@@ -93,8 +113,13 @@ class Movimiento(models.Model):
         return f"{self.concepto_visible or self.concepto} ({self.estado})"
 
     def save(self, *args, **kwargs):
+        if self.pey_transaction_id == "":
+            self.pey_transaction_id = None
         if self._state.adding and not self.concepto_visible:
             self.concepto_visible = self.concepto
+        # El canal (y el comercio) tienen que ser los del cobro. Un
+        # CheckConstraint no cruza tablas; esta lectura por llave es barata.
+        self._exigir_coherencia_con_cobro()
         if not self._state.adding and self._escribe_estado(kwargs.get("update_fields")):
             estado_en_bd = self._estado_persistido()
             if estado_en_bd is not None and estado_en_bd != self.estado:
@@ -124,6 +149,19 @@ class Movimiento(models.Model):
         self.estado = nuevo
         self.refresh_from_db(fields=["estado", "actualizado_en"])
 
+    def _exigir_coherencia_con_cobro(self) -> None:
+        if self.cobro_id is None:
+            return
+        cobro = self.cobro
+        if self.canal != cobro.canal:
+            raise ValueError(
+                "El canal del movimiento tiene que coincidir con el del cobro."
+            )
+        if self.comercio_id != cobro.comercio_id:
+            raise ValueError(
+                "El comercio del movimiento tiene que ser el del cobro."
+            )
+
     def _estado_persistido(self) -> str | None:
         if self.pk is None:
             return None
@@ -137,3 +175,97 @@ class Movimiento(models.Model):
     @staticmethod
     def _escribe_estado(update_fields) -> bool:
         return update_fields is None or "estado" in update_fields
+
+
+class Cobro(models.Model):
+    """Instancia enviada a pey: QR general, QR de venta o notificación.
+
+    El comercio se fija al crear el cobro en el servidor y no se lee del aviso.
+    """
+
+    # ULID de pey son 26 caracteres; el IDC de Banxico cabe holgado en 64.
+    _LARGO_ID_PEY = 64
+
+    comercio = models.ForeignKey(
+        Comercio,
+        on_delete=models.PROTECT,
+        related_name="cobros",
+        verbose_name="comercio",
+    )
+    canal = models.CharField(
+        max_length=20,
+        choices=Movimiento.Canal.choices,
+        verbose_name="canal",
+    )
+    # qr_general es monto abierto (0, amount: 0 en pey). Los otros exigen > 0.
+    monto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="monto")
+    concepto = models.CharField(max_length=500, verbose_name="concepto")
+    # El QR general no vence.
+    vence_en = models.DateTimeField(null=True, blank=True, verbose_name="vence en")
+    creado_en = models.DateTimeField(auto_now_add=True, verbose_name="creado en")
+    pey_qr_id = models.CharField(
+        max_length=_LARGO_ID_PEY,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="id de QR en pey",
+    )
+    pey_transaction_id = models.CharField(
+        max_length=_LARGO_ID_PEY,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="id de transacción en pey",
+    )
+
+    class Meta:
+        verbose_name = "cobro"
+        verbose_name_plural = "cobros"
+        ordering = ["-creado_en", "-pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(canal__in=Movimiento.Canal.values),
+                name="cobro_canal_valido",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(canal=Movimiento.Canal.QR_GENERAL, monto=0)
+                    | models.Q(
+                        canal__in=[
+                            Movimiento.Canal.QR_VENTA,
+                            Movimiento.Canal.NOTIFICACION,
+                        ],
+                        monto__gt=0,
+                    )
+                ),
+                name="cobro_monto_segun_canal",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        canal__in=[
+                            Movimiento.Canal.QR_GENERAL,
+                            Movimiento.Canal.QR_VENTA,
+                        ],
+                        pey_qr_id__isnull=False,
+                        pey_transaction_id__isnull=True,
+                    )
+                    | models.Q(
+                        canal=Movimiento.Canal.NOTIFICACION,
+                        pey_qr_id__isnull=True,
+                        pey_transaction_id__isnull=False,
+                    )
+                ),
+                name="cobro_ids_pey_segun_canal",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.concepto} ({self.canal})"
+
+    def save(self, *args, **kwargs):
+        if self.pey_qr_id == "":
+            self.pey_qr_id = None
+        if self.pey_transaction_id == "":
+            self.pey_transaction_id = None
+        super().save(*args, **kwargs)
