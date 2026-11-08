@@ -190,6 +190,24 @@ build:web:prod:
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
 
+build:landing:
+  stage: build
+  image: oven/bun:1.3.14
+  tags:
+    - docker
+  script:
+    - cd landing
+    - bun install --frozen-lockfile
+    - bunx --bun astro build
+  artifacts:
+    paths:
+      - landing/dist/
+    expire_in: 1 day
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test"
+    - if: $CI_COMMIT_BRANCH == "master"
+
 .deploy_template:
   stage: deploy
   image: alpine:3.22
@@ -213,6 +231,8 @@ deploy:test:
     - job: env:comprobar:test
     - job: build:web:test
       artifacts: true
+    - job: build:landing
+      artifacts: true
   rules:
     - if: $CI_COMMIT_BRANCH == "test"
 
@@ -229,6 +249,8 @@ deploy:prod:
     - job: frontend:test
     - job: env:comprobar:prod
     - job: build:web:prod
+      artifacts: true
+    - job: build:landing
       artifacts: true
   rules:
     - if: $CI_COMMIT_BRANCH == "master"

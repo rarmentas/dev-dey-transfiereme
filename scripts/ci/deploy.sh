@@ -56,6 +56,11 @@ if [[ ! -d frontend/build/web ]]; then
   exit 1
 fi
 
+if [[ ! -f landing/dist/index.html ]]; then
+  echo "Falta landing/dist. El job build:landing no entregó el artefacto." >&2
+  exit 1
+fi
+
 health_line="$(grep -E '^[[:space:]]*ALLOWED_HOSTS[[:space:]]*=' "$app_env" | tail -1)"
 health_host="${health_line#*=}"
 health_host="${health_host%%#*}"
@@ -115,6 +120,8 @@ rsync -az --delete -e "$rsync_rsh" \
   --exclude 'backend/.env' \
   --exclude 'backend/.env.incoming' \
   --exclude 'frontend/.dart_tool/' \
+  --exclude 'landing/node_modules/' \
+  --exclude 'landing/.astro/' \
   --exclude 'frontend/.pub-cache/' \
   --exclude '__pycache__/' \
   --exclude '*.pyc' \

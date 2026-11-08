@@ -104,6 +104,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "build" / "web"
+LANDING_DIST = BASE_DIR.parent / "landing" / "dist"
 
 if DEBUG:
     STORAGES = {
