@@ -1,4 +1,4 @@
-"""Serializers de lectura de movimientos (sin escritura en esta historia)."""
+"""Serializers de lectura de movimientos. El renombre no pasa por aquí."""
 
 from rest_framework import serializers
 
@@ -17,6 +17,7 @@ class MovimientoLecturaSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "monto",
+            "concepto",
             "concepto_visible",
             "canal",
             "estado",
