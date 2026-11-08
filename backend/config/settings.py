@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "movimientos",
     "webhooks",
     "pey",
+    "integracion",
 ]
 
 MIDDLEWARE = [

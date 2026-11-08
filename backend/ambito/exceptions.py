@@ -15,6 +15,15 @@ class SinAmbitoError(AmbitoError):
         )
 
 
+class CuentaNoActiveError(AmbitoError):
+    """El comercio no tiene cuenta ACTIVE en pey para generar cobros."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Su cuenta aún no está activa para generar un código de cobro."
+        )
+
+
 class ComercioEnCuerpoError(AmbitoError):
     """La petición intentó enviar el comercio en el cuerpo (prohibido por C5)."""
 

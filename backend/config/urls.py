@@ -1,5 +1,6 @@
-from django.urls import include, path
+from django.urls import include, path, re_path
 
+from config.frontend import aplicacion
 from config.views import salud
 
 urlpatterns = [
@@ -9,4 +10,5 @@ urlpatterns = [
     path("api/movimientos/", include("movimientos.urls")),
     path("api/cobro/", include("movimientos.cobro_urls")),
     path("api/webhooks/", include("webhooks.urls")),
+    re_path(r"^(?P<ruta>.*)$", aplicacion, name="aplicacion"),
 ]

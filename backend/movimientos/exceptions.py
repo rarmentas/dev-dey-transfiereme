@@ -19,7 +19,3 @@ class MontoDistinto(Exception):
 
 class AvisoDuplicado(Exception):
     """El movimiento ya está pagado con este transaction_id."""
-
-
-class CuentaInactivaParaCobro(Exception):
-    """El comercio no tiene cuenta ACTIVE; no se puede dar de alta cobro."""

@@ -4,14 +4,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
+from ambito.exceptions import (
+    AmbitoError,
+    ComercioEnCuerpoError,
+    CuentaNoActiveError,
+    SinAmbitoError,
+)
 from ambito.scope import preparar_operacion_cobro
 from movimientos.alta_qr_general import alta_qr_general
-from movimientos.exceptions import CuentaInactivaParaCobro
-
-_MENSAJE_CUENTA_INACTIVA = (
-    "La cuenta no está activa. No puede dar de alta el QR general."
-)
 
 
 def _respuesta_ambito(exc: AmbitoError, status: int) -> Response:
@@ -34,10 +34,10 @@ class AltaQrGeneralView(APIView):
 
         try:
             resultado = alta_qr_general(comercio)
-        except CuentaInactivaParaCobro:
+        except CuentaNoActiveError as exc:
             return Response(
                 {
-                    "detail": _MENSAJE_CUENTA_INACTIVA,
+                    "detail": str(exc),
                     "tipo": "INVALID_STATE",
                 },
                 status=400,

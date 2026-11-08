@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 
 from ambito.models import Comercio
-from movimientos.exceptions import CuentaInactivaParaCobro
+from movimientos.cobro_qr import preparar_alta_qr_general
 from movimientos.models import Cobro, Movimiento
 from pey.seleccion import obtener_puerto
 
@@ -20,9 +20,8 @@ class ResultadoAltaQrGeneral:
 
 
 def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
+    preparar_alta_qr_general(comercio)
     puerto = obtener_puerto()
-    if not puerto.cuenta_active(comercio):
-        raise CuentaInactivaParaCobro
 
     existente = _qr_general_de_comercio(comercio)
     if existente is not None:
