@@ -21,10 +21,13 @@ logger = logging.getLogger(__name__)
 VENTA_EXPIRACION_S = 600
 
 _NUM_REF = re.compile(r"^[0-9]{1,7}$")
+_TELEFONO = re.compile(r"^[0-9]{10}$")
 _CERO = Decimal("0")
 _CENTAVO = Decimal("0.01")
 # Exclusivo. El QR de pey no admite 10**10 ni más.
 _TOPE_MONTO = Decimal("10000000000")
+# Inclusivo. La notificación de pey no pasa de 1 000 000.
+_TOPE_NOTIFICACION = Decimal("1000000")
 _PREC_MONTO = 50
 _CONCEPTO_VACIO = "Transferencia"
 # Mismo tope que Movimiento.concepto y Cobro.concepto (max_length=500).
@@ -60,6 +63,13 @@ class ConceptoInvalido(ValidacionVenta):
         super().__init__("concepto", mensaje)
 
 
+class TelefonoInvalido(ValidacionVenta):
+    """El teléfono no es de 10 dígitos. No se llamó al puerto."""
+
+    def __init__(self) -> None:
+        super().__init__("telefono", "El teléfono debe ser de 10 dígitos.")
+
+
 class CuentaNoActive(Exception):
     """El puerto dice que la cuenta no está ACTIVE. No se crea el QR."""
 
@@ -69,6 +79,7 @@ class VentaCreada:
     movimiento: Movimiento
     cobro: Cobro
     qr_string: str
+    transaction_id: str = ""
 
 
 def crear_venta_qr(
@@ -87,11 +98,7 @@ def crear_venta_qr(
     if puerto is None:
         puerto = obtener_puerto()
 
-    origen = (
-        Movimiento.Origen.ORIGEN_DESARROLLO
-        if isinstance(puerto, AdaptadorDesarrollo)
-        else Movimiento.Origen.ORIGEN_PEY
-    )
+    origen = _origen(puerto)
     # Fuera del candado: un ErrorPey no revierte estos vencidos.
     vencer_pendientes(comercio)
     # El candado del comercio se sostiene durante la llamada a pey (timeout
@@ -139,6 +146,89 @@ def crear_venta_qr(
     return VentaCreada(movimiento=movimiento, cobro=cobro, qr_string=qr.qr_string)
 
 
+def crear_venta_notificacion(
+    *,
+    comercio: Comercio,
+    monto: Decimal,
+    telefono: str,
+    concepto: str,
+    referencia: str,
+    puerto: PuertoPey | None = None,
+) -> VentaCreada:
+    """Valida, pide la notificación y solo entonces persiste cobro y movimiento."""
+    telefono_ok = _telefono(telefono)
+    monto_ok = _monto(monto, tope=_TOPE_NOTIFICACION, exclusivo=False)
+    referencia_ok = _referencia(referencia)
+    concepto_ok = _concepto(concepto)
+
+    if puerto is None:
+        puerto = obtener_puerto()
+
+    origen = _origen(puerto)
+    # Fuera del candado: un ErrorPey no revierte estos vencidos.
+    vencer_pendientes(comercio)
+    aviso = None
+    try:
+        with transaction.atomic():
+            exigir_sin_venta_viva(comercio)
+            if not puerto.cuenta_active(comercio):
+                raise CuentaNoActive()
+            aviso = puerto.crear_notificacion(
+                monto=monto_ok,
+                telefono=telefono_ok,
+                concepto=concepto_ok,
+                expiracion_s=VENTA_EXPIRACION_S,
+                num_ref=referencia_ok,
+            )
+            vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
+            cobro = Cobro.objects.create(
+                comercio=comercio,
+                canal=Movimiento.Canal.NOTIFICACION,
+                monto=monto_ok,
+                concepto=concepto_ok,
+                vence_en=vence_en,
+                pey_transaction_id=aviso.transaction_id,
+            )
+            movimiento = Movimiento.objects.create(
+                comercio=comercio,
+                cobro=cobro,
+                canal=Movimiento.Canal.NOTIFICACION,
+                monto=monto_ok,
+                concepto=concepto_ok,
+                estado=Movimiento.Estado.PENDIENTE,
+                origen=origen,
+            )
+    except Exception:
+        # El teléfono completo no se escribe: como mucho los 4 últimos.
+        if aviso is not None:
+            logger.error(
+                "notificación de venta creada en pey sin persistir "
+                "transaction_id=%s comercio_id=%s telefono_final=%s",
+                aviso.transaction_id,
+                comercio.pk,
+                telefono_ok[-4:],
+            )
+        raise
+    logger.info(
+        "venta por notificación comercio_id=%s transaction_id=%s telefono_final=%s",
+        comercio.pk,
+        aviso.transaction_id,
+        telefono_ok[-4:],
+    )
+    return VentaCreada(
+        movimiento=movimiento,
+        cobro=cobro,
+        qr_string="",
+        transaction_id=aviso.transaction_id,
+    )
+
+
+def _origen(puerto: PuertoPey) -> str:
+    if isinstance(puerto, AdaptadorDesarrollo):
+        return Movimiento.Origen.ORIGEN_DESARROLLO
+    return Movimiento.Origen.ORIGEN_PEY
+
+
 def _referencia(referencia: str | None) -> str:
     if referencia is None or referencia == "":
         return _REF_VACIA
@@ -147,7 +237,12 @@ def _referencia(referencia: str | None) -> str:
     return referencia
 
 
-def _monto(monto: Decimal) -> Decimal:
+def _monto(
+    monto: Decimal,
+    *,
+    tope: Decimal = _TOPE_MONTO,
+    exclusivo: bool = True,
+) -> Decimal:
     if not isinstance(monto, Decimal):
         raise MontoInvalido("El monto debe ser un número decimal.")
     try:
@@ -161,11 +256,20 @@ def _monto(monto: Decimal) -> Decimal:
             exponente = monto.as_tuple().exponent
             if not isinstance(exponente, int) or exponente < -2:
                 raise MontoInvalido("El monto no admite más de 2 decimales.")
-            if monto >= _TOPE_MONTO:
-                raise MontoInvalido("El monto no cabe en el QR.")
+            if exclusivo:
+                if monto >= tope:
+                    raise MontoInvalido("El monto no cabe en el QR.")
+            elif monto > tope:
+                raise MontoInvalido("El monto no puede pasar de 1000000.")
             return monto.quantize(_CENTAVO)
     except DecimalException as exc:
         raise MontoInvalido("El monto no se puede representar.") from exc
+
+
+def _telefono(telefono: str) -> str:
+    if not isinstance(telefono, str) or _TELEFONO.fullmatch(telefono) is None:
+        raise TelefonoInvalido()
+    return telefono
 
 
 def _concepto(concepto: str | None) -> str:

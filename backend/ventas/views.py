@@ -12,8 +12,18 @@ from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
 from pey.tipos import ErrorPey, ParametroInvalido
 from ventas.canal import VentaPendiente
-from ventas.serializers import CrearVentaSerializer, venta_creada_a_json
-from ventas.servicio import CuentaNoActive, ValidacionVenta, crear_venta_qr
+from ventas.serializers import (
+    CrearNotificacionSerializer,
+    CrearVentaSerializer,
+    notificacion_creada_a_json,
+    venta_creada_a_json,
+)
+from ventas.servicio import (
+    CuentaNoActive,
+    ValidacionVenta,
+    crear_venta_notificacion,
+    crear_venta_qr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,29 +102,82 @@ class CrearVentaView(APIView):
                 concepto=limpio["concepto"],
                 referencia=limpio["referencia"],
             )
-        except ValidacionVenta as exc:
-            return Response({exc.campo: [str(exc)]}, status=400)
-        except CuentaNoActive:
-            return Response({"detail": _MENSAJE_CUENTA}, status=409)
-        except VentaPendiente as exc:
-            return Response(_venta_pendiente(exc), status=409)
-        except ParametroInvalido as exc:
-            return Response({"detail": str(exc)}, status=400)
-        except ErrorPey as exc:
-            logger.warning(
-                "pey no pudo crear el cobro tipo=%s request_id=%s comercio_id=%s",
-                exc.tipo,
-                exc.request_id,
-                comercio.pk,
-            )
-            return Response(
-                {
-                    "detail": _MENSAJE_PEY,
-                    "tipo": exc.tipo,
-                    "request_id": exc.request_id,
-                    "puede_haberse_creado": exc.puede_haberse_creado,
-                },
-                status=502,
-            )
+        except Exception as exc:
+            respuesta = _respuesta_fallo(exc, comercio)
+            if respuesta is None:
+                raise
+            return respuesta
 
         return Response(venta_creada_a_json(venta), status=201)
+
+
+class CrearNotificacionView(APIView):
+    """Crea un cobro de notificación pendiente para el comercio de la sesión."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            datos = _leer_cuerpo(request)
+        except _CuerpoInvalido as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        try:
+            rechazar_comercio_en_query(request.GET)
+            comercio = preparar_operacion_cobro(request, datos)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
+        except SinAmbitoError as exc:
+            return _respuesta_ambito(exc, 403)
+
+        serializer = CrearNotificacionSerializer(data=datos)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        limpio = serializer.validated_data
+        try:
+            venta = crear_venta_notificacion(
+                comercio=comercio,
+                monto=limpio["monto"],
+                telefono=limpio["telefono"],
+                concepto=limpio["concepto"],
+                referencia=limpio["referencia"],
+            )
+        except Exception as exc:
+            respuesta = _respuesta_fallo(exc, comercio)
+            if respuesta is None:
+                raise
+            return respuesta
+
+        return Response(
+            notificacion_creada_a_json(venta, limpio["telefono"][-4:]),
+            status=201,
+        )
+
+
+def _respuesta_fallo(exc: Exception, comercio) -> Response | None:
+    if isinstance(exc, ValidacionVenta):
+        return Response({exc.campo: [str(exc)]}, status=400)
+    if isinstance(exc, CuentaNoActive):
+        return Response({"detail": _MENSAJE_CUENTA}, status=409)
+    if isinstance(exc, VentaPendiente):
+        return Response(_venta_pendiente(exc), status=409)
+    if isinstance(exc, ParametroInvalido):
+        return Response({"detail": str(exc)}, status=400)
+    if isinstance(exc, ErrorPey):
+        logger.warning(
+            "pey no pudo crear el cobro tipo=%s request_id=%s comercio_id=%s",
+            exc.tipo,
+            exc.request_id,
+            comercio.pk,
+        )
+        return Response(
+            {
+                "detail": _MENSAJE_PEY,
+                "tipo": exc.tipo,
+                "request_id": exc.request_id,
+                "puede_haberse_creado": exc.puede_haberse_creado,
+            },
+            status=502,
+        )
+    return None

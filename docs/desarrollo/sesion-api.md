@@ -189,6 +189,14 @@ Sin sesión: `403` del middleware. Usuario sin membresía: `403`. Monto, referen
 
 El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respuesta del alta. La referencia se envía a pey como `numRef` y no se guarda en el movimiento.
 
+## Alta de venta por notificación
+
+`POST /api/ventas/notificacion/` crea un cobro `notificacion` pendiente. El ámbito es el de la venta por QR: comercio de la sesión; `comercio` o `comercio_id` en el cuerpo o en la query responden `400`.
+
+Cuerpo JSON: `monto`, `telefono` (10 dígitos) y, opcionales, `concepto` y `referencia`. El monto es mayor que 0, con hasta 2 decimales y como máximo `1000000`. Concepto y referencia siguen las reglas del QR. La notificación vence a los 600 segundos. Mientras haya una venta vigente (este canal o el QR de venta), responde `409` con el mismo cuerpo de venta pendiente.
+
+Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`notificacion`), `monto`, `concepto`, `estado` (`pendiente`), `vence_en`, `origen` y `telefono_final` (los 4 últimos dígitos). El teléfono completo no se guarda ni se escribe en los logs. Cuenta inactiva: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el aviso: `502` igual que el QR. El cobro guarda `pey_transaction_id`. Un webhook `codi.pn.payment_received` con ese `transactionId` lo marca `pagado`.
+
 ## Semilla de desarrollo
 
 Con `DEBUG` activo:
