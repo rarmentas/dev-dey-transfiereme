@@ -26,7 +26,12 @@ export interface VideoResuelto {
   estado: EstadoVideo;
 }
 
-const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+// En el build este módulo se empaqueta en otra carpeta: se busca la raíz que sí tenga public/videos.
+const cwd = (globalThis as { process?: { cwd?: () => string } }).process?.cwd?.() ?? '.';
+const raiz =
+  [resolve(dirname(fileURLToPath(import.meta.url)), '../..'), cwd, join(cwd, 'landing')].find((r) =>
+    existsSync(join(r, 'public', 'videos', 'videos.json')),
+  ) ?? cwd;
 const rutaManifiesto = join(raiz, 'public', 'videos', 'videos.json');
 
 let manifiestoLeido = false;
