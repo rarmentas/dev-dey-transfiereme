@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-cody}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cody_local_dev}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - cody_pgdata:/var/lib/postgresql/data
     healthcheck:

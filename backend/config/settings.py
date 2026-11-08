@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "config",
     "ambito",
     "sesion",
+    "movimientos",
 ]
 
 MIDDLEWARE = [
