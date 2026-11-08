@@ -18,7 +18,11 @@ class CodigoCorreo(models.Model):
         verbose_name = "código por correo"
         verbose_name_plural = "códigos por correo"
         indexes = [
-            models.Index(fields=["correo", "proposito", "usado_en"]),
+            models.Index(
+                fields=["correo", "proposito", "usado_en"],
+                # Mismo nombre que en 0001_codigocorreo: sin migración pendiente.
+                name="sesion_codi_correo_7f0e8e_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
