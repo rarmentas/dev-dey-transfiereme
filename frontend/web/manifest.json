@@ -1,11 +1,11 @@
 {
-    "name": "cody",
-    "short_name": "cody",
+    "name": "Transfiéreme",
+    "short_name": "Transfiéreme",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F4F6FA",
+    "theme_color": "#1E4FA3",
+    "description": "Cobra con CoDi sin pasar por los menús de tu banco.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
