@@ -14,7 +14,7 @@ Este documento describe **nombres y uso**, sin valores reales. Las secretas no d
 | `DJANGO_SECRET_KEY` | Sí | `backend/.env` | Firmas y sesión de Django |
 | `DEBUG` | No | `backend/.env` | `True` en local |
 | `ALLOWED_HOSTS` | No | `backend/.env` | `localhost`, `127.0.0.1` |
-| `PEY_ADAPTADOR` | No | `backend/.env` | `desarrollo` o `produccion`. Vacío: `desarrollo` si `DEBUG`, si no `produccion`. `desarrollo` con `DEBUG=False` no arranca el puerto |
+| `PEY_ADAPTADOR` | No | `backend/.env` | `desarrollo` o `produccion`. Vacío: `desarrollo` si `DEBUG`, si no `produccion`. No arranca en `desarrollo` si `DEBUG=False` o si `PEY_API_KEY` tiene valor |
 
 Plantilla: `.env.example` (también en `backend/.env.example`). `scripts/dev-start.sh` carga `backend/.env` si existe y no exige variables de pey.
 
@@ -39,7 +39,7 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `WEBHOOK_BASE_URL` | No (URL pública) | Avisos; en producción `https://transfiereme.asware.com.mx` |
 | `PEY_API_KEY` | Sí | Bearer contra `https://api.pey.mx` |
 | `PEY_WEBHOOK_SECRET` | Sí | Firma Standard Webhooks (`whsec_...`) de `POST /api/webhooks/pey/`. Vacío: la ruta rechaza todo con 401 |
-| `PEY_ADAPTADOR` | No | `desarrollo` o `produccion`. Vacío con `DEBUG=False`: adaptador de producción. `desarrollo` exige `DEBUG` |
+| `PEY_ADAPTADOR` | No | `desarrollo` o `produccion`. Vacío con `DEBUG=False`: adaptador de producción. `desarrollo` exige `DEBUG` y `PEY_API_KEY` vacía |
 
 Esas cuatro secretas no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
 
@@ -64,4 +64,4 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 
 El pipeline solo se crea en un push (o un lanzamiento manual) a `master` o a `test`. `deploy:prod` usa el prefijo `PROD_` y el ámbito `production`; `deploy:test` usa `TEST_` y el ámbito `test`. Cada uno copia el árbol a su `DEPLOY_PATH`, instala el `.env` en `backend/.env`, levanta el Postgres de `deploy/compose.yaml` y espera a que responda, crea el venv, migra, publica estáticos, instala `cody.service` y espera HTTP 200 en `/api/salud/`. En intec-vps-001 ese contenedor es `codi-postgres` y publica `127.0.0.1:5435`; el archivo de la app tiene que traer `POSTGRES_PORT=5435`. Los datos quedan en `/var/lib/codi/postgres`, fuera del árbol que sincroniza el job. El usuario de deploy necesita `sudo` sin contraseña para `systemctl`, `install` y `mkdir`, y pertenecer al grupo `docker`. Opcional: `PROD_PYTHON` o `TEST_PYTHON` (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`, el mismo intérprete que denti). Dentro del archivo de la app se pueden fijar `GUNICORN_BIND` (por defecto `127.0.0.1:8000`), `GUNICORN_WORKERS` y `GUNICORN_TIMEOUT`. `DEBUG` tiene que ser `False`.
 
-El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`.
+El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`. `obtener_puerto()` lo rechaza cuando `PEY_API_KEY` tiene valor, para que un `DEBUG` encendido por error no conviva con la llave real.

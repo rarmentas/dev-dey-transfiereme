@@ -4,8 +4,9 @@ import json
 import logging
 from collections.abc import Callable
 from decimal import Decimal
+from typing import NoReturn
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from django.conf import settings
 
@@ -18,12 +19,18 @@ from pey.validacion import NotificacionValidada, QrValidado, validar_notificacio
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 10
-_CENTAVO = Decimal("0.01")
 
 Transporte = Callable[
     [str, str, dict[str, str], bytes, float],
     tuple[int, bytes],
 ]
+
+
+class _SinRedireccion(HTTPRedirectHandler):
+    """Un 3xx no se sigue: el Bearer no debe salir hacia otro host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def transporte_urllib(
@@ -33,12 +40,14 @@ def transporte_urllib(
     cuerpo_bytes: bytes,
     timeout: float,
 ) -> tuple[int, bytes]:
+    opener = build_opener(_SinRedireccion)
     peticion = Request(url, data=cuerpo_bytes, headers=headers, method=metodo)
     try:
-        with urlopen(peticion, timeout=timeout) as respuesta:
+        with opener.open(peticion, timeout=timeout) as respuesta:
             return int(respuesta.status), respuesta.read()
     except HTTPError as exc:
-        return exc.code, exc.read()
+        with exc:
+            return exc.code, exc.read()
 
 
 class AdaptadorProduccion:
@@ -107,7 +116,11 @@ class AdaptadorProduccion:
             return self._transporte("POST", url, headers, cuerpo, TIMEOUT_S)
         except Exception as exc:
             logger.warning("pey no disponible (%s)", exc.__class__.__name__)
-            raise ErrorPey("NO_DISPONIBLE", "pey no respondió") from exc
+            raise ErrorPey(
+                "NO_DISPONIBLE",
+                "pey no respondió",
+                puede_haberse_creado=True,
+            ) from exc
 
 
 def _cuerpo_qr(datos: QrValidado) -> bytes:
@@ -140,7 +153,7 @@ def _json(campos: list[tuple[str, object]]) -> bytes:
 
 def _fragmento(valor: object) -> str:
     if isinstance(valor, Decimal):
-        return format(valor.quantize(_CENTAVO), "f")
+        return format(valor, "f")
     return json.dumps(valor, ensure_ascii=False)
 
 
@@ -148,27 +161,47 @@ def _objeto(cuerpo: bytes) -> dict:
     try:
         data = json.loads(cuerpo)
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un cuerpo ilegible") from None
+        raise _cuerpo_ilegible() from None
     if not isinstance(data, dict):
-        raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un cuerpo ilegible")
+        raise _cuerpo_ilegible()
     return data
 
 
 def _texto(data: dict, campo: str) -> str:
     valor = data.get(campo)
     if not isinstance(valor, str) or valor == "":
-        raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un cuerpo ilegible")
+        raise _cuerpo_ilegible()
     return valor
 
 
-def _falla_http(status: int, cuerpo: bytes) -> None:
+def _cuerpo_ilegible() -> ErrorPey:
+    return ErrorPey(
+        "RESPUESTA_INVALIDA",
+        "pey respondió un cuerpo ilegible",
+        puede_haberse_creado=True,
+    )
+
+
+def _falla_http(status: int, cuerpo: bytes) -> NoReturn:
     if status == 400:
         raise _error_pey(cuerpo)
     if 500 <= status <= 599:
         request_id = _request_id(cuerpo)
         _loguear("NO_DISPONIBLE", request_id)
-        raise ErrorPey("NO_DISPONIBLE", "pey no está disponible", request_id)
-    raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un estado inesperado")
+        raise ErrorPey(
+            "NO_DISPONIBLE",
+            "pey no está disponible",
+            request_id,
+            puede_haberse_creado=True,
+        )
+    request_id = _request_id(cuerpo)
+    _loguear("RESPUESTA_INVALIDA", request_id)
+    raise ErrorPey(
+        "RESPUESTA_INVALIDA",
+        "pey respondió un estado inesperado",
+        request_id,
+        puede_haberse_creado=True,
+    )
 
 
 def _error_pey(cuerpo: bytes) -> ErrorPey:

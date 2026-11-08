@@ -1,5 +1,11 @@
+import email
+import io
 import json
 from decimal import Decimal
+from unittest.mock import patch
+from urllib.parse import urlparse
+from urllib.request import HTTPSHandler, build_opener
+from urllib.response import addinfourl
 
 from django.test import SimpleTestCase, override_settings
 
@@ -116,6 +122,7 @@ class ErroresProduccionTests(SimpleTestCase):
         self.assertEqual(ctx.exception.tipo, "INVALID_AMOUNT")
         self.assertEqual(ctx.exception.mensaje, "El monto no es válido")
         self.assertEqual(ctx.exception.request_id, "req_abc")
+        self.assertFalse(ctx.exception.puede_haberse_creado)
         texto = "\n".join(logs.output)
         self.assertIn("req_abc", texto)
         self.assertNotIn(LLAVE, texto)
@@ -132,6 +139,7 @@ class ErroresProduccionTests(SimpleTestCase):
                         telefono="5512345678",
                     )
             self.assertEqual(ctx.exception.tipo, "NO_DISPONIBLE")
+            self.assertTrue(ctx.exception.puede_haberse_creado)
             self.assertEqual(len(transporte.llamadas), 1)
             self.assertNotIn(LLAVE, "\n".join(logs.output))
 
@@ -144,6 +152,7 @@ class ErroresProduccionTests(SimpleTestCase):
             with self.assertRaises(ErrorPey) as ctx:
                 adaptador.crear_qr(monto=Decimal("1"))
         self.assertEqual(ctx.exception.tipo, "NO_DISPONIBLE")
+        self.assertTrue(ctx.exception.puede_haberse_creado)
         texto = "\n".join(logs.output)
         self.assertIn("TimeoutError", texto)
         self.assertNotIn(LLAVE, texto)
@@ -155,6 +164,39 @@ class ErroresProduccionTests(SimpleTestCase):
             with self.assertRaises(ErrorPey) as ctx:
                 adaptador.crear_qr(monto=Decimal("1"))
             self.assertEqual(ctx.exception.tipo, "RESPUESTA_INVALIDA")
+            self.assertTrue(ctx.exception.puede_haberse_creado)
+
+    def test_400_ilegible_no_pudo_crearse(self) -> None:
+        adaptador, _transporte = _adaptador(400, b"no-json")
+        with self.assertRaises(ErrorPey) as ctx:
+            adaptador.crear_qr(monto=Decimal("1"))
+        self.assertEqual(ctx.exception.tipo, "RESPUESTA_INVALIDA")
+        self.assertFalse(ctx.exception.puede_haberse_creado)
+
+    def test_estado_inesperado_loguea_request_id_y_pudo_crearse(self) -> None:
+        cuerpo = json.dumps(
+            {
+                "error": {
+                    "message": "no",
+                    "type": "NO",
+                    "requestId": "req_estado",
+                }
+            }
+        ).encode()
+        for status in (301, 302, 401, 403, 429):
+            adaptador, transporte = _adaptador(status, cuerpo)
+            with self.assertLogs("pey.produccion", level="WARNING") as logs:
+                with self.assertRaises(ErrorPey) as ctx:
+                    adaptador.crear_qr(monto=Decimal("1"))
+            self.assertEqual(ctx.exception.tipo, "RESPUESTA_INVALIDA")
+            self.assertEqual(ctx.exception.request_id, "req_estado")
+            self.assertTrue(ctx.exception.puede_haberse_creado)
+            self.assertEqual(len(transporte.llamadas), 1)
+            texto = "\n".join(logs.output)
+            self.assertIn("req_estado", texto)
+            self.assertNotIn(LLAVE, texto)
+            self.assertNotIn("Authorization", texto)
+            self.assertNotIn("Bearer", texto)
 
 
 class SinLlaveTests(SimpleTestCase):
@@ -170,11 +212,13 @@ class SinLlaveTests(SimpleTestCase):
         with self.assertRaises(ErrorPey) as ctx:
             adaptador.crear_qr(monto=Decimal("1"))
         self.assertEqual(ctx.exception.tipo, "CONFIGURACION")
+        self.assertFalse(ctx.exception.puede_haberse_creado)
         self.assertEqual(llamadas, [])
 
         with self.assertRaises(ErrorPey) as aviso:
             adaptador.crear_notificacion(monto=Decimal("1"), telefono="5512345678")
         self.assertEqual(aviso.exception.tipo, "CONFIGURACION")
+        self.assertFalse(aviso.exception.puede_haberse_creado)
         self.assertEqual(llamadas, [])
 
 
@@ -193,7 +237,12 @@ class ValidacionCompartidaTests(SimpleTestCase):
             {"monto": Decimal("10"), "num_ref": "12345678"},
             {"monto": Decimal("10"), "expiracion_s": 100},
             {"monto": Decimal("-0.01")},
+            {"monto": Decimal("-0.00")},
             {"monto": Decimal("0.005")},
+            {"monto": Decimal("10.500")},
+            {"monto": Decimal("1e27")},
+            {"monto": Decimal("12345678901234567890123456.789")},
+            {"monto": Decimal("10000000000")},
         ]
         for kwargs in qr_invalidos:
             with self.assertRaises(ParametroInvalido):
@@ -201,6 +250,10 @@ class ValidacionCompartidaTests(SimpleTestCase):
 
         pn_invalidos = [
             {"monto": Decimal("0"), "telefono": "5512345678"},
+            {"monto": Decimal("-0.00"), "telefono": "5512345678"},
+            {"monto": Decimal("0.005"), "telefono": "5512345678"},
+            {"monto": Decimal("1e27"), "telefono": "5512345678"},
+            {"monto": Decimal("12345678901234567890123456.789"), "telefono": "5512345678"},
             {"monto": Decimal("1000000.01"), "telefono": "5512345678"},
             {"monto": Decimal("10"), "telefono": "551234567"},
             {"monto": Decimal("10"), "telefono": "5512345678", "expiracion_s": 100},
@@ -226,8 +279,68 @@ class ValidacionCompartidaTests(SimpleTestCase):
         adaptador.crear_notificacion(
             monto=Decimal("8"),
             telefono="5512345678",
-            concepto="",
+            concepto="   ",
         )
         self.assertEqual(json.loads(vistos[0])["concept"], "Transferencia")
         self.assertEqual(json.loads(vistos[1])["concept"], "Transferencia")
         self.assertEqual(len(vistos), 2)
+
+    def test_uno_diez_sale_sin_redondear(self) -> None:
+        adaptador, transporte = _adaptador(201, QR_OK)
+        adaptador.crear_qr(monto=Decimal("1.10"))
+        self.assertIn(b'"amount": 1.10', transporte.llamadas[0][3])
+
+
+class _HostUnico(HTTPSHandler):
+    def __init__(self, llamadas: list[tuple[str, str | None]]) -> None:
+        super().__init__()
+        self._llamadas = llamadas
+
+    def https_open(self, req):
+        self._llamadas.append((req.full_url, req.get_header("Authorization")))
+        if len(self._llamadas) > 1:
+            cuerpo = io.BytesIO(b"ok")
+            headers = email.message_from_string("")
+            respuesta = addinfourl(cuerpo, headers, req.full_url, 200)
+            respuesta.msg = "OK"
+            return respuesta
+        cuerpo = io.BytesIO(
+            b'{"error":{"message":"redir","type":"NO","requestId":"req_redir"}}'
+        )
+        headers = email.message_from_string("Location: https://evil.example/robo\n")
+        respuesta = addinfourl(cuerpo, headers, req.full_url, 302)
+        respuesta.msg = "Found"
+        return respuesta
+
+
+@override_settings(PEY_API_KEY=LLAVE, PEY_BASE_URL="https://api.pey.mx")
+class RedireccionTests(SimpleTestCase):
+    def test_un_302_no_reenvia_el_bearer_a_otro_host(self) -> None:
+        llamadas: list[tuple[str, str | None]] = []
+
+        def _build(*handlers):
+            return build_opener(_HostUnico(llamadas), *handlers)
+
+        adaptador = AdaptadorProduccion()
+        with (
+            patch("pey.produccion.build_opener", _build),
+            self.assertLogs("pey.produccion", level="WARNING") as logs,
+        ):
+            with self.assertRaises(ErrorPey) as ctx:
+                adaptador.crear_qr(monto=Decimal("1"))
+
+        self.assertEqual(ctx.exception.tipo, "RESPUESTA_INVALIDA")
+        self.assertTrue(ctx.exception.puede_haberse_creado)
+        self.assertEqual(ctx.exception.request_id, "req_redir")
+        self.assertIn("no debe reintentar", ErrorPey.__doc__)
+        self.assertEqual(len(llamadas), 1)
+        url, autorizacion = llamadas[0]
+        self.assertEqual(urlparse(url).netloc, "api.pey.mx")
+        self.assertEqual(autorizacion, "Bearer llave-prueba")
+        self.assertTrue(
+            all(urlparse(destino).netloc == "api.pey.mx" for destino, _auth in llamadas)
+        )
+        texto = "\n".join(logs.output)
+        self.assertIn("req_redir", texto)
+        self.assertNotIn(LLAVE, texto)
+        self.assertNotIn("evil.example", texto)

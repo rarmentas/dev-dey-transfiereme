@@ -2,14 +2,18 @@
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 
 from pey.tipos import ParametroInvalido
 
 _NUM_REF = re.compile(r"^[0-9]{1,7}$")
 _TELEFONO = re.compile(r"^[0-9]{10}$")
 _CERO = Decimal("0")
+_CENTAVO = Decimal("0.01")
 _TOPE_PN = Decimal("1000000")
+# Exclusivo. Decimal(12, 2) llega hasta 9999999999.99.
+_TOPE_QR = Decimal("10000000000")
+_PREC_MONTO = 50
 _CONCEPTO_VACIO = "Transferencia"
 
 
@@ -38,7 +42,7 @@ def validar_qr(
     num_ref: str,
 ) -> QrValidado:
     return QrValidado(
-        monto=_monto(monto, minimo=_CERO),
+        monto=_monto(monto, tope=_TOPE_QR, exclusivo_tope=True, permitir_cero=True),
         concepto=_concepto(concepto),
         expiracion_s=_expiracion_qr(expiracion_s),
         num_ref=_num_ref(num_ref),
@@ -54,7 +58,7 @@ def validar_notificacion(
     num_ref: str,
 ) -> NotificacionValidada:
     return NotificacionValidada(
-        monto=_monto(monto, minimo=_CERO, exclusivo=True, tope=_TOPE_PN),
+        monto=_monto(monto, tope=_TOPE_PN, exclusivo_tope=False, permitir_cero=False),
         telefono=_telefono(telefono),
         concepto=_concepto(concepto),
         expiracion_s=_expiracion_pn(expiracion_s),
@@ -65,24 +69,33 @@ def validar_notificacion(
 def _monto(
     monto: Decimal,
     *,
-    minimo: Decimal,
-    exclusivo: bool = False,
-    tope: Decimal | None = None,
+    tope: Decimal,
+    exclusivo_tope: bool,
+    permitir_cero: bool,
 ) -> Decimal:
-    if not isinstance(monto, Decimal) or not monto.is_finite():
-        raise ParametroInvalido("monto debe ser un Decimal finito")
-    # normalize quita ceros de cola: 10.500 es 10.50; 0.005 sigue teniendo 3 decimales.
-    exponente = monto.normalize().as_tuple().exponent
-    if isinstance(exponente, str) or exponente < -2:
-        raise ParametroInvalido("monto no admite más de 2 decimales")
-    if exclusivo:
-        if monto <= minimo:
-            raise ParametroInvalido("monto debe ser mayor que 0")
-    elif monto < minimo:
-        raise ParametroInvalido("monto no puede ser negativo")
-    if tope is not None and monto > tope:
-        raise ParametroInvalido("monto no puede pasar de 1000000")
-    return monto
+    if not isinstance(monto, Decimal):
+        raise ParametroInvalido("monto debe ser un Decimal")
+    try:
+        with localcontext() as ctx:
+            ctx.prec = _PREC_MONTO
+            ctx.traps[InvalidOperation] = True
+            if not monto.is_finite():
+                raise ParametroInvalido("monto debe ser finito")
+            if monto.is_signed():
+                raise ParametroInvalido("monto no puede ser negativo")
+            exponente = monto.as_tuple().exponent
+            if not isinstance(exponente, int) or exponente < -2:
+                raise ParametroInvalido("monto no admite más de 2 decimales")
+            if not permitir_cero and monto <= _CERO:
+                raise ParametroInvalido("monto debe ser mayor que 0")
+            if exclusivo_tope:
+                if monto >= tope:
+                    raise ParametroInvalido("monto no cabe en el QR")
+            elif monto > tope:
+                raise ParametroInvalido("monto no puede pasar de 1000000")
+            return monto.quantize(_CENTAVO)
+    except DecimalException as exc:
+        raise ParametroInvalido("monto no se puede representar") from exc
 
 
 def _entero(valor: int, nombre: str) -> int:
@@ -120,6 +133,6 @@ def _telefono(telefono: str) -> str:
 def _concepto(concepto: str) -> str:
     if not isinstance(concepto, str):
         raise ParametroInvalido("concepto debe ser texto")
-    if concepto == "":
+    if concepto.strip() == "":
         return _CONCEPTO_VACIO
     return concepto

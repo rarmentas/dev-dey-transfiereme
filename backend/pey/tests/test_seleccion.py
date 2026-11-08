@@ -7,9 +7,19 @@ from pey.seleccion import obtener_puerto
 
 
 class ObtenerPuertoTests(SimpleTestCase):
-    @override_settings(DEBUG=True, PEY_ADAPTADOR="")
+    @override_settings(DEBUG=True, PEY_ADAPTADOR="", PEY_API_KEY="")
     def test_debug_sin_valor_usa_desarrollo(self) -> None:
         self.assertIsInstance(obtener_puerto(), AdaptadorDesarrollo)
+
+    @override_settings(DEBUG=True, PEY_ADAPTADOR="", PEY_API_KEY="llave-real")
+    def test_debug_con_llave_no_usa_desarrollo(self) -> None:
+        with self.assertRaises(ImproperlyConfigured):
+            obtener_puerto()
+
+    @override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="llave-real")
+    def test_desarrollo_con_llave_no_arranca(self) -> None:
+        with self.assertRaises(ImproperlyConfigured):
+            obtener_puerto()
 
     @override_settings(DEBUG=False, PEY_ADAPTADOR="")
     def test_sin_debug_sin_valor_usa_produccion(self) -> None:

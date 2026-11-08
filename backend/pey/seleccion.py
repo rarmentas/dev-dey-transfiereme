@@ -1,4 +1,4 @@
-"""Elige el adaptador. El de desarrollo no corre con DEBUG apagado."""
+"""Elige el adaptador. El de desarrollo no corre con DEBUG apagado ni con llave."""
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -16,6 +16,10 @@ def obtener_puerto() -> PuertoPey:
         if not settings.DEBUG:
             raise ImproperlyConfigured(
                 "PEY_ADAPTADOR=desarrollo solo se permite con DEBUG."
+            )
+        if settings.PEY_API_KEY:
+            raise ImproperlyConfigured(
+                "PEY_ADAPTADOR=desarrollo no admite PEY_API_KEY."
             )
         return AdaptadorDesarrollo()
     if elegido == "produccion":
