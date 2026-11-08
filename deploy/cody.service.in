@@ -1,0 +1,23 @@
+[Unit]
+Description=Cody
+After=network.target
+
+[Service]
+Type=simple
+User=@DEPLOY_USER@
+WorkingDirectory=@DEPLOY_PATH@/backend
+Environment=GUNICORN_BIND=127.0.0.1:8000
+Environment=GUNICORN_WORKERS=2
+Environment=GUNICORN_TIMEOUT=60
+EnvironmentFile=@DEPLOY_PATH@/backend/.env
+RuntimeDirectory=cody
+ExecStart=@DEPLOY_PATH@/backend/.venv/bin/gunicorn config.wsgi:application --bind ${GUNICORN_BIND} --workers ${GUNICORN_WORKERS} --timeout ${GUNICORN_TIMEOUT} --pid /run/cody/gunicorn.pid --access-logfile - --error-logfile -
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=@DEPLOY_PATH@
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,8 @@
 stages:
   - validate
   - test
+  - build
+  - deploy
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -24,6 +26,8 @@ variables:
 # usa refs/merge-requests/N/head, que no es una rama protegida, así que se queda
 # sin runner. Estos jobs corren en el push de una rama protegida (master, test
 # o la rama del epic, si está protegida).
+# deploy:prod solo en el push a master: ahí el runner existe y GitLab inyecta
+# el ámbito production. El merge request no despliega.
 .workflow_rules:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true"
@@ -145,3 +149,50 @@ frontend:test:
     - flutter test test/widget_smoke_test.dart
   needs:
     - frontend:analyze
+
+build:web:
+  stage: build
+  image: ghcr.io/gmeligio/flutter-web:3.47.8
+  tags:
+    - docker
+  cache:
+    key:
+      files:
+        - frontend/pubspec.lock
+    paths:
+      - frontend/.dart_tool
+      - frontend/.pub-cache
+  script:
+    - cd frontend
+    - flutter pub get
+    - flutter build web --release
+  artifacts:
+    paths:
+      - frontend/build/web/
+    expire_in: 1 day
+  needs:
+    - frontend:test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+deploy:prod:
+  stage: deploy
+  image: alpine:3.22
+  tags:
+    - docker
+  environment:
+    name: production
+    url: https://transfiereme.asware.com.mx
+  resource_group: production
+  before_script:
+    - apk add --no-cache bash openssh-client rsync
+  script:
+    - bash scripts/ci/deploy.sh prod
+  needs:
+    - job: backend:test
+    - job: frontend:test
+    - job: env:comprobar:prod
+    - job: build:web
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
