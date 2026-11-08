@@ -3,6 +3,10 @@ from django.db import models
 
 
 class Comercio(models.Model):
+    class PeyCodiStatus(models.TextChoices):
+        PENDING = "pending", "Pendiente"
+        ACTIVE = "active", "Activa"
+
     nombre = models.CharField(max_length=200)
     semilla_active_dev = models.BooleanField(
         default=False,
@@ -16,6 +20,23 @@ class Comercio(models.Model):
         blank=True,
         default="",
         verbose_name="CLABE",
+    )
+    pey_codi_status = models.CharField(
+        max_length=10,
+        choices=PeyCodiStatus.choices,
+        default=PeyCodiStatus.PENDING,
+        verbose_name="estado de cuenta CoDi en pey",
+    )
+    pey_bank_account_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="id de cuenta en pey",
+    )
+    pey_codi_status_actualizado_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="última sincronización de estado pey",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
 
