@@ -221,6 +221,30 @@ class PuertoWebhookPeyTests(TestCase):
         self.assertEqual(leido.pey_transaction_id, "TX-PN")
         self.assertEqual(leido.origen, Movimiento.Origen.ORIGEN_PEY)
 
+    def test_aviso_pn_sin_cobro_deja_rastro(self) -> None:
+        cuerpo = json.dumps(
+            {
+                "type": "codi.pn.payment_received",
+                "amount": 25,
+                "concept": "Aviso",
+                "transactionId": "TX-DESCONOCIDO",
+            },
+            separators=(",", ":"),
+        )
+        with self.assertLogs("webhooks.views", level="WARNING") as logs:
+            respuesta = self._post(cuerpo, "msg_sin_cobro_pn")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json(), {"estado": "sin_cobro"})
+        aviso = AvisoRecibido.objects.get(webhook_id="msg_sin_cobro_pn")
+        self.assertEqual(aviso.resultado, AvisoRecibido.Resultado.SIN_COBRO)
+        self.assertEqual(aviso.transaction_id, "TX-DESCONOCIDO")
+        texto = " ".join(logs.output)
+        self.assertIn("codi.pn.payment_received", texto)
+        self.assertIn("msg_sin_cobro_pn", texto)
+        self.assertIn("TX-DESCONOCIDO", texto)
+        self.assertNotIn(SECRETO, texto)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
     def test_cobro_inexistente_responde_sin_cobro(self) -> None:
         cuerpo = _cuerpo_qr(transaction_id="TX-NADIE", codi_qr_id="QR-NADIE")
         respuesta = self._post(cuerpo, "msg_nadie")

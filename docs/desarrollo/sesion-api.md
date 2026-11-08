@@ -195,7 +195,9 @@ El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respues
 
 Cuerpo JSON: `monto`, `telefono` (10 dígitos) y, opcionales, `concepto` y `referencia`. El monto es mayor que 0, con hasta 2 decimales y como máximo `1000000`. Concepto y referencia siguen las reglas del QR. La notificación vence a los 600 segundos. Mientras haya una venta vigente (este canal o el QR de venta), responde `409` con el mismo cuerpo de venta pendiente.
 
-Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`notificacion`), `monto`, `concepto`, `estado` (`pendiente`), `vence_en`, `origen` y `telefono_final` (los 4 últimos dígitos). El teléfono completo no se guarda ni se escribe en los logs. Cuenta inactiva: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el aviso: `502` igual que el QR. El cobro guarda `pey_transaction_id`. Un webhook `codi.pn.payment_received` con ese `transactionId` lo marca `pagado`.
+Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`notificacion`), `monto`, `concepto`, `estado` (`pendiente`), `vence_en`, `origen` y `telefono_final` (los 4 últimos dígitos). El teléfono completo no se guarda ni se escribe en los logs. Cuenta inactiva: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el aviso: `502` con los mismos campos que el QR. Cuando `puede_haberse_creado` es verdadero, el `detail` es «Puede que la notificación le haya llegado al cliente. Confírmelo con él antes de reintentar.» El cobro guarda `pey_transaction_id`. Un webhook `codi.pn.payment_received` con ese `transactionId` lo marca `pagado`.
+
+**Riesgo conocido.** Un timeout de pey o un fallo de base de datos después de crear la notificación puede dejar un pago sin cobro local. Queda `AvisoRecibido` con resultado `sin_cobro` y su `transaction_id`, más el log de error del alta, para conciliar a mano. La conciliación automática está fuera de alcance (C4).
 
 ## Semilla de desarrollo
 

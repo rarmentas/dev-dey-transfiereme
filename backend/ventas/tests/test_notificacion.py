@@ -1,18 +1,22 @@
 """Venta por notificación. El puerto es el adaptador de desarrollo o un doble."""
 
 import json
+import threading
+import time
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.db import connections
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
+from pey.produccion import AdaptadorProduccion
 from pey.tipos import ErrorPey, NotificacionCreada, QrCreado
 from sesion.middleware import _MENSAJE_SIN_SESION
 from ventas.servicio import (
@@ -50,10 +54,13 @@ class _Espia(AdaptadorDesarrollo):
         super().__init__(fallar_con=fallar_con)
         self.notificaciones: list[dict] = []
         self.qrs: list[dict] = []
+        self.creada: NotificacionCreada | None = None
 
     def crear_notificacion(self, **kwargs) -> NotificacionCreada:
         self.notificaciones.append(kwargs)
-        return super().crear_notificacion(**kwargs)
+        creada = super().crear_notificacion(**kwargs)
+        self.creada = creada
+        return creada
 
     def crear_qr(self, **kwargs) -> QrCreado:
         self.qrs.append(kwargs)
@@ -320,3 +327,199 @@ class NotificacionVentaTests(TestCase):
         self.assertEqual(comercio.status_code, 400)
         self.assertIn("comercio", comercio.json()["detail"].lower())
         self.assertEqual(Cobro.objects.count(), 0)
+
+    def test_502_distingue_si_la_notificacion_pudo_llegar(self) -> None:
+        self._entrar()
+        detalle_posible = (
+            "Puede que la notificación le haya llegado al cliente. "
+            "Confírmelo con él antes de reintentar."
+        )
+        casos = (
+            (False, "pey no pudo crear el cobro."),
+            (True, detalle_posible),
+        )
+        for puede, detalle in casos:
+            with self.subTest(puede_haberse_creado=puede):
+                espia = _Espia(
+                    fallar_con=ErrorPey(
+                        "NO_DISPONIBLE",
+                        "timeout",
+                        "req-puede",
+                        puede_haberse_creado=puede,
+                    ),
+                )
+                respuesta = self._post(espia)
+                self.assertEqual(respuesta.status_code, 502)
+                cuerpo = respuesta.json()
+                self.assertEqual(cuerpo["puede_haberse_creado"], puede)
+                self.assertEqual(cuerpo["detail"], detalle)
+                self.assertEqual(cuerpo["tipo"], "NO_DISPONIBLE")
+                self.assertEqual(cuerpo["request_id"], "req-puede")
+                self.assertNotIn(_TELEFONO, json.dumps(cuerpo))
+        self.assertEqual(Cobro.objects.count(), 0)
+
+    def test_fallo_de_bd_loguea_transaction_id_sin_el_telefono(self) -> None:
+        self._entrar()
+        espia = _Espia()
+        with self.assertLogs("ventas", level="ERROR") as logs:
+            with patch("ventas.servicio.obtener_puerto", return_value=espia):
+                with patch(
+                    "ventas.servicio.Movimiento.objects.create",
+                    side_effect=RuntimeError("bd"),
+                ):
+                    with self.assertRaises(RuntimeError):
+                        self.client.post(
+                            _RUTA,
+                            {
+                                "monto": "0.01",
+                                "telefono": _TELEFONO,
+                                "concepto": "Aviso",
+                            },
+                            format="json",
+                        )
+        self.assertIsNotNone(espia.creada)
+        texto = " ".join(logs.output)
+        self.assertIn(espia.creada.transaction_id, texto)
+        self.assertIn("telefono_final=5678", texto)
+        self.assertNotIn(_TELEFONO, texto)
+        self.assertEqual(Cobro.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    @override_settings(PEY_API_KEY="llave-de-prueba")
+    def test_adaptador_produccion_envia_el_cuerpo_pn(self) -> None:
+        self.comercio.pey_codi_status = self.comercio.PeyCodiStatus.ACTIVE
+        self.comercio.save(update_fields=["pey_codi_status"])
+        self._entrar()
+        llamadas: list[tuple] = []
+
+        def transporte(metodo, url, headers, cuerpo, timeout):
+            llamadas.append((metodo, url, dict(headers), cuerpo, timeout))
+            return (
+                200,
+                b'{"transactionId":"tx-prod-pn","codiId":"12345678901234567890"}',
+            )
+
+        puerto = AdaptadorProduccion(transporte=transporte)
+        with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
+            with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+                respuesta = self.client.post(
+                    _RUTA,
+                    {
+                        "monto": "10.00",
+                        "telefono": _TELEFONO,
+                        "concepto": "Aviso",
+                        "referencia": "42",
+                    },
+                    format="json",
+                )
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(respuesta.json()["origen"], "origen_pey")
+        self.assertNotIn("llave-de-prueba", json.dumps(respuesta.json()))
+        self.assertEqual(len(llamadas), 1)
+        metodo, url, headers, cuerpo, _timeout = llamadas[0]
+        self.assertEqual(metodo, "POST")
+        self.assertTrue(url.endswith("/codi/pn"))
+        self.assertIn("llave-de-prueba", headers["Authorization"])
+        enviado = json.loads(cuerpo)
+        self.assertEqual(enviado["amount"], 10)
+        self.assertEqual(enviado["phoneNumber"], _TELEFONO)
+        self.assertEqual(enviado["concept"], "Aviso")
+        self.assertEqual(enviado["expiration"], 600)
+        self.assertEqual(enviado["numRef"], "42")
+        movimiento = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
+        self.assertEqual(movimiento.origen, Movimiento.Origen.ORIGEN_PEY)
+        self.assertEqual(movimiento.cobro.pey_transaction_id, "tx-prod-pn")
+
+
+class _PuertoCruzado:
+    def __init__(self, ambos: threading.Event) -> None:
+        self.ambos = ambos
+        self.llamadas = 0
+        self._candado = threading.Lock()
+
+    def cuenta_active(self, comercio: Comercio) -> bool:
+        return True
+
+    def _pasar(self) -> int:
+        with self._candado:
+            self.llamadas += 1
+            numero = self.llamadas
+        if not self.ambos.wait(timeout=5):
+            raise TimeoutError("el otro hilo no llegó al candado")
+        time.sleep(0.1)
+        return numero
+
+    def crear_qr(self, **kwargs) -> QrCreado:
+        numero = self._pasar()
+        return QrCreado(
+            id=f"qr-cruz-{numero}",
+            qr_string=f"cody-dev://qr/qr-cruz-{numero}",
+        )
+
+    def crear_notificacion(self, **kwargs) -> NotificacionCreada:
+        numero = self._pasar()
+        return NotificacionCreada(
+            transaction_id=f"tx-cruz-{numero}",
+            codi_id="12345678901234567890",
+        )
+
+
+class ConcurrenciaQrYNotificacionTests(TransactionTestCase):
+    def test_qr_y_notificacion_simultaneos_dejan_un_solo_cobro(self) -> None:
+        comercio = Comercio.objects.create(nombre="Cruzado", semilla_active_dev=True)
+        usuario = User.objects.create_user(username="cruzado", password="pass")
+        Membresia.objects.create(usuario=usuario, comercio=comercio)
+        ambos = threading.Event()
+        barrera = threading.Barrier(2)
+        puerto = _PuertoCruzado(ambos)
+        codigos: list[int] = []
+        errores: list[BaseException] = []
+        candado = threading.Lock()
+        candado_llegada = threading.Lock()
+        llegados = [0]
+        cliente_qr = APIClient()
+        cliente_pn = APIClient()
+        cliente_qr.force_login(usuario)
+        cliente_pn.force_login(usuario)
+
+        def alta(cliente: APIClient, ruta: str, cuerpo: dict) -> None:
+            connections.close_all()
+            try:
+                barrera.wait(timeout=5)
+                with candado_llegada:
+                    llegados[0] += 1
+                    if llegados[0] >= 2:
+                        ambos.set()
+                respuesta = cliente.post(ruta, cuerpo, format="json")
+                with candado:
+                    codigos.append(respuesta.status_code)
+            except BaseException as exc:
+                errores.append(exc)
+            finally:
+                connections.close_all()
+
+        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+            hilos = [
+                threading.Thread(
+                    target=alta,
+                    args=(cliente_qr, _RUTA_QR, {"monto": "0.01", "concepto": "QR"}),
+                ),
+                threading.Thread(
+                    target=alta,
+                    args=(
+                        cliente_pn,
+                        _RUTA,
+                        {"monto": "0.01", "telefono": _TELEFONO, "concepto": "Aviso"},
+                    ),
+                ),
+            ]
+            for hilo in hilos:
+                hilo.start()
+            for hilo in hilos:
+                hilo.join(timeout=8)
+                self.assertFalse(hilo.is_alive())
+
+        self.assertEqual(errores, [])
+        self.assertEqual(sorted(codigos), [201, 409])
+        self.assertEqual(puerto.llamadas, 1)
+        self.assertEqual(Cobro.objects.filter(comercio=comercio).count(), 1)

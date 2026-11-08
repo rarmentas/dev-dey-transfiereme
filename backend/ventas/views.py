@@ -31,6 +31,10 @@ _MENSAJE_CUERPO = "El cuerpo debe ser un objeto JSON."
 _MENSAJE_CUENTA = "La cuenta no está ACTIVE."
 _MENSAJE_VENTA_VIVA = "Ya hay una venta pendiente."
 _MENSAJE_PEY = "pey no pudo crear el cobro."
+_MENSAJE_PUEDE_HABER_LLEGADO = (
+    "Puede que la notificación le haya llegado al cliente. "
+    "Confírmelo con él antes de reintentar."
+)
 
 
 class _CuerpoInvalido(Exception):
@@ -144,7 +148,7 @@ class CrearNotificacionView(APIView):
                 referencia=limpio["referencia"],
             )
         except Exception as exc:
-            respuesta = _respuesta_fallo(exc, comercio)
+            respuesta = _respuesta_fallo(exc, comercio, notificacion=True)
             if respuesta is None:
                 raise
             return respuesta
@@ -155,7 +159,12 @@ class CrearNotificacionView(APIView):
         )
 
 
-def _respuesta_fallo(exc: Exception, comercio) -> Response | None:
+def _respuesta_fallo(
+    exc: Exception,
+    comercio,
+    *,
+    notificacion: bool = False,
+) -> Response | None:
     if isinstance(exc, ValidacionVenta):
         return Response({exc.campo: [str(exc)]}, status=400)
     if isinstance(exc, CuentaNoActive):
@@ -171,9 +180,12 @@ def _respuesta_fallo(exc: Exception, comercio) -> Response | None:
             exc.request_id,
             comercio.pk,
         )
+        detail = _MENSAJE_PEY
+        if notificacion and exc.puede_haberse_creado:
+            detail = _MENSAJE_PUEDE_HABER_LLEGADO
         return Response(
             {
-                "detail": _MENSAJE_PEY,
+                "detail": detail,
                 "tipo": exc.tipo,
                 "request_id": exc.request_id,
                 "puede_haberse_creado": exc.puede_haberse_creado,
