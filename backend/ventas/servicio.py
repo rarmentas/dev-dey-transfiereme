@@ -12,6 +12,7 @@ from django.utils import timezone
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
+from pey.produccion import AdaptadorProduccion
 from pey.puerto import PuertoPey
 from pey.seleccion import obtener_puerto
 from ventas.canal import exigir_sin_venta_viva, vencer_pendientes
@@ -114,6 +115,7 @@ def crear_venta_qr(
                 concepto=concepto_ok,
                 expiracion_s=VENTA_EXPIRACION_S,
                 num_ref=referencia_ok,
+                **_cuenta_de_produccion(puerto, comercio),
             )
             vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
             cobro = Cobro.objects.create(
@@ -179,6 +181,7 @@ def crear_venta_notificacion(
                 concepto=concepto_ok,
                 expiracion_s=VENTA_EXPIRACION_S,
                 num_ref=referencia_ok,
+                **_cuenta_de_produccion(puerto, comercio),
             )
             vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
             cobro = Cobro.objects.create(
@@ -221,6 +224,16 @@ def crear_venta_notificacion(
         qr_string="",
         transaction_id=aviso.transaction_id,
     )
+
+
+def _cuenta_de_produccion(puerto: PuertoPey, comercio: Comercio) -> dict[str, str]:
+    """En producción el cobro va a la cuenta del comercio. En desarrollo no se exige."""
+    if not isinstance(puerto, AdaptadorProduccion):
+        return {}
+    ident = (comercio.pey_bank_account_id or "").strip()
+    if not ident:
+        raise CuentaNoActive()
+    return {"bank_account_id": ident}
 
 
 def _origen(puerto: PuertoPey) -> str:

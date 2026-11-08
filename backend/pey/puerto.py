@@ -16,6 +16,7 @@ class PuertoPey(Protocol):
         concepto: str = "",
         expiracion_s: int = 0,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> QrCreado: ...
 
     def crear_notificacion(
@@ -26,6 +27,7 @@ class PuertoPey(Protocol):
         concepto: str = "",
         expiracion_s: int = 360,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> NotificacionCreada: ...
 
     def cuenta_active(self, comercio: Comercio) -> bool: ...

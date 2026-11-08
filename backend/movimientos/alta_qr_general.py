@@ -5,9 +5,11 @@ from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 
+from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from movimientos.cobro_qr import preparar_alta_qr_general
 from movimientos.models import Cobro, Movimiento
+from pey.produccion import AdaptadorProduccion
 from pey.seleccion import obtener_puerto
 
 _CONCEPTO_QR_GENERAL = "Transferencia"
@@ -32,6 +34,7 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
         concepto="",
         expiracion_s=0,
         num_ref="0",
+        **_cuenta_de_produccion(puerto, comercio),
     )
 
     try:
@@ -51,6 +54,15 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
         if existente is None:
             raise
         return ResultadoAltaQrGeneral(cobro=existente, creado=False)
+
+
+def _cuenta_de_produccion(puerto: object, comercio: Comercio) -> dict[str, str]:
+    if not isinstance(puerto, AdaptadorProduccion):
+        return {}
+    ident = (comercio.pey_bank_account_id or "").strip()
+    if not ident:
+        raise CuentaNoActiveError()
+    return {"bank_account_id": ident}
 
 
 def _qr_general_de_comercio(comercio: Comercio) -> Cobro | None:

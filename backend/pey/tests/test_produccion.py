@@ -84,6 +84,46 @@ class ContratoProduccionTests(SimpleTestCase):
             b'{"amount": 0.01, "phoneNumber": "5512345678", "concept": "Transferencia", "expiration": 360, "numRef": "0"}',
         )
 
+
+_CUENTA = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+
+@override_settings(PEY_API_KEY=LLAVE, PEY_BASE_URL="https://api.pey.mx")
+class BankAccountIdProduccionTests(SimpleTestCase):
+    def test_qr_con_cuenta_agrega_bank_account_id(self) -> None:
+        adaptador, transporte = _adaptador(201, QR_OK)
+        adaptador.crear_qr(monto=Decimal("0.01"), bank_account_id=_CUENTA)
+        self.assertEqual(
+            transporte.llamadas[0][3],
+            b'{"amount": 0.01, "concept": "Transferencia", "expiration": 0, '
+            b'"numRef": "0", "bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}',
+        )
+
+    def test_pn_con_cuenta_agrega_bank_account_id(self) -> None:
+        adaptador, transporte = _adaptador(200, PN_OK)
+        adaptador.crear_notificacion(
+            monto=Decimal("0.01"),
+            telefono="5512345678",
+            bank_account_id=_CUENTA,
+        )
+        self.assertEqual(
+            transporte.llamadas[0][3],
+            b'{"amount": 0.01, "phoneNumber": "5512345678", "concept": "Transferencia", '
+            b'"expiration": 360, "numRef": "0", "bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}',
+        )
+
+    def test_ulid_invalido_no_llama_al_transporte(self) -> None:
+        adaptador, transporte = _adaptador(201, QR_OK)
+        with self.assertRaises(ParametroInvalido):
+            adaptador.crear_qr(monto=Decimal("0.01"), bank_account_id="no-es-ulid")
+        with self.assertRaises(ParametroInvalido):
+            adaptador.crear_notificacion(
+                monto=Decimal("0.01"),
+                telefono="5512345678",
+                bank_account_id="01arz3ndektsv4rrffq69g5fav",
+            )
+        self.assertEqual(transporte.llamadas, [])
+
     def test_concepto_explicito_se_conserva_y_el_vacio_no(self) -> None:
         adaptador, transporte = _adaptador(201, QR_OK)
         adaptador.crear_qr(monto=Decimal("10.50"), concepto="Tacos", num_ref="42")

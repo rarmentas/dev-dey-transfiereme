@@ -61,12 +61,14 @@ class AdaptadorProduccion:
         concepto: str = "",
         expiracion_s: int = 0,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> QrCreado:
         datos = validar_qr(
             monto=monto,
             concepto=concepto,
             expiracion_s=expiracion_s,
             num_ref=num_ref,
+            bank_account_id=bank_account_id,
         )
         status, cuerpo = self._post("/codi/qr", _cuerpo_qr(datos))
         if status == 201:
@@ -82,6 +84,7 @@ class AdaptadorProduccion:
         concepto: str = "",
         expiracion_s: int = 360,
         num_ref: str = "0",
+        bank_account_id: str = "",
     ) -> NotificacionCreada:
         datos = validar_notificacion(
             monto=monto,
@@ -89,6 +92,7 @@ class AdaptadorProduccion:
             concepto=concepto,
             expiracion_s=expiracion_s,
             num_ref=num_ref,
+            bank_account_id=bank_account_id,
         )
         status, cuerpo = self._post("/codi/pn", _cuerpo_pn(datos))
         if status == 200:
@@ -124,26 +128,28 @@ class AdaptadorProduccion:
 
 
 def _cuerpo_qr(datos: QrValidado) -> bytes:
-    return _json(
-        [
-            ("amount", datos.monto),
-            ("concept", datos.concepto),
-            ("expiration", datos.expiracion_s),
-            ("numRef", datos.num_ref),
-        ]
-    )
+    campos: list[tuple[str, object]] = [
+        ("amount", datos.monto),
+        ("concept", datos.concepto),
+        ("expiration", datos.expiracion_s),
+        ("numRef", datos.num_ref),
+    ]
+    if datos.bank_account_id:
+        campos.append(("bankAccountId", datos.bank_account_id))
+    return _json(campos)
 
 
 def _cuerpo_pn(datos: NotificacionValidada) -> bytes:
-    return _json(
-        [
-            ("amount", datos.monto),
-            ("phoneNumber", datos.telefono),
-            ("concept", datos.concepto),
-            ("expiration", datos.expiracion_s),
-            ("numRef", datos.num_ref),
-        ]
-    )
+    campos: list[tuple[str, object]] = [
+        ("amount", datos.monto),
+        ("phoneNumber", datos.telefono),
+        ("concept", datos.concepto),
+        ("expiration", datos.expiracion_s),
+        ("numRef", datos.num_ref),
+    ]
+    if datos.bank_account_id:
+        campos.append(("bankAccountId", datos.bank_account_id))
+    return _json(campos)
 
 
 def _json(campos: list[tuple[str, object]]) -> bytes:

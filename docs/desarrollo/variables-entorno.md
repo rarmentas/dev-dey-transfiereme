@@ -47,7 +47,7 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `WEBHOOK_BASE_URL` | No (URL pública) | Avisos; en producción `https://transfiereme.asware.com.mx` |
 | `PEY_API_KEY` | Sí | Bearer contra `https://api.pey.mx` |
 | `PEY_WEBHOOK_SECRET` | Sí | Firma Standard Webhooks (`whsec_...`) de `POST /api/webhooks/pey/`. Vacío: la ruta rechaza todo con 401 |
-| `PEY_ADAPTADOR` | No | `desarrollo` o `produccion`. Vacío con `DEBUG=False`: adaptador de producción. `desarrollo` exige `DEBUG` y `PEY_API_KEY` vacía |
+| `PEY_ADAPTADOR` | No | En producción: `produccion`. Vacío con `DEBUG=False` también elige producción. `desarrollo` exige `DEBUG` y `PEY_API_KEY` vacía |
 | `EMAIL_HOST` | No | Servidor SMTP |
 | `EMAIL_PORT` | No | Puerto SMTP |
 | `EMAIL_HOST_USER` | No | Usuario SMTP |
