@@ -50,17 +50,40 @@ El servidor determina el comercio por membresía; no acepta `comercio` ni `comer
 | Método | Ruta | Autenticación |
 | --- | --- | --- |
 | `GET` | `/api/movimientos/` | Sesión activa |
+| `GET` | `/api/movimientos/tablero/` | Sesión activa |
 | `GET` | `/api/movimientos/<id>/` | Sesión activa |
 
 Sin sesión: `403` con `{"detail": "Debe iniciar sesión."}` (middleware, igual que el resto de `/api/`).
 
-Listado `200`: arreglo JSON ordenado por fecha de creación descendente. Cada elemento incluye `id`, `monto` (cadena decimal), `concepto_visible`, `canal`, `estado`, `origen` y `creado_en`. Solo aparecen movimientos del comercio de la sesión.
+Listado `200`: arreglo JSON ordenado por fecha de creación descendente. Cada elemento incluye `id`, `monto` (cadena decimal), `concepto_visible`, `canal`, `estado`, `origen`, `creado_en` y `pagado_en` (`null` si todavía no está pagado). Solo aparecen movimientos del comercio de la sesión.
 
 Detalle propio: `200` con el mismo objeto. Id de otro comercio o inexistente en su ámbito: `404` con `{"detail": "No encontrado."}` (no `403`).
 
 Query con `comercio` o `comercio_id`: `400` con el mensaje de ámbito que indica que el servidor fija el comercio por membresía.
 
 Usuario autenticado sin membresía: `403` con el mensaje de `SinAmbitoError`.
+
+## Tablero
+
+`GET /api/movimientos/tablero/` agrupa los movimientos pagados del comercio de la sesión. El ámbito es el del listado: sin sesión `403`, `comercio` o `comercio_id` en la query `400`, usuario sin membresía `403`.
+
+Query opcional `desde` y `hasta` (`YYYY-MM-DD`, días de `America/Mexico_City`, inclusivos). Un formato distinto responde `400` con `{"detail": "Fecha inválida. Use YYYY-MM-DD."}`.
+
+Respuesta `200`:
+
+```json
+{
+  "zona": "America/Mexico_City",
+  "confirmado": {"filas": [], "total": "0.00"},
+  "desarrollo": {"filas": [], "total": "0.00"}
+}
+```
+
+`confirmado` cuenta solo `origen_pey`. `desarrollo` cuenta solo `origen_desarrollo`. Esos totales no se suman entre sí.
+
+Cada fila trae `dia` (`YYYY-MM-DD`), `canal`, `concepto` (concepto visible en minúsculas y con espacios colapsados; si queda vacío, `transferencia`), `etiqueta` (concepto visible del pago más reciente del grupo), `total` (cadena con dos decimales) y `cantidad`.
+
+El día sale de `pagado_en` convertido a `America/Mexico_City`. Orden: día descendente, luego canal, luego concepto. Pendientes y vencidos no entran.
 
 ## Semilla de desarrollo
 
