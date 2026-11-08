@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "nota": "Videos demo de la app Cody (marca transfiereme). Son 16:9 y ya traen el teléfono dibujado y la columna de pasos: no los metas en otro marco de teléfono ni los recortes a vertical. Sin audio; usar muted loop playsinline con el póster.",
+  "nota": "Videos demo de la app Cody (marca transfiereme). Todos son 16:9. Los 4 clips y demo-completo muestran el celular de la app al centro y, a la derecha, lo que ve el cliente (su banco o el cartel del mostrador); ya no traen columna de pasos ni logo. presentacion es el video de marca: problema, qué es, 3 pasos y cierre con QR. El teléfono ya viene dibujado: no los metas en otro marco ni los recortes a vertical. Solo mp4 (H.264), sin webm. Sin audio; usar muted loop playsinline con el póster.",
   "videos": [
     {
       "nombre": "venta-qr",
@@ -16,13 +16,11 @@
       "loop": true,
       "archivos": {
         "mp4": "/videos/venta-qr.mp4",
-        "webm": "/videos/venta-qr.webm",
         "poster": "/videos/venta-qr-poster.jpg"
       },
       "peso_kb": {
-        "mp4": 1005,
-        "webm": 1485,
-        "poster": 124
+        "mp4": 918,
+        "poster": 98
       }
     },
     {
@@ -39,13 +37,11 @@
       "loop": true,
       "archivos": {
         "mp4": "/videos/venta-notificacion.mp4",
-        "webm": "/videos/venta-notificacion.webm",
         "poster": "/videos/venta-notificacion-poster.jpg"
       },
       "peso_kb": {
-        "mp4": 942,
-        "webm": 1371,
-        "poster": 97
+        "mp4": 868,
+        "poster": 72
       }
     },
     {
@@ -62,13 +58,11 @@
       "loop": true,
       "archivos": {
         "mp4": "/videos/mi-qr.mp4",
-        "webm": "/videos/mi-qr.webm",
         "poster": "/videos/mi-qr-poster.jpg"
       },
       "peso_kb": {
-        "mp4": 937,
-        "webm": 1537,
-        "poster": 146
+        "mp4": 880,
+        "poster": 124
       }
     },
     {
@@ -85,13 +79,32 @@
       "loop": true,
       "archivos": {
         "mp4": "/videos/movimientos-tablero.mp4",
-        "webm": "/videos/movimientos-tablero.webm",
         "poster": "/videos/movimientos-tablero-poster.jpg"
       },
       "peso_kb": {
-        "mp4": 744,
-        "webm": 1164,
-        "poster": 94
+        "mp4": 693,
+        "poster": 69
+      }
+    },
+    {
+      "nombre": "presentacion",
+      "titulo": "Qué es transfiéreme",
+      "descripcion": "El problema de cobrar con terminal, qué es transfiéreme, cómo se cobra en 3 pasos y un QR a transfiereme.asware.com.mx.",
+      "duracion_s": 33.2,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 60,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/presentacion.mp4",
+        "poster": "/videos/presentacion-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 1317,
+        "poster": 89
       }
     },
     {
@@ -108,13 +121,11 @@
       "loop": true,
       "archivos": {
         "mp4": "/videos/demo-completo.mp4",
-        "webm": "/videos/demo-completo.webm",
         "poster": "/videos/demo-completo-poster.jpg"
       },
       "peso_kb": {
-        "mp4": 3070,
-        "webm": 4312,
-        "poster": 104
+        "mp4": 2795,
+        "poster": 74
       }
     }
   ]
