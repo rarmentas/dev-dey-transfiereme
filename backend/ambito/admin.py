@@ -5,7 +5,7 @@ from ambito.models import Comercio, Membresia
 
 @admin.register(Comercio)
 class ComercioAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "creado_en")
+    list_display = ("nombre", "semilla_active_dev", "creado_en")
     search_fields = ("nombre",)
 
 

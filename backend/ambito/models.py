@@ -4,6 +4,13 @@ from django.db import models
 
 class Comercio(models.Model):
     nombre = models.CharField(max_length=200)
+    semilla_active_dev = models.BooleanField(
+        default=False,
+        help_text=(
+            "Marca de la semilla local de desarrollo. No autoriza cobros "
+            "ni cuenta como cuenta ACTIVE en pey."
+        ),
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
