@@ -121,6 +121,31 @@ class OlvidoContrasenaTests(TestCase):
         )
         self.assertEqual(segunda.status_code, 403)
 
+    def test_restablecer_sin_cuenta_no_enumera_por_contrasena(self) -> None:
+        mensaje_codigo = "El código no es válido o ya expiró. Solicite uno nuevo."
+        sin_cuenta = self.client.post(
+            "/api/sesion/olvido/restablecer/",
+            {
+                "correo": "nadie@ejemplo.mx",
+                "código": "000000",
+                "contraseña": "abc",
+            },
+            content_type="application/json",
+        )
+        con_cuenta = self.client.post(
+            "/api/sesion/olvido/restablecer/",
+            {
+                "correo": "vendedor@demo.mx",
+                "código": "000000",
+                "contraseña": "abc",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(sin_cuenta.status_code, 403)
+        self.assertEqual(con_cuenta.status_code, 403)
+        self.assertEqual(sin_cuenta.json()["detail"], mensaje_codigo)
+        self.assertEqual(con_cuenta.json()["detail"], mensaje_codigo)
+
     def test_restablecer_codigo_vencido(self) -> None:
         self.client.post(
             "/api/sesion/olvido/solicitar/",

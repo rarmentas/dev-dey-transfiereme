@@ -189,11 +189,6 @@ def restablecer_olvido(correo: str, codigo: str, contrasena: str) -> tuple[bool,
     if usuario is None:
         return False, _MENSAJE_CODIGO
 
-    try:
-        validate_password(contrasena, user=usuario)
-    except ValidationError as exc:
-        return False, " ".join(exc.messages)
-
     solicitud = (
         CodigoCorreo.objects.select_for_update()
         .filter(
@@ -208,6 +203,11 @@ def restablecer_olvido(correo: str, codigo: str, contrasena: str) -> tuple[bool,
         return False, _MENSAJE_CODIGO
     if not check_password(codigo, solicitud.codigo_hash):
         return False, _MENSAJE_CODIGO
+
+    try:
+        validate_password(contrasena, user=usuario)
+    except ValidationError as exc:
+        return False, " ".join(exc.messages)
 
     usuario.set_password(contrasena)
     usuario.save(update_fields=["password"])
