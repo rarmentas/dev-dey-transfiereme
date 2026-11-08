@@ -19,7 +19,7 @@ Evidencia: las cuatro respuestas (lista de A, 404 cruzado, 403 sin sesión, list
 ## 1.8 Cuenta ACTIVE real
 
 1. `PEY_API_KEY` vive solo en el archivo de entorno del servidor (variable File de GitLab). No está en Flutter, en el repo ni en el historial del chat.
-2. En el servidor, con `DEBUG=False` y `PEY_ADAPTADOR=produccion`, registra la CLABE del comercio: `manage.py registrar_cuenta_pey … --confirmar` (historia 5.4).
+2. En el servidor, con `DEBUG=False` y `PEY_ADAPTADOR=produccion`, registra la CLABE del comercio: `manage.py registrar_cuenta_pey … --confirmar` (historia 5.4). Contrato del comando y de los endpoints de app: [cuenta-pey-api.md](cuenta-pey-api.md).
 3. `manage.py diagnostico_pey --correo …` muestra `codiStatus` `ACTIVE` y un `bankAccountId` (ULID).
 4. Con la CLABE de pruebas `012180015826225713` la cuenta queda `ACTIVE` al momento. Una CLABE propia puede tardar días hábiles: no cobres hasta ver `ACTIVE`.
 

@@ -6,6 +6,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 import '../../../core/ui/ui.dart';
 import '../../inicio/data/inicio_resumen.dart';
+import '../../cuenta/presentation/widgets/cuenta_pey_estado_card.dart';
 import '../../inicio/presentation/inicio_providers.dart';
 import '../../inicio/presentation/inicio_widgets.dart';
 
@@ -101,6 +102,8 @@ class HomeAutenticadoPage extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: TfSpace.s5),
+                  const CuentaPeyEstadoCard(compacto: true),
+                  const SizedBox(height: TfSpace.s4),
                   resumen.when(
                     skipLoadingOnRefresh: true,
                     skipLoadingOnReload: true,

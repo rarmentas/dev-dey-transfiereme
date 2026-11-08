@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/mock_inicio_api.dart';
+import '../../support/override_cuenta_estado.dart';
 import '../../support/mock_sesion_api.dart';
 
 class _SesionSinNombre extends SesionNotifier {
@@ -96,6 +97,7 @@ Future<void> _montar(
     ProviderScope(
       overrides: [
         dioProvider.overrideWithValue(dio),
+        cuentaEstadoActivaOverride(),
         sesionNotifierProvider.overrideWith(sesion ?? _SesionFija.new),
       ],
       child: MaterialApp.router(theme: TfTheme.light, routerConfig: router),
