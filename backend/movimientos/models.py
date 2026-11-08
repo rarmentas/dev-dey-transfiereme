@@ -23,11 +23,11 @@ class Movimiento(models.Model):
         ORIGEN_PEY = "origen_pey", "Origen pey"
         ORIGEN_DESARROLLO = "origen_desarrollo", "Origen desarrollo"
 
-    # pagado y vencido son terminales. vencido → pagado se rechaza: la
-    # pregunta de producto sigue abierta (aceptar, rechazar o registrar
-    # aparte un aviso tardío). No se acepta el pago ni se registra aparte.
+    # pagado no sale de ahí. vencido → pagado acepta un aviso tardío:
+    # el pago real no se pierde aunque el cobro ya se haya marcado vencido.
     _TRANSICIONES = {
         Estado.PENDIENTE: frozenset({Estado.PAGADO, Estado.VENCIDO}),
+        Estado.VENCIDO: frozenset({Estado.PAGADO}),
     }
 
     # PROTECT: borrar el comercio no puede llevarse el historial de cobros.

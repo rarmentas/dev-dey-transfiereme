@@ -14,6 +14,7 @@ from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.puerto import PuertoPey
 from pey.seleccion import obtener_puerto
+from ventas.canal import exigir_sin_venta_viva, vencer_pendientes
 
 logger = logging.getLogger(__name__)
 
@@ -86,27 +87,28 @@ def crear_venta_qr(
     if puerto is None:
         puerto = obtener_puerto()
 
-    if not puerto.cuenta_active(comercio):
-        raise CuentaNoActive()
-
-    # Fuera de la transacción: si el puerto falla, no queda nada escrito.
-    qr = puerto.crear_qr(
-        monto=monto_ok,
-        concepto=concepto_ok,
-        expiracion_s=VENTA_EXPIRACION_S,
-        num_ref=referencia_ok,
-    )
-
     origen = (
         Movimiento.Origen.ORIGEN_DESARROLLO
         if isinstance(puerto, AdaptadorDesarrollo)
         else Movimiento.Origen.ORIGEN_PEY
     )
-    vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
-    # Si la base falla, el QR ya existe en pey pero qr_string no se entrega:
-    # nadie puede pagar ese QR. La reconciliación queda pendiente (historia 3.2).
+    # Fuera del candado: un ErrorPey no revierte estos vencidos.
+    vencer_pendientes(comercio)
+    # El candado del comercio se sostiene durante la llamada a pey (timeout
+    # 10 s) a propósito: dos altas simultáneas no abren dos cobros (C12).
+    qr = None
     try:
         with transaction.atomic():
+            exigir_sin_venta_viva(comercio)
+            if not puerto.cuenta_active(comercio):
+                raise CuentaNoActive()
+            qr = puerto.crear_qr(
+                monto=monto_ok,
+                concepto=concepto_ok,
+                expiracion_s=VENTA_EXPIRACION_S,
+                num_ref=referencia_ok,
+            )
+            vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
             cobro = Cobro.objects.create(
                 comercio=comercio,
                 canal=Movimiento.Canal.QR_VENTA,
@@ -126,11 +128,13 @@ def crear_venta_qr(
                 origen=origen,
             )
     except Exception:
-        logger.error(
-            "qr de venta creado en pey sin persistir pey_qr_id=%s comercio_id=%s",
-            qr.id,
-            comercio.pk,
-        )
+        # Si la base falla, el QR ya existe en pey pero qr_string no se entrega.
+        if qr is not None:
+            logger.error(
+                "qr de venta creado en pey sin persistir pey_qr_id=%s comercio_id=%s",
+                qr.id,
+                comercio.pk,
+            )
         raise
     return VentaCreada(movimiento=movimiento, cobro=cobro, qr_string=qr.qr_string)
 

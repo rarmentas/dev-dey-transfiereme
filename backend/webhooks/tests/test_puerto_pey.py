@@ -232,19 +232,22 @@ class PuertoWebhookPeyTests(TestCase):
             AvisoRecibido.Resultado.SIN_COBRO,
         )
 
-    def test_aviso_sobre_vencido_sigue_vencido(self) -> None:
+    def test_aviso_sobre_vencido_marca_pagado(self) -> None:
         movimiento = self._qr_venta("QR-VENCIDO")
         movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
         cuerpo = _cuerpo_qr(transaction_id="TX-TARDE", codi_qr_id="QR-VENCIDO")
-        respuesta = self._post(cuerpo, "msg_tarde")
+        with self.assertLogs("movimientos.correlacion", level="WARNING") as logs:
+            respuesta = self._post(cuerpo, "msg_tarde")
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json(), {"estado": "transicion_invalida"})
+        self.assertEqual(respuesta.json(), {"estado": "aplicado"})
         leido = Movimiento.objects.get(pk=movimiento.pk)
-        self.assertEqual(leido.estado, Movimiento.Estado.VENCIDO)
-        self.assertIsNone(leido.pey_transaction_id)
+        self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
+        self.assertIsNotNone(leido.pagado_en)
+        self.assertEqual(leido.pey_transaction_id, "TX-TARDE")
+        self.assertIn("pago tardío", " ".join(logs.output))
         self.assertEqual(
             AvisoRecibido.objects.get().resultado,
-            AvisoRecibido.Resultado.TRANSICION_INVALIDA,
+            AvisoRecibido.Resultado.APLICADO,
         )
 
     def test_json_invalido_o_sin_transaction_id_no_escribe(self) -> None:
