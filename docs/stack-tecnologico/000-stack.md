@@ -300,7 +300,7 @@ Variables de conexión: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `PO
 
 Cobro: `PEY_API_KEY` (Bearer contra `https://api.pey.mx`), `PEY_WEBHOOK_SECRET` (secreto `whsec_...` del portal) y `WEBHOOK_BASE_URL` para que pey entregue `codi.qr.payment_received` y `codi.pn.payment_received`.
 
-El `.env` no se commitea. En el VPS de la referencia lo instala el pipeline desde una variable File de GitLab. Cody sigue esa regla en cuanto haya remoto y despliegue.
+El `.env` no se commitea. En CI, GitLab lo entrega como variable File (`PROD_ENV_FILE` en `master`, `TEST_ENV_FILE` en `test`), secretos de la app incluidos. Host, usuario, puerto, ruta y llave SSH del deploy son variables aparte y no viajan dentro de ese archivo. El detalle está en `docs/desarrollo/variables-entorno.md`.
 
 ## Desarrollo local
 

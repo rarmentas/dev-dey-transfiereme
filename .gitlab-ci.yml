@@ -1,0 +1,147 @@
+stages:
+  - validate
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  POSTGRES_DB: cody_ci
+  POSTGRES_USER: cody
+  POSTGRES_PASSWORD: cody_ci_password
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  DJANGO_SECRET_KEY: ci-only-not-for-production
+  DEBUG: "True"
+  ALLOWED_HOSTS: localhost,127.0.0.1
+
+# Contraseña solo del Postgres efímero de este pipeline. No es PROD ni TEST.
+# En GitLab, por ámbito (production=master, test=rama test), protegidas:
+#   File de la app: PROD_ENV_FILE / TEST_ENV_FILE
+#     (incluye POSTGRES_PASSWORD, DJANGO_SECRET_KEY, PEY_API_KEY, PEY_WEBHOOK_SECRET)
+#   Deploy, fuera de ese archivo: PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
+#     PROD_DEPLOY_PORT, PROD_DEPLOY_PATH y PROD_SSH_PRIVATE_KEY (base64).
+#     En la rama test, el mismo conjunto con prefijo TEST_.
+# El runner docker solo acepta refs protegidas. Un pipeline de merge request
+# usa refs/merge-requests/N/head, que no es una rama protegida, así que se queda
+# sin runner. Estos jobs corren en el push de una rama protegida (master, test
+# o la rama del epic, si está protegida).
+.workflow_rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH == "test"
+
+.env_ci:
+  stage: validate
+  image: python:3.12
+  tags:
+    - docker
+  script:
+    - bash scripts/ci-install-env.sh "$CODY_ENV_SCOPE"
+
+env:comprobar:prod:
+  extends: .env_ci
+  environment:
+    name: production
+    action: prepare
+  variables:
+    CODY_ENV_SCOPE: prod
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+env:comprobar:test:
+  extends: .env_ci
+  environment:
+    name: test
+    action: prepare
+  variables:
+    CODY_ENV_SCOPE: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "test"
+
+.backend_before:
+  before_script:
+    - cd backend
+    - python -m venv .venv
+    - .venv/bin/pip install --upgrade pip
+    - .venv/bin/pip install -r requirements.txt
+
+backend:check:
+  stage: validate
+  image: python:3.12
+  tags:
+    - docker
+  extends:
+    - .workflow_rules
+    - .backend_before
+  cache:
+    key:
+      files:
+        - backend/requirements.txt
+    paths:
+      - .cache/pip
+  script:
+    - .venv/bin/python manage.py check
+
+backend:test:
+  stage: test
+  image: python:3.12
+  tags:
+    - docker
+  extends:
+    - .workflow_rules
+    - .backend_before
+  services:
+    - name: postgres:17
+      alias: postgres
+  variables:
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+  cache:
+    key:
+      files:
+        - backend/requirements.txt
+    paths:
+      - .cache/pip
+  script:
+    - .venv/bin/python manage.py migrate --noinput
+    - .venv/bin/python manage.py test config.tests
+  needs:
+    - backend:check
+
+frontend:analyze:
+  stage: validate
+  image: ghcr.io/gmeligio/flutter-web:3.47.8
+  tags:
+    - docker
+  extends: .workflow_rules
+  cache:
+    key:
+      files:
+        - frontend/pubspec.lock
+    paths:
+      - frontend/.dart_tool
+      - frontend/.pub-cache
+  script:
+    - cd frontend
+    - flutter pub get
+    - flutter analyze
+
+frontend:test:
+  stage: test
+  image: ghcr.io/gmeligio/flutter-web:3.47.8
+  tags:
+    - docker
+  extends: .workflow_rules
+  cache:
+    key:
+      files:
+        - frontend/pubspec.lock
+    paths:
+      - frontend/.dart_tool
+      - frontend/.pub-cache
+  script:
+    - cd frontend
+    - flutter pub get
+    - flutter test test/widget_smoke_test.dart
+  needs:
+    - frontend:analyze

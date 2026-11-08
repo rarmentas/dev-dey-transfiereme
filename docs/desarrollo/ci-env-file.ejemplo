@@ -1,0 +1,16 @@
+# Contenido de la variable File PROD_ENV_FILE (master) o TEST_ENV_FILE (rama test).
+# Rellene los secretos aquí. No los cree como variables sueltas de CI.
+# No ponga host, usuario, puerto, ruta ni llave SSH: eso es del deploy
+# (PROD_DEPLOY_* / TEST_DEPLOY_* y PROD_SSH_PRIVATE_KEY / TEST_SSH_PRIVATE_KEY en base64).
+
+POSTGRES_DB=cody
+POSTGRES_USER=cody
+POSTGRES_PASSWORD=
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+DJANGO_SECRET_KEY=
+DEBUG=False
+ALLOWED_HOSTS=transfiereme.asware.com.mx
+WEBHOOK_BASE_URL=https://transfiereme.asware.com.mx
+PEY_API_KEY=
+PEY_WEBHOOK_SECRET=
