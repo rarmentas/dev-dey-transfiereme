@@ -8,5 +8,5 @@ Fuera del alcance de la historia 1.13: «Hoy llevas», **Cobrar**, **Mi QR**, ú
 
 ## Cubierto en el corte actual
 
-- Alta de cuenta con correo y confirmación por código (`/registro` y API `/api/sesion/alta/`).
-- Olvido y restablecimiento de contraseña por código (`/olvido-contrasena` y API `/api/sesion/olvido/`).
+- Alta de cuenta con correo y confirmación por código (modales en `/entrar` y API `/api/sesion/alta/`).
+- Olvido y restablecimiento de contraseña por código (modal en `/entrar` y API `/api/sesion/olvido/`).

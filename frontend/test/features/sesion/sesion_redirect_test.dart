@@ -1,5 +1,4 @@
 import 'package:cody/core/network/providers.dart';
-import 'package:cody/core/router/app_router.dart';
 import 'package:cody/core/sesion/registro_olvido_repository.dart';
 import 'package:cody/core/sesion/sesion_notifier.dart';
 import 'package:cody/core/sesion/sesion_providers.dart';
@@ -20,6 +19,9 @@ void main() {
           dioProvider.overrideWithValue(dio),
           sesionRepositoryProvider.overrideWith(
             (ref) => SesionRepository(dio),
+          ),
+          registroOlvidoRepositoryProvider.overrideWith(
+            (ref) => RegistroOlvidoRepository(dio),
           ),
         ],
         child: const TransfieremeApp(),
@@ -43,6 +45,9 @@ void main() {
           sesionRepositoryProvider.overrideWith(
             (ref) => SesionRepository(dio),
           ),
+          registroOlvidoRepositoryProvider.overrideWith(
+            (ref) => RegistroOlvidoRepository(dio),
+          ),
         ],
         child: const TransfieremeApp(),
       ),
@@ -58,39 +63,6 @@ void main() {
     expect(find.text('Entra a cobrar'), findsOneWidget);
   });
 
-  testWidgets('sin sesión la ruta registro permanece visible', (tester) async {
-    final dio = crearDioPrueba();
-    prepararDioConSesion(dio);
-
-    final container = ProviderContainer(
-      overrides: [
-        dioProvider.overrideWithValue(dio),
-        sesionRepositoryProvider.overrideWith(
-          (ref) => SesionRepository(dio),
-        ),
-        registroOlvidoRepositoryProvider.overrideWith(
-          (ref) => RegistroOlvidoRepository(dio),
-        ),
-      ],
-    );
-    addTearDown(container.dispose);
-
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const TransfieremeApp(),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    container.read(routerProvider).go(kRutaRegistro);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Enviar código'), findsOneWidget);
-    expect(find.text('Entra a cobrar'), findsNothing);
-  });
-
   test('perder sesión al recargar estado lleva a sin autenticación', () async {
     final dio = crearDioPrueba();
     final sim = prepararDioConSesion(dio);
@@ -99,6 +71,9 @@ void main() {
         dioProvider.overrideWithValue(dio),
         sesionRepositoryProvider.overrideWith(
           (ref) => SesionRepository(dio),
+        ),
+        registroOlvidoRepositoryProvider.overrideWith(
+          (ref) => RegistroOlvidoRepository(dio),
         ),
       ],
     );

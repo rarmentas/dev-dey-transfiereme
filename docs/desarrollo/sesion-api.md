@@ -100,7 +100,8 @@ Solo se envía correo si el usuario existe; la respuesta no revela si el correo 
 ```
 
 - Código válido: `200` con `{"detail": "Su contraseña quedó actualizada. Ya puede entrar."}` (solo cambia la contraseña del usuario).
-- Código inválido o expirado: `403` con el mismo mensaje genérico de código que en la alta.
+- Código inválido o expirado, correo sin cuenta o sin solicitud vigente: `403` con el mismo mensaje genérico de código que en la alta (sin importar si la contraseña nueva es débil; la validación de contraseña ocurre solo tras verificar el código).
+- Contraseña que no cumple las reglas de Django: `403` con el mensaje de validación, **solo** cuando el código ya fue verificado correctamente.
 
 ## Movimientos (lectura, ámbito por sesión)
 

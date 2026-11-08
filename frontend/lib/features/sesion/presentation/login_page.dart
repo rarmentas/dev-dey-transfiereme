@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
+import 'olvido_contrasena_modal.dart';
+import 'registro_cuenta_modal.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.mensajeInicial});
@@ -53,6 +55,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (ok && mounted) {
       context.go(kRutaInicio);
     }
+  }
+
+  Future<void> _abrirOlvido() async {
+    final mensaje = await mostrarOlvidoContrasenaModal(context: context);
+    if (!mounted || mensaje == null || mensaje.isEmpty) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje)),
+    );
   }
 
   @override
@@ -149,9 +161,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: sesion.cargando
-                          ? null
-                          : () => context.push(kRutaOlvido),
+                      onPressed: sesion.cargando ? null : _abrirOlvido,
                       child: const Text('¿Olvidó su contraseña?'),
                     ),
                     const SizedBox(height: 8),
@@ -166,7 +176,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         TextButton(
                           onPressed: sesion.cargando
                               ? null
-                              : () => context.push(kRutaRegistro),
+                              : () => mostrarRegistroCuentaModal(
+                                    context: context,
+                                  ),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             minimumSize: Size.zero,
