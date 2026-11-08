@@ -118,14 +118,16 @@ const pasos = ['Crear la venta', 'El cliente paga', 'Aviso «¡Te pagaron!»'];
     order: -1;
     display: flex;
     justify-content: center;
-    min-width: 0;
+    width: var(--clip-ancho);
+    max-width: 100%;
   }
 
   .phone-rise {
     position: relative;
     display: grid;
     place-items: center;
-    width: min(100%, calc(var(--clip-ancho) + var(--space-12)));
+    width: var(--clip-ancho);
+    max-width: 100%;
   }
 
   .phone-halo {
