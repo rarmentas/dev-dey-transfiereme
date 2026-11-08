@@ -6,7 +6,10 @@ After=network.target docker.service
 Type=simple
 User=@DEPLOY_USER@
 WorkingDirectory=@DEPLOY_PATH@/backend
-Environment=GUNICORN_BIND=127.0.0.1:8000
+# Traefik llega por el puente Docker (172.17.0.1). UFW solo abre 8000 desde 172.16.0.0/12.
+# 0.0.0.0 también responde en 127.0.0.1, que es la comprobación del deploy.
+# Un GUNICORN_BIND en el .env pisa esta línea: systemd aplica EnvironmentFile= después.
+Environment=GUNICORN_BIND=0.0.0.0:8000
 Environment=GUNICORN_WORKERS=2
 Environment=GUNICORN_TIMEOUT=60
 EnvironmentFile=@DEPLOY_PATH@/backend/.env
