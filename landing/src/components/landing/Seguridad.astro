@@ -1,285 +1,221 @@
-<section id="seguridad" class="seguridad" aria-labelledby="seguridad-titulo">
-  <div class="container">
-    <div class="seguridad-head reveal">
-      <div class="shield-wrap">
-        <svg class="shield" viewBox="0 0 48 48" width="56" height="56" aria-hidden="true" focusable="false">
-          <path
-            class="draw"
-            pathLength="100"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linejoin="round"
-            d="M24 4.5 40.5 11v11.2c0 9.4-6.4 16.2-16.5 21.3C13.9 38.4 7.5 31.6 7.5 22.2V11L24 4.5z"
-          />
-          <path
-            class="draw draw-check"
-            pathLength="100"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M16.5 24.5 21.8 30l10-12"
-          />
-        </svg>
+<section id="seguridad" aria-labelledby="seguridad-titulo">
+  <div class="container seg">
+    <p class="seg-sobre">Seguridad</p>
+    <h2 id="seguridad-titulo" class="seg-titulo reveal">
+      <span>Cobras por CoDi.</span>
+      <span>El dinero llega</span>
+      <span class="seg-marca">a tu CLABE.</span>
+    </h2>
+    <p class="seg-intro reveal">
+      CoDi es la plataforma de cobro digital del Banco de México. Tu cliente aprueba el pago en la app de su banco y el
+      depósito va a la cuenta CLABE que registraste.
+    </p>
+    <dl class="seg-libro">
+      <div class="seg-fila reveal">
+        <dt>CoDi de Banxico</dt>
+        <dd>El cobro viaja por la infraestructura del Banco de México, no por una pasarela de tarjetas.</dd>
       </div>
-      <div class="seguridad-copy">
-        <h2 id="seguridad-titulo">Cobros con respaldo de Banxico</h2>
-        <p>Tus cobros van por CoDi y el dinero llega a tu cuenta.</p>
-        <span class="seguridad-linea" aria-hidden="true"></span>
+      <div class="seg-fila reveal">
+        <dt>Directo a tu CLABE</dt>
+        <dd>Cada pago entra a la cuenta que registras. No tienes que entrar a los menús de tu banco para saber si ya te pagaron.</dd>
       </div>
-    </div>
-
-    <ul class="seguridad-grid">
-      <li class="seg-card reveal">
-        <div class="seg-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
-            <path d="M4 10.5 12 4l8 6.5" />
-            <path d="M6.5 10.5V19h11v-8.5" />
-            <path d="M4 19h16" />
-            <path d="M10 19v-4.5h4V19" />
-          </svg>
-        </div>
-        <h3>CoDi de Banxico</h3>
-        <p>Tus cobros usan CoDi, la plataforma de cobro digital del Banco de México.</p>
-      </li>
-      <li class="seg-card reveal">
-        <div class="seg-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
-            <rect x="3" y="5.5" width="18" height="13" rx="2" />
-            <path d="M3 10h18" />
-            <path d="M7 14.5h6" />
-            <path d="M16 3.5v4M14.2 5.2 16 3.5l1.8 1.7" />
-          </svg>
-        </div>
-        <h3>Directo a tu CLABE</h3>
-        <p>El dinero llega a la cuenta CLABE que registras; no pasa por una terminal ni por tus menús de banco.</p>
-      </li>
-      <li class="seg-card reveal">
-        <div class="seg-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="28" height="28" focusable="false">
-            <rect x="7" y="2.5" width="10" height="19" rx="2" />
-            <path d="M10 5.5h4" />
-            <path d="M10 8.5h1.2v1.2H10zM12.4 8.5H13.6v1.2h-1.2zM10 10.7h1.2V11.9H10zM12.4 10.7H13.6V11.9h-1.2z" />
-            <path d="M11 18.2h2" />
-          </svg>
-        </div>
-        <h3>Sin terminal</h3>
-        <p>Solo necesitas tu celular y tu QR; no compras ni rentas equipo.</p>
-      </li>
-    </ul>
+      <div class="seg-fila reveal">
+        <dt>Sin terminal</dt>
+        <dd>Tu celular y el QR impreso del mostrador. No compras ni rentas equipo.</dd>
+      </div>
+    </dl>
   </div>
 </section>
 
 <style>
-  .seguridad {
-    background: var(--primary-container);
-    color: var(--on-primary-container);
-    padding-block: var(--space-12);
+  #seguridad {
+    background: var(--surface);
+    color: var(--ink);
+    padding-block: 64px;
     scroll-margin-top: 88px;
   }
 
-  @media (min-width: 768px) {
-    .seguridad {
-      padding-block: var(--space-16);
-    }
+  .seg-sobre {
+    margin: 0 0 var(--space-3);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: var(--type-sobretitulo-line);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
-  .seguridad-head {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-4);
-    max-width: 40rem;
-    margin-bottom: var(--space-8);
+  .seg-titulo {
+    max-width: 14ch;
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.25rem, 1.2rem + 4.4vw, 4.75rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    text-align: left;
   }
 
-  @media (min-width: 768px) {
-    .seguridad-head {
-      gap: var(--space-5);
-      margin-bottom: var(--space-10);
-    }
+  .seg-titulo span {
+    display: block;
   }
 
-  .shield-wrap {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 56px;
-    height: 56px;
+  .seg-marca {
     color: var(--primary);
   }
 
-  .shield {
-    width: 56px;
-    height: 56px;
-  }
-
-  .draw {
-    stroke-dasharray: 100;
-    stroke-dashoffset: 0;
-  }
-
-  .seguridad-linea {
-    display: block;
-    width: 4.5rem;
-    height: 3px;
-    margin-top: var(--space-4);
-    border-radius: var(--radius-full);
-    background: var(--primary);
-    transform: scaleX(1);
-    transform-origin: left center;
-  }
-
-  .seguridad h2 {
-    color: var(--on-primary-container);
-    font-size: var(--type-titulo-1-size);
-    line-height: var(--type-titulo-1-line);
-    font-weight: var(--type-titulo-1-weight);
-    letter-spacing: var(--type-titulo-1-tracking);
-    text-wrap: balance;
-  }
-
-  @media (min-width: 768px) {
-    .seguridad h2 {
-      font-size: var(--type-display-size);
-      line-height: var(--type-display-line);
-      letter-spacing: var(--type-display-tracking);
-    }
-  }
-
-  .seguridad-copy p {
-    margin-top: var(--space-3);
-    max-width: 38ch;
+  .seg-intro {
+    max-width: 34rem;
+    margin: 24px 0 0;
+    color: var(--ink-muted);
     font-size: var(--type-cuerpo-l-size);
     line-height: var(--type-cuerpo-l-line);
     font-weight: var(--type-cuerpo-l-weight);
   }
 
-  .seguridad-grid {
+  .seg-libro {
+    margin: 48px 0 0;
+  }
+
+  .seg-fila {
+    position: relative;
     display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding-block: 24px;
+  }
+
+  .seg-fila::before,
+  .seg-fila:last-child::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--outline-soft);
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+
+  .seg-fila::before {
+    top: 0;
+  }
+
+  .seg-fila:last-child::after {
+    bottom: 0;
+  }
+
+  .seg-fila dt {
     margin: 0;
-    padding: 0;
-    list-style: none;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 28px;
+    letter-spacing: -0.01em;
+  }
+
+  .seg-fila dd {
+    max-width: 36rem;
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    font-weight: var(--type-cuerpo-l-weight);
   }
 
   @media (min-width: 768px) {
-    .seguridad-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--space-6);
+    .seg-fila {
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+      column-gap: var(--space-8);
+      align-items: baseline;
     }
   }
 
-  .seg-card {
-    min-width: 0;
-    background: var(--surface);
-    color: var(--ink);
-    border-radius: var(--radius-lg);
-    padding: var(--space-6);
-    box-shadow: var(--elev-1);
-  }
+  @media (min-width: 960px) {
+    #seguridad {
+      padding-block: 128px;
+    }
 
-  .seg-card:nth-child(1) {
-    transition-delay: 80ms;
-  }
+    .seg {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 32px;
+    }
 
-  .seg-card:nth-child(2) {
-    transition-delay: 180ms;
-  }
+    .seg-sobre,
+    .seg-titulo {
+      grid-column: 1 / 9;
+      margin-bottom: 0;
+    }
 
-  .seg-card:nth-child(3) {
-    transition-delay: 280ms;
-  }
+    .seg-intro {
+      grid-column: 1 / 7;
+      margin-top: 24px;
+    }
 
-  .seg-icon {
-    display: grid;
-    place-items: center;
-    width: 48px;
-    height: 48px;
-    margin-bottom: var(--space-4);
-    border-radius: var(--radius-md);
-    background: var(--primary-container);
-    color: var(--primary);
-  }
+    .seg-libro {
+      grid-column: 5 / 13;
+      margin-top: 80px;
+    }
 
-  .seg-icon svg {
-    width: 28px;
-    height: 28px;
-  }
-
-  .seg-icon path,
-  .seg-icon rect {
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.75;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .seg-card h3 {
-    margin-bottom: var(--space-2);
-    font-size: var(--type-titulo-3-size);
-    line-height: var(--type-titulo-3-line);
-    font-weight: var(--type-titulo-3-weight);
-    text-wrap: balance;
-  }
-
-  .seg-card p {
-    color: var(--ink-muted);
-    font-size: var(--type-cuerpo-size);
-    line-height: var(--type-cuerpo-line);
-    font-weight: var(--type-cuerpo-weight);
+    .seg-fila dt {
+      font-size: 26px;
+      line-height: 32px;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    html:not(.no-js) .draw {
-      stroke-dashoffset: 100;
+    html:not(.no-js) .seg-fila:nth-child(1) {
+      transition-delay: 0ms;
     }
 
-    html:not(.no-js) .seguridad-head.is-visible .draw {
-      animation: trazo 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    html:not(.no-js) .seg-fila:nth-child(2) {
+      transition-delay: 120ms;
     }
 
-    html:not(.no-js) .seguridad-head.is-visible .draw-check {
-      animation-delay: 380ms;
+    html:not(.no-js) .seg-fila:nth-child(3) {
+      transition-delay: 240ms;
     }
 
-    html:not(.no-js) .seguridad-linea {
+    html:not(.no-js) .seg-fila::before,
+    html:not(.no-js) .seg-fila:last-child::after {
       transform: scaleX(0);
+      transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    html:not(.no-js) .seguridad-head.is-visible .seguridad-linea {
-      animation: linea 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    html:not(.no-js) .seg-fila:nth-child(1)::before,
+    html:not(.no-js) .seg-fila:nth-child(1)::after {
+      transition-delay: 0ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(2)::before,
+    html:not(.no-js) .seg-fila:nth-child(2)::after {
+      transition-delay: 120ms;
+    }
+
+    html:not(.no-js) .seg-fila:nth-child(3)::before,
+    html:not(.no-js) .seg-fila:nth-child(3)::after {
+      transition-delay: 240ms;
+    }
+
+    html:not(.no-js) .seg-fila.is-visible::before,
+    html:not(.no-js) .seg-fila.is-visible:last-child::after {
+      transform: scaleX(1);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .draw,
-    .seguridad-linea,
-    .seg-card {
-      animation: none;
+    .seg-fila,
+    .seg-fila::before,
+    .seg-fila::after {
       transition-delay: 0ms;
+      animation: none;
     }
 
-    .draw {
-      stroke-dashoffset: 0;
-    }
-
-    .seguridad-linea {
-      transform: none;
-    }
-  }
-
-  @keyframes trazo {
-    to {
-      stroke-dashoffset: 0;
-    }
-  }
-
-  @keyframes linea {
-    to {
+    .seg-fila::before,
+    .seg-fila::after {
       transform: scaleX(1);
     }
   }

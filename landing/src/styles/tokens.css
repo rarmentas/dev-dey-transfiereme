@@ -27,6 +27,10 @@
   --chan-qr-venta: #2b8fd6;
   --chan-notificacion: #0e8fa3;
   --focus: var(--primary);
+  --banda: #0f3270;
+  --on-banda: #ffffff;
+  --on-banda-muted: #c3d2ef;
+  --banda-linea: rgba(255, 255, 255, 0.18);
 
   /* Shadows — Light Theme */
   --elev-1: 0 1px 2px rgba(17, 26, 43, 0.06), 0 1px 3px rgba(17, 26, 43, 0.08);
@@ -165,6 +169,10 @@
     --chan-qr-venta: #4f8fe8;
     --chan-notificacion: #3cc1d3;
     --focus: var(--primary);
+    --banda: #13254a;
+    --on-banda: #e8edf6;
+    --on-banda-muted: #a9bbdc;
+    --banda-linea: rgba(232, 237, 246, 0.16);
 
     --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
     --elev-2: 0 6px 18px -6px rgba(255, 209, 92, 0.35);
