@@ -1,4 +1,5 @@
 """Configuración Django para Cody (scaffold local)."""
+import sys
 from pathlib import Path
 
 import os
@@ -147,3 +148,27 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+_EMAIL_HOST = os.environ.get("EMAIL_HOST", "mail.asware.com.mx")
+_EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
+_EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "transfiereme@asware.com.mx")
+_EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+_EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", True)
+_EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", False)
+_DEFAULT_FROM = os.environ.get("DEFAULT_FROM_EMAIL", _EMAIL_HOST_USER)
+_EMAIL_BACKEND_DEFAULT = "django.core.mail.backends.smtp.EmailBackend"
+
+EMAIL_HOST = _EMAIL_HOST
+EMAIL_PORT = _EMAIL_PORT
+EMAIL_HOST_USER = _EMAIL_HOST_USER
+EMAIL_HOST_PASSWORD = _EMAIL_HOST_PASSWORD
+EMAIL_USE_SSL = _EMAIL_USE_SSL
+EMAIL_USE_TLS = _EMAIL_USE_TLS
+DEFAULT_FROM_EMAIL = _DEFAULT_FROM
+
+if "test" in sys.argv:
+    EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+elif DEBUG and not _EMAIL_HOST_PASSWORD.strip():
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+else:
+    EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", _EMAIL_BACKEND_DEFAULT)
