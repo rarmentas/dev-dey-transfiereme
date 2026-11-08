@@ -20,6 +20,7 @@ class Command(BaseCommand):
         parser.add_argument("--entidad", required=True, choices=("PERSON", "BUSINESS"))
         parser.add_argument("--alias", default="")
         parser.add_argument("--confirmar", action="store_true")
+        parser.add_argument("--reemplazar", action="store_true")
 
     def handle(self, *args, **options):
         self._exigir_produccion()
@@ -27,6 +28,10 @@ class Command(BaseCommand):
         clabe = (comercio.clabe or "").strip()
         if not clabe_es_valida(clabe):
             raise CommandError("El comercio no tiene una CLABE válida guardada.")
+        if (comercio.pey_bank_account_id or "").strip() and not options["reemplazar"]:
+            raise CommandError(
+                "El comercio ya tiene cuenta en pey. Use --reemplazar para registrar otra."
+            )
         nombre = options["nombre"].strip()
         alias = (options["alias"] or nombre).strip()
         entidad = options["entidad"]
@@ -36,7 +41,7 @@ class Command(BaseCommand):
                     "POST /bank-account",
                     f"alias: {alias}",
                     f"name: {nombre}",
-                    f"clabe: {clabe}",
+                    f"clabe: {enmascarar_clabe(clabe)}",
                     f"entity: {entidad}",
                 ]
             )
@@ -81,6 +86,14 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
         if modo != "produccion":
             raise CommandError("Este comando solo corre con PEY_ADAPTADOR=produccion.")
+
+
+def enmascarar_clabe(clabe: str) -> str:
+    """14 asteriscos y los 4 últimos dígitos. Nunca la CLABE completa."""
+    digitos = clabe or ""
+    if len(digitos) <= 4:
+        return "*" * len(digitos)
+    return "*" * (len(digitos) - 4) + digitos[-4:]
 
 
 def _comercio_de_correo(correo: str):

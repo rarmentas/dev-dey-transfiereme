@@ -1,6 +1,7 @@
 """Registro y consulta de cuenta en pey. El transporte se inyecta; no hay red en tests."""
 
 import logging
+import re
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -21,12 +22,14 @@ from pey.tipos import ErrorPey, ParametroInvalido
 logger = logging.getLogger(__name__)
 
 _ENTIDADES = frozenset({"BUSINESS", "PERSON"})
+_ULID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 
 
 @dataclass(frozen=True)
 class CuentaPey:
     id: str
     codi_status: str
+    clabe: str = ""
     error_message: str = ""
 
 
@@ -57,10 +60,10 @@ def registrar_cuenta(
 
 
 def consultar_cuenta(bank_account_id: str, *, transporte=None) -> CuentaPey:
-    """GET /bank-account/{id}. No llama si el id viene vacío."""
-    if not isinstance(bank_account_id, str) or not bank_account_id.strip():
-        raise ParametroInvalido("bank_account_id es obligatorio")
-    identificador = bank_account_id.strip()
+    """GET /bank-account/{id}. No llama si el id no es un ULID."""
+    if not isinstance(bank_account_id, str) or _ULID.fullmatch(bank_account_id) is None:
+        raise ParametroInvalido("bank_account_id debe ser un ULID de 26 caracteres")
+    identificador = bank_account_id
     status, respuesta = _enviar(
         "GET",
         f"/bank-account/{identificador}",
@@ -115,8 +118,14 @@ def _cuenta(data: dict) -> CuentaPey:
         mensaje = ""
     if not isinstance(mensaje, str):
         raise _cuerpo_ilegible()
+    clabe = data.get("clabe")
+    if clabe is None:
+        clabe = ""
+    if not isinstance(clabe, str):
+        raise _cuerpo_ilegible()
     return CuentaPey(
         id=_texto(data, "id"),
         codi_status=_texto(data, "codiStatus"),
+        clabe=clabe,
         error_message=mensaje,
     )

@@ -5,11 +5,12 @@ import os
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from ambito.cuenta_sync import sincronizar_codi_status
-from ambito.management.commands.registrar_cuenta_pey import _comercio_de_correo
-from pey.cuentas import consultar_cuenta
+from ambito.cuenta_sync import sincronizar_codi_status_con_detalle
+from ambito.management.commands.registrar_cuenta_pey import (
+    _comercio_de_correo,
+    enmascarar_clabe,
+)
 from pey.seleccion import modo_adaptador
-from pey.tipos import ErrorPey
 
 
 class Command(BaseCommand):
@@ -35,20 +36,17 @@ class Command(BaseCommand):
             f"PEY_API_KEY: {_si_no(settings.PEY_API_KEY)}",
             f"PEY_WEBHOOK_SECRET: {_si_no(settings.PEY_WEBHOOK_SECRET)}",
             f"webhook: {webhook}",
+            f"clabe: {enmascarar_clabe(comercio.clabe)}",
             f"pey_bank_account_id: {identificador or '(vacío)'}",
-            f"pey_codi_status: {comercio.pey_codi_status}",
         ]
         if modo == "produccion" and identificador:
-            try:
-                cuenta = consultar_cuenta(identificador)
-            except ErrorPey as exc:
-                raise CommandError(
-                    f"pey no consultó la cuenta tipo={exc.tipo} request_id={exc.request_id}"
-                ) from exc
-            sincronizar_codi_status(comercio)
-            comercio.refresh_from_db()
-            lineas.append(f"codiStatus: {cuenta.codi_status}")
-            lineas.append(f"pey_codi_status: {comercio.pey_codi_status}")
+            comercio, error = sincronizar_codi_status_con_detalle(comercio)
+            if error is not None:
+                lineas.append(f"error: tipo={error.tipo} request_id={error.request_id}")
+            else:
+                lineas.append(f"codiStatus: {comercio.pey_codi_status}")
+        lineas.append(f"pey_codi_status: {comercio.pey_codi_status}")
+        lineas.append(f"pey_bank_account_id: {comercio.pey_bank_account_id or '(vacío)'}")
         self.stdout.write("\n".join(lineas))
 
 

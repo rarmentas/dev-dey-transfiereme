@@ -9,7 +9,7 @@ from movimientos.models import Movimiento
 from webhooks.models import AvisoRecibido
 from webhooks.tests.support.pey_webhook import SECRETO, post_firmado
 
-_ID = "01CUENTA0000000000000001"
+_ID = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
 
 
 def _cuerpo(bank_account_id: str, codi_status: str = "ACTIVE") -> str:
@@ -55,7 +55,7 @@ class AvisoCuentaPeyTests(TestCase):
         self.assertEqual(self.comercio.pey_codi_status, Comercio.PeyCodiStatus.ACTIVE)
 
     def test_id_desconocido_responde_200_y_avisa(self) -> None:
-        cuerpo = _cuerpo("01NADIE")
+        cuerpo = _cuerpo("01J9ZQ4C8X7Y6W5V4T3S2R1Q0N")
         with self.assertLogs("webhooks.views", level="WARNING") as logs:
             respuesta = post_firmado(self.client, cuerpo, "msg_cuenta_nadie")
         self.assertEqual(respuesta.status_code, 200)
@@ -65,7 +65,7 @@ class AvisoCuentaPeyTests(TestCase):
         self.comercio.refresh_from_db()
         self.assertEqual(self.comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
         texto = " ".join(logs.output)
-        self.assertIn("01NADIE", texto)
+        self.assertIn("01J9ZQ4C8X7Y6W5V4T3S2R1Q0N", texto)
         self.assertIn("msg_cuenta_nadie", texto)
         self.assertEqual(Movimiento.objects.count(), 0)
 

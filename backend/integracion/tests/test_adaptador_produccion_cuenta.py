@@ -9,7 +9,9 @@ from integracion.pey.adaptador_produccion import AdaptadorProduccionPeyCuenta
 from integracion.pey.puerto import CODI_STATUS_ACTIVE, CODI_STATUS_PENDING
 from pey.cuentas import CuentaPey
 
-_ID = "01CUENTA0000000000000001"
+_ID = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
+_CLABE = "012180015826225713"
+_OTRA = "032180000118359719"
 
 
 class AdaptadorProduccionCuentaTests(TestCase):
@@ -34,10 +36,15 @@ class AdaptadorProduccionCuentaTests(TestCase):
         self.assertEqual(resultado.bank_account_id, "")
 
     def test_active_de_pey_es_active(self) -> None:
-        comercio = Comercio(nombre="Lista", pey_bank_account_id=_ID, semilla_active_dev=False)
+        comercio = Comercio(
+            nombre="Lista",
+            pey_bank_account_id=_ID,
+            clabe=_CLABE,
+            semilla_active_dev=False,
+        )
         with patch(
             "integracion.pey.adaptador_produccion.consultar_cuenta",
-            return_value=CuentaPey(id=_ID, codi_status="ACTIVE"),
+            return_value=CuentaPey(id=_ID, codi_status="ACTIVE", clabe=_CLABE),
         ) as consulta:
             resultado = self.adaptador.consultar_cuenta_por_clabe(comercio)
         consulta.assert_called_once_with(_ID)
@@ -59,6 +66,26 @@ class AdaptadorProduccionCuentaTests(TestCase):
                     resultado = self.adaptador.consultar_cuenta_por_clabe(comercio)
                 self.assertEqual(resultado.codi_status, CODI_STATUS_PENDING)
                 self.assertEqual(resultado.bank_account_id, _ID)
+
+    def test_clabe_distinta_no_es_active_y_avisa_con_cuatro_digitos(self) -> None:
+        comercio = Comercio.objects.create(
+            nombre="Otra CLABE",
+            pey_bank_account_id=_ID,
+            clabe=_CLABE,
+            semilla_active_dev=True,
+        )
+        with self.assertLogs("integracion.pey.adaptador_produccion", level="WARNING") as logs:
+            with patch(
+                "integracion.pey.adaptador_produccion.consultar_cuenta",
+                return_value=CuentaPey(id=_ID, codi_status="ACTIVE", clabe=_OTRA),
+            ):
+                resultado = self.adaptador.consultar_cuenta_por_clabe(comercio)
+        self.assertEqual(resultado.codi_status, CODI_STATUS_PENDING)
+        self.assertEqual(resultado.bank_account_id, _ID)
+        texto = " ".join(logs.output)
+        self.assertIn(_OTRA[-4:], texto)
+        self.assertNotIn(_OTRA, texto)
+        self.assertNotIn(_CLABE, texto)
 
     def test_error_pey_no_se_convierte_en_active(self) -> None:
         from pey.tipos import ErrorPey

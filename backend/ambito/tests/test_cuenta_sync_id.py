@@ -14,16 +14,16 @@ class CuentaSyncIdTests(TestCase):
     def test_pending_de_produccion_conserva_el_id(self) -> None:
         comercio = Comercio.objects.create(
             nombre="En proceso",
-            pey_bank_account_id="01KEEP",
+            pey_bank_account_id="01J9ZQ4C8X7Y6W5V4T3S2R1Q0P",
         )
         with patch(
             "integracion.pey.adaptador_produccion.consultar_cuenta",
-            return_value=CuentaPey(id="01KEEP", codi_status="PROCESSING"),
+            return_value=CuentaPey(id="01J9ZQ4C8X7Y6W5V4T3S2R1Q0P", codi_status="PROCESSING"),
         ):
             sincronizar_codi_status(comercio)
         comercio.refresh_from_db()
         self.assertEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
-        self.assertEqual(comercio.pey_bank_account_id, "01KEEP")
+        self.assertEqual(comercio.pey_bank_account_id, "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P")
 
     @override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="")
     def test_desarrollo_sin_id_en_el_resultado_sigue_limpiando(self) -> None:

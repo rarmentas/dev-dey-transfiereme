@@ -10,6 +10,7 @@ from pey.tipos import ErrorPey, ParametroInvalido
 _LLAVE = "llave-prueba-no-imprimir"
 _CLABE = "012180015826225713"
 _BASE = "https://api.pey.mx"
+_ULID = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
 
 
 class _Transporte:
@@ -68,14 +69,18 @@ class CuentasHttpTests(SimpleTestCase):
     def test_consultar_envia_get(self) -> None:
         transporte = _Transporte(
             200,
-            b'{"id": "01ABC", "codiStatus": "ACTIVE", "errorMessage": ""}',
+            (
+                '{"id": "' + _ULID + '", "codiStatus": "ACTIVE", '
+                '"clabe": "' + _CLABE + '", "errorMessage": ""}'
+            ).encode(),
         )
-        cuenta = consultar_cuenta("01ABC", transporte=transporte)
+        cuenta = consultar_cuenta(_ULID, transporte=transporte)
         self.assertEqual(cuenta.codi_status, "ACTIVE")
+        self.assertEqual(cuenta.clabe, _CLABE)
         self.assertEqual(cuenta.error_message, "")
         metodo, url, headers, cuerpo, _timeout = transporte.llamadas[0]
         self.assertEqual(metodo, "GET")
-        self.assertEqual(url, f"{_BASE}/bank-account/01ABC")
+        self.assertEqual(url, f"{_BASE}/bank-account/{_ULID}")
         self.assertEqual(cuerpo, b"")
         self.assertEqual(headers["Authorization"], f"Bearer {_LLAVE}")
 
@@ -87,14 +92,14 @@ class CuentasHttpTests(SimpleTestCase):
             with self.subTest(status=status):
                 transporte = _Transporte(status, _error(tipo, request_id))
                 with self.assertRaises(ErrorPey) as ctx:
-                    consultar_cuenta("01ABC", transporte=transporte)
+                    consultar_cuenta(_ULID, transporte=transporte)
                 self.assertEqual(ctx.exception.tipo, tipo)
                 self.assertEqual(ctx.exception.request_id, request_id)
 
     def test_503_es_no_disponible(self) -> None:
         transporte = _Transporte(503, _error("UNAVAILABLE", "req-503"))
         with self.assertRaises(ErrorPey) as ctx:
-            consultar_cuenta("01ABC", transporte=transporte)
+            consultar_cuenta(_ULID, transporte=transporte)
         self.assertEqual(ctx.exception.tipo, "NO_DISPONIBLE")
         self.assertEqual(ctx.exception.request_id, "req-503")
 
@@ -122,4 +127,12 @@ class CuentasHttpTests(SimpleTestCase):
                 entidad="PERSON",
                 transporte=transporte,
             )
+        self.assertEqual(transporte.llamadas, [])
+
+    def test_ulid_invalido_no_llama(self) -> None:
+        transporte = _Transporte(200, b"{}")
+        for identificador in ("01ABC", "01J9ZQ4C8X7Y6W5V4T3S2R1Q0I"):
+            with self.subTest(identificador=identificador):
+                with self.assertRaises(ParametroInvalido):
+                    consultar_cuenta(identificador, transporte=transporte)
         self.assertEqual(transporte.llamadas, [])
