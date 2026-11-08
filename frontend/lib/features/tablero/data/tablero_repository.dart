@@ -42,14 +42,14 @@ class TableroRepository {
       throw TableroApiException(_mensajeDeDio(error));
     } on FormatException {
       throw TableroApiException(
-        'No pudimos leer el tablero. Intente de nuevo.',
+        'No pudimos leer el tablero. Intenta de nuevo.',
       );
     }
   }
 }
 
 const _mensajeServidor =
-    'El servidor no está disponible en este momento. Intente de nuevo más tarde.';
+    'El servidor no está disponible en este momento. Intenta de nuevo más tarde.';
 
 Map<String, dynamic> _mapa(Object? valor) {
   if (valor is Map<String, dynamic>) {
@@ -81,17 +81,17 @@ String _mensajeDeDio(DioException error) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
-      return 'La solicitud tardó demasiado. Verifique su conexión e intente de nuevo.';
+      return 'La solicitud tardó demasiado. Verifica tu conexión e intenta de nuevo.';
     case DioExceptionType.connectionError:
-      return 'No pudimos conectar con el servidor. Verifique su conexión e intente de nuevo.';
+      return 'No pudimos conectar con el servidor. Verifica tu conexión e intenta de nuevo.';
     case DioExceptionType.badResponse:
       final codigo = error.response?.statusCode;
       if (codigo != null && codigo >= 500) {
         return _mensajeServidor;
       }
-      return 'No pudimos cargar el tablero. Intente de nuevo.';
+      return 'No pudimos cargar el tablero. Intenta de nuevo.';
     default:
-      return 'No pudimos cargar el tablero. Intente de nuevo.';
+      return 'No pudimos cargar el tablero. Intenta de nuevo.';
   }
 }
 

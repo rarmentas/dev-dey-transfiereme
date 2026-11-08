@@ -36,6 +36,7 @@ Future<void> _montar(WidgetTester tester, MockMovimientosApi mock) async {
         movimientosRepositoryProvider.overrideWith(
           (ref) => MovimientosRepository(mock.dio),
         ),
+        movimientosAhoraProvider.overrideWithValue(DateTime(2026, 11, 7, 20)),
       ],
       child: MaterialApp(
         theme: TfTheme.light,
@@ -44,6 +45,8 @@ Future<void> _montar(WidgetTester tester, MockMovimientosApi mock) async {
     ),
   );
   await _esperar(tester);
+  await tester.tap(find.text('Semana'));
+  await tester.pump();
 }
 
 Future<void> _esperar(WidgetTester tester) async {
