@@ -6,6 +6,7 @@ import 'package:cody/core/sesion/sesion_repository.dart';
 import 'package:cody/main.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../support/mock_inicio_api.dart';
 import '../../support/mock_sesion_api.dart';
 
 void main() {
@@ -37,6 +38,7 @@ void main() {
     final dio = crearDioPrueba();
     final sim = prepararDioConSesion(dio);
     sim.autenticado = true;
+    instalarInicioApi(dio);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -56,6 +58,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Hola, Lupe'), findsOneWidget);
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Salir'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -80,6 +84,7 @@ void main() {
     addTearDown(container.dispose);
 
     sim.autenticado = true;
+    instalarInicioApi(dio);
     await container.read(sesionNotifierProvider.notifier).refrescarAlArranque();
     expect(container.read(sesionNotifierProvider).autenticado, isTrue);
 

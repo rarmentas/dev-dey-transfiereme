@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
+import '../../../core/ui/ui.dart';
 import 'olvido_contrasena_modal.dart';
 import 'registro_cuenta_modal.dart';
 
@@ -30,9 +31,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         if (!mounted) {
           return;
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(aviso)),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(aviso)));
       });
     }
   }
@@ -48,7 +48,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    final ok = await ref.read(sesionNotifierProvider.notifier).entrar(
+    final ok = await ref
+        .read(sesionNotifierProvider.notifier)
+        .entrar(
           correo: _correoController.text.trim(),
           contrasena: _contrasenaController.text,
         );
@@ -62,137 +64,162 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!mounted || mensaje == null || mensaje.isEmpty) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(mensaje)));
   }
 
   @override
   Widget build(BuildContext context) {
     final sesion = ref.watch(sesionNotifierProvider);
     final tema = Theme.of(context);
-    final esOscuro = tema.brightness == Brightness.dark;
+
+    final etiqueta = tema.textTheme.titleSmall;
+
+    final superior = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: TfLogo(width: 200),
+        ),
+        const SizedBox(height: TfSpace.s8),
+        Text(
+          'Entra a cobrar',
+          style: tema.textTheme.headlineLarge,
+          textAlign: TextAlign.start,
+        ),
+        const SizedBox(height: TfSpace.s2),
+        Text(
+          'Con tu correo y contraseña de Transfiéreme.',
+          style: tema.textTheme.bodyMedium?.copyWith(
+            color: tema.colorScheme.onSurfaceVariant,
+          ),
+          textAlign: TextAlign.start,
+        ),
+        const SizedBox(height: TfSpace.s6),
+        Text('Correo', style: etiqueta),
+        const SizedBox(height: TfSpace.s2),
+        TextFormField(
+          key: const Key('campo_correo'),
+          controller: _correoController,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.mail_outline_rounded),
+          ),
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) {
+              return 'Escribe tu correo.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: TfSpace.s4),
+        Text('Contraseña', style: etiqueta),
+        const SizedBox(height: TfSpace.s2),
+        TextFormField(
+          key: const Key('campo_contrasena'),
+          controller: _contrasenaController,
+          obscureText: true,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.lock_outline_rounded),
+          ),
+          validator: (v) {
+            if (v == null || v.isEmpty) {
+              return 'Escribe tu contraseña.';
+            }
+            return null;
+          },
+        ),
+        if (sesion.errorMensaje != null) ...[
+          const SizedBox(height: TfSpace.s4),
+          TfAvisoError(titulo: sesion.errorMensaje!),
+        ],
+        const SizedBox(height: TfSpace.s6),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            key: const Key('boton_entrar'),
+            onPressed: sesion.cargando ? null : _enviar,
+            child: sesion.cargando
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Entrar'),
+          ),
+        ),
+        const SizedBox(height: TfSpace.s2),
+        Center(
+          child: TextButton(
+            onPressed: sesion.cargando ? null : _abrirOlvido,
+            child: const Text('¿Olvidaste tu contraseña?'),
+          ),
+        ),
+      ],
+    );
+
+    final inferior = Padding(
+      padding: const EdgeInsets.only(top: TfSpace.s4),
+      child: Center(
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '¿Nuevo? ',
+              style: tema.textTheme.bodyMedium?.copyWith(
+                color: tema.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            TextButton(
+              onPressed: sesion.cargando
+                  ? null
+                  : () => mostrarRegistroCuentaModal(context: context),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(48, 48),
+              ),
+              child: const Text('Crea tu cuenta'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    const arriba = TfSpace.s6;
+    const abajo = TfSpace.s4;
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Image.asset(
-                      esOscuro
-                          ? 'assets/brand/logo-oscuro.png'
-                          : 'assets/brand/logo-claro.png',
-                      width: 200,
-                      semanticLabel: 'Transfiéreme',
+        child: LayoutBuilder(
+          builder: (context, restricciones) {
+            return SingleChildScrollView(
+              child: TfPantalla(
+                padding: const EdgeInsets.fromLTRB(
+                  kMargenPantalla,
+                  arriba,
+                  kMargenPantalla,
+                  abajo,
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: restricciones.maxHeight - arriba - abajo,
                     ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Entra a cobrar',
-                      style: tema.textTheme.headlineMedium,
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [superior, inferior],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Con su correo y contraseña de Transfiéreme.',
-                      style: tema.textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 28),
-                    TextFormField(
-                      key: const Key('campo_correo'),
-                      controller: _correoController,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'Correo',
-                        prefixIcon: Icon(Icons.mail_outline),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Indique su correo.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      key: const Key('campo_contrasena'),
-                      controller: _contrasenaController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Contraseña',
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Indique su contraseña.';
-                        }
-                        return null;
-                      },
-                    ),
-                    if (sesion.errorMensaje != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        sesion.errorMensaje!,
-                        style: tema.textTheme.bodySmall?.copyWith(
-                          color: tema.colorScheme.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      key: const Key('boton_entrar'),
-                      onPressed: sesion.cargando ? null : _enviar,
-                      child: sesion.cargando
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Entrar'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: sesion.cargando ? null : _abrirOlvido,
-                      child: const Text('¿Olvidó su contraseña?'),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          '¿Nuevo? ',
-                          style: tema.textTheme.bodyMedium,
-                        ),
-                        TextButton(
-                          onPressed: sesion.cargando
-                              ? null
-                              : () => mostrarRegistroCuentaModal(
-                                    context: context,
-                                  ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text('Cree su cuenta'),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

@@ -43,20 +43,38 @@ class VentaRepository {
 
   static const ruta = '/api/ventas/';
 
+  static const rutaNotificacion = '/api/ventas/notificacion/';
+
   Future<Venta> crear({
     required String monto,
     String concepto = '',
     String referencia = '',
-  }) async {
+  }) {
+    return _crearEn(ruta, {
+      'monto': monto.trim(),
+      'concepto': concepto,
+      'referencia': referencia.trim(),
+    });
+  }
+
+  /// Cobro enviado al celular del cliente (10 dígitos, sin lada +52).
+  Future<Venta> crearNotificacion({
+    required String monto,
+    required String telefono,
+    String concepto = '',
+    String referencia = '',
+  }) {
+    return _crearEn(rutaNotificacion, {
+      'monto': monto.trim(),
+      'telefono': telefono.trim(),
+      'concepto': concepto,
+      'referencia': referencia.trim(),
+    });
+  }
+
+  Future<Venta> _crearEn(String destino, Map<String, dynamic> datos) async {
     try {
-      final respuesta = await _dio.post<dynamic>(
-        ruta,
-        data: {
-          'monto': monto.trim(),
-          'concepto': concepto,
-          'referencia': referencia.trim(),
-        },
-      );
+      final respuesta = await _dio.post<dynamic>(destino, data: datos);
       return _leerCreacion(respuesta.statusCode ?? 0, respuesta.data);
     } on VentaPendienteException {
       rethrow;
@@ -90,7 +108,7 @@ class VentaRepository {
     } on DioException catch (error) {
       throw VentaApiException(_mensajeDeDio(error));
     } on FormatException {
-      throw VentaApiException('No pudimos leer la venta. Intente de nuevo.');
+      throw VentaApiException('No pudimos leer el cobro. Intenta de nuevo.');
     }
   }
 }
@@ -134,7 +152,7 @@ PeyException _pey(Object? data) {
 
 String _mensajeValidacion(Object? data) {
   if (data is! Map) {
-    return 'Revise los datos de la venta.';
+    return 'Revisa los datos del cobro.';
   }
   final partes = <String>[];
   for (final valor in data.values) {
@@ -149,13 +167,13 @@ String _mensajeValidacion(Object? data) {
     }
   }
   if (partes.isEmpty) {
-    return 'Revise los datos de la venta.';
+    return 'Revisa los datos del cobro.';
   }
   return partes.join('\n');
 }
 
 const _mensajeServidor =
-    'El servidor no está disponible en este momento. Intente de nuevo más tarde.';
+    'El servidor no está disponible en este momento. Intenta de nuevo más tarde.';
 
 Map<String, dynamic> _mapa(Object? valor) {
   if (valor is Map<String, dynamic>) {
@@ -175,7 +193,7 @@ VentaApiException _errorDesdeRespuesta(Object? data, int status) {
   if (status >= 500) {
     return VentaApiException(_mensajeServidor);
   }
-  return VentaApiException('No pudimos completar la venta (código $status).');
+  return VentaApiException('No pudimos completar el cobro (código $status).');
 }
 
 String _mensajeDeDio(DioException error) {
@@ -187,17 +205,17 @@ String _mensajeDeDio(DioException error) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
-      return 'La solicitud tardó demasiado. Verifique su conexión e intente de nuevo.';
+      return 'La solicitud tardó demasiado. Revisa tu conexión e intenta de nuevo.';
     case DioExceptionType.connectionError:
-      return 'No pudimos conectar con el servidor. Verifique su conexión e intente de nuevo.';
+      return 'No pudimos conectar con el servidor. Revisa tu conexión e intenta de nuevo.';
     case DioExceptionType.badResponse:
       final codigo = error.response?.statusCode;
       if (codigo != null && codigo >= 500) {
         return _mensajeServidor;
       }
-      return 'No pudimos completar la venta. Intente de nuevo.';
+      return 'No pudimos completar el cobro. Intenta de nuevo.';
     default:
-      return 'No pudimos completar la venta. Intente de nuevo.';
+      return 'No pudimos completar el cobro. Intenta de nuevo.';
   }
 }
 

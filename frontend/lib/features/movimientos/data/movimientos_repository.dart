@@ -18,24 +18,6 @@ class MovimientosRepository {
 
   static const rutaListado = '/api/movimientos/';
 
-  Future<void> renombrarConcepto(int id, String nuevo) async {
-    try {
-      final respuesta = await _dio.patch<dynamic>(
-        '$rutaListado$id/',
-        data: {'concepto_visible': nuevo},
-      );
-      final status = respuesta.statusCode ?? 0;
-      if (status == 200) {
-        return;
-      }
-      throw _errorRenombre(respuesta.data, status);
-    } on MovimientosApiException {
-      rethrow;
-    } on DioException catch (error) {
-      throw MovimientosApiException(_mensajeDeDio(error));
-    }
-  }
-
   Future<List<Movimiento>> listar() async {
     try {
       final respuesta = await _dio.get<dynamic>(rutaListado);
@@ -54,7 +36,7 @@ class MovimientosRepository {
   List<Movimiento> _leerLista(Object? data) {
     if (data is! List) {
       throw MovimientosApiException(
-        'No pudimos leer los movimientos. Intente de nuevo.',
+        'No pudimos leer tus movimientos. Intenta de nuevo.',
       );
     }
     final lista = <Movimiento>[];
@@ -65,24 +47,11 @@ class MovimientosRepository {
         lista.add(Movimiento.fromJson(Map<String, dynamic>.from(item)));
       } else {
         throw MovimientosApiException(
-          'No pudimos leer los movimientos. Intente de nuevo.',
+          'No pudimos leer tus movimientos. Intenta de nuevo.',
         );
       }
     }
     return lista;
-  }
-
-  MovimientosApiException _errorRenombre(Object? data, int status) {
-    final detalle = _detalle(data);
-    if (detalle != null) {
-      return MovimientosApiException(detalle);
-    }
-    if (status >= 500) {
-      return MovimientosApiException(_mensajeServidor);
-    }
-    return MovimientosApiException(
-      'No pudimos renombrar el concepto. Intente de nuevo.',
-    );
   }
 
   MovimientosApiException _errorDesdeRespuesta(Object? data, int status) {
@@ -107,23 +76,23 @@ class MovimientosRepository {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return 'La solicitud tardó demasiado. Verifique su conexión e intente de nuevo.';
+        return 'La solicitud tardó demasiado. Verifica tu conexión e intenta de nuevo.';
       case DioExceptionType.connectionError:
-        return 'No pudimos conectar con el servidor. Verifique su conexión e intente de nuevo.';
+        return 'No pudimos conectar con el servidor. Verifica tu conexión e intenta de nuevo.';
       case DioExceptionType.badResponse:
         final codigo = error.response?.statusCode;
         if (codigo != null && codigo >= 500) {
           return _mensajeServidor;
         }
-        return 'No pudimos cargar los movimientos. Intente de nuevo.';
+        return 'No pudimos cargar tus movimientos. Intenta de nuevo.';
       default:
-        return 'No pudimos cargar los movimientos. Intente de nuevo.';
+        return 'No pudimos cargar tus movimientos. Intenta de nuevo.';
     }
   }
 }
 
 const _mensajeServidor =
-    'El servidor no está disponible en este momento. Intente de nuevo más tarde.';
+    'El servidor no está disponible en este momento. Intenta de nuevo más tarde.';
 
 String? _detalle(Object? data) {
   if (data is Map) {

@@ -1,3 +1,5 @@
+import '../../../core/fecha/dia_cdmx.dart';
+
 /// Movimiento de lectura. `monto` se conserva como cadena del servidor.
 class Movimiento {
   const Movimiento({
@@ -104,7 +106,7 @@ String _conSeparadorDeMiles(String entero) {
 }
 
 String fechaCortaLocal(DateTime fecha) {
-  final local = fecha.toLocal();
+  final local = diaCdmx(fecha);
   final dia = local.day.toString().padLeft(2, '0');
   final mes = local.month.toString().padLeft(2, '0');
   return '$dia/$mes/${local.year}';

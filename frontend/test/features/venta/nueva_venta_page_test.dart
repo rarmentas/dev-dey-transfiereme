@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/mock_venta_api.dart';
+import '../../support/override_cuenta_estado.dart';
 
 Future<void> _montar(WidgetTester tester, MockVentaApi mock) async {
   final repositorio = VentaRepository(mock.dio);
@@ -41,6 +42,7 @@ Future<void> _montar(WidgetTester tester, MockVentaApi mock) async {
         ventaRepositoryProvider.overrideWith(
           (ref) => VentaRepository(mock.dio),
         ),
+        cuentaEstadoActivaOverride(),
       ],
       child: MaterialApp.router(theme: TfTheme.light, routerConfig: router),
     ),
@@ -75,7 +77,7 @@ void main() {
     await _montar(tester, mock);
 
     await _cobrar(tester);
-    expect(find.text('Indique el monto.'), findsOneWidget);
+    expect(find.text('Escribe el monto.'), findsOneWidget);
     expect(mock.peticiones, isEmpty);
 
     await _monto(tester, '0');
@@ -132,8 +134,18 @@ void main() {
     await _monto(tester, '12.50');
     await _cobrar(tester);
 
-    expect(find.text('Ya tenía una venta pendiente'), findsOneWidget);
+    expect(find.text('Ya tenías una venta pendiente'), findsOneWidget);
     expect(find.text('Tortas'), findsOneWidget);
+    final aviso = tester.getRect(find.byKey(const Key('aviso_pendiente')));
+    expect(aviso.left, greaterThan(120));
+    expect(aviso.right, lessThan(680));
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Ya tenías una venta pendiente'), findsOneWidget);
     expect(mock.peticiones.map((p) => p.path), [
       rutaCrearVenta,
       '/api/ventas/9/',
@@ -170,11 +182,78 @@ void main() {
     expect(find.text('pey no pudo crear el cobro.'), findsOneWidget);
     expect(
       find.text(
-        'Puede que el cobro se haya creado; revise Movimientos antes de reintentar',
+        'Puede que el cobro se haya creado; revisa Movimientos antes de reintentar',
       ),
       findsOneWidget,
     );
     expect(find.text('Reintentar'), findsOneWidget);
     expect(find.text('Cobro'), findsNothing);
+  });
+
+  testWidgets('concepto viene prellenado y el botón muestra el monto', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    await _montar(tester, mock);
+
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('campo_concepto')))
+          .controller!
+          .text,
+      'Transferencia',
+    );
+    expect(find.text('Cobrar'), findsOneWidget);
+    await _monto(tester, '120');
+    await tester.pump();
+    expect(find.text('Cobrar \$120'), findsOneWidget);
+  });
+
+  testWidgets('A su celular pide 10 dígitos y usa la notificación', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrearNotificacion(
+      201,
+      cuerpoNotificacion(
+        id: 11,
+        venceEn: DateTime.now()
+            .toUtc()
+            .add(const Duration(minutes: 5))
+            .toIso8601String(),
+      ),
+    );
+    mock.alObtener([
+      cuerpoVenta(
+        id: 11,
+        estado: 'pendiente',
+        canal: 'notificacion',
+        qrString: '',
+        concepto: 'Transferencia',
+      ),
+    ]);
+    await _montar(tester, mock);
+    expect(find.byKey(const Key('campo_celular')), findsNothing);
+    await tester.tap(find.text('A su celular'));
+    await tester.pump();
+    await _monto(tester, '120');
+    await tester.enterText(find.byKey(const Key('campo_celular')), '55123');
+    await _cobrar(tester);
+    expect(
+      find.text('Revisa el celular: deben ser 10 dígitos.'),
+      findsOneWidget,
+    );
+    expect(mock.peticiones, isEmpty);
+
+    await tester.enterText(
+      find.byKey(const Key('campo_celular')),
+      '5512344321',
+    );
+    await _cobrar(tester);
+    expect(mock.peticiones.map((p) => p.path), [
+      rutaCrearNotificacion,
+      '/api/ventas/11/',
+    ]);
+    expect(find.textContaining('terminado en 4321'), findsOneWidget);
   });
 }

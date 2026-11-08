@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../support/mock_inicio_api.dart';
 import '../../support/mock_sesion_api.dart';
 
 Future<void> _llenarLogin(WidgetTester tester, String correo, String clave) async {
@@ -20,6 +21,7 @@ void main() {
   ) async {
     final dio = crearDioPrueba();
     prepararDioConSesion(dio);
+    instalarInicioApi(dio);
 
     final container = ProviderContainer(
       overrides: [
@@ -45,6 +47,9 @@ void main() {
     await _llenarLogin(tester, 'lupe@tortilleria.mx', 'clave-segura');
     await tester.tap(find.byKey(const Key('boton_entrar')));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Deja terminar la carga del resumen de inicio.
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(container.read(sesionNotifierProvider).autenticado, isTrue);

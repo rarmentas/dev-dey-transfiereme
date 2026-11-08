@@ -8,6 +8,7 @@ import 'package:cody/main.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../support/mock_inicio_api.dart';
 import '../../support/mock_sesion_api.dart';
 
 void _mockRegistroOlvido(Dio dio) {
@@ -71,7 +72,7 @@ void _mockRegistroOlvido(Dio dio) {
 }
 
 void main() {
-  testWidgets('enlace Cree su cuenta abre modal de registro', (tester) async {
+  testWidgets('enlace Crea tu cuenta abre modal de registro', (tester) async {
     final dio = crearDioPrueba();
     prepararDioConSesion(dio);
 
@@ -92,10 +93,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.text('Cree su cuenta'));
+    await tester.tap(find.text('Crea tu cuenta'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Confirme su contraseña'), findsOneWidget);
+    expect(find.text('Confirma tu contraseña'), findsOneWidget);
     expect(find.text('Continuar'), findsOneWidget);
     expect(find.text('Entra a cobrar'), findsOneWidget);
   });
@@ -121,7 +122,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.text('Cree su cuenta'));
+    await tester.tap(find.text('Crea tu cuenta'));
     await tester.pumpAndSettle();
 
     final campos = find.descendant(
@@ -140,6 +141,7 @@ void main() {
   testWidgets('flujo registro mock entra e inicia en home', (tester) async {
     final dio = crearDioPrueba();
     prepararDioConSesion(dio);
+    instalarInicioApi(dio);
     _mockRegistroOlvido(dio);
 
     await tester.pumpWidget(
@@ -159,7 +161,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.text('Cree su cuenta'));
+    await tester.tap(find.text('Crea tu cuenta'));
     await tester.pumpAndSettle();
 
     final paso1 = find.descendant(
@@ -220,7 +222,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.text('¿Olvidó su contraseña?'));
+    await tester.tap(find.text('¿Olvidaste tu contraseña?'));
     await tester.pumpAndSettle();
 
     final correoOlvido = find.descendant(

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/ajustes/presentation/ajustes_page.dart';
+import '../../features/cobro/presentation/mi_qr_page.dart';
 import '../../features/cuenta/presentation/registrar_clabe_page.dart';
+import '../../features/cuenta/presentation/registrar_cuenta_pey_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
@@ -10,6 +13,7 @@ import '../../features/tablero/presentation/tablero_page.dart';
 import '../../features/venta/presentation/nueva_venta_page.dart';
 import '../../features/venta/presentation/venta_espera_page.dart';
 import '../sesion/sesion_notifier.dart';
+import '../ui/tf_shell.dart';
 import 'sesion_router_refresh.dart';
 
 const kRutaEntrar = '/entrar';
@@ -18,6 +22,9 @@ const kRutaMovimientos = '/movimientos';
 const kRutaTablero = '/tablero';
 const kRutaNuevaVenta = '/venta/nueva';
 const kRutaRegistrarClabe = '/cuenta/clabe';
+const kRutaRegistrarCuentaPey = '/cuenta/pey/registrar';
+const kRutaAjustes = '/ajustes';
+const kRutaMiQr = '/mi-qr';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -59,17 +66,39 @@ final routerProvider = Provider<GoRouter>((ref) {
           );
         },
       ),
-      GoRoute(
-        path: kRutaInicio,
-        builder: (context, state) => const HomeAutenticadoPage(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            TfShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: kRutaInicio,
+              builder: (context, state) => const HomeAutenticadoPage(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: kRutaMovimientos,
+              builder: (context, state) => const ResumenMovimientosPage(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: kRutaTablero,
+              builder: (context, state) => const TableroPage(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: kRutaAjustes,
+              builder: (context, state) => const AjustesPage(),
+            ),
+          ]),
+        ],
       ),
       GoRoute(
-        path: kRutaMovimientos,
-        builder: (context, state) => const ResumenMovimientosPage(),
-      ),
-      GoRoute(
-        path: kRutaTablero,
-        builder: (context, state) => const TableroPage(),
+        path: kRutaMiQr,
+        builder: (context, state) => const MiQrPage(),
       ),
       GoRoute(
         path: kRutaNuevaVenta,
@@ -78,6 +107,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: kRutaRegistrarClabe,
         builder: (context, state) => const RegistrarClabePage(),
+      ),
+      GoRoute(
+        path: kRutaRegistrarCuentaPey,
+        builder: (context, state) => const RegistrarCuentaPeyPage(),
       ),
       GoRoute(
         path: '/venta/:id',

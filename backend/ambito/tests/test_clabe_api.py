@@ -34,6 +34,47 @@ class ClabeApiTests(TestCase):
     def _entrar(self, usuario: User) -> None:
         self.client.force_login(usuario)
 
+    def test_get_clabe_vacia_sin_guardar(self) -> None:
+        self._entrar(self.usuario_a)
+        respuesta = self.client.get(_RUTA_CLABE)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["clabe"], "")
+
+    def test_get_clabe_del_comercio_de_la_sesion(self) -> None:
+        self.comercio_a.clabe = CLABE_OFICIAL
+        self.comercio_a.save(update_fields=["clabe"])
+        self._entrar(self.usuario_a)
+        respuesta = self.client.get(_RUTA_CLABE)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["clabe"], CLABE_OFICIAL)
+        self._entrar(self.usuario_b)
+        respuesta_b = self.client.get(_RUTA_CLABE)
+        self.assertEqual(respuesta_b.status_code, 200)
+        self.assertEqual(respuesta_b.json()["clabe"], "")
+
+    def test_get_no_cambia_pey_ni_clabe_persistida(self) -> None:
+        from ambito.models import Comercio
+
+        self.comercio_a.clabe = CLABE_OFICIAL
+        self.comercio_a.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
+        self.comercio_a.pey_bank_account_id = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
+        self.comercio_a.save(
+            update_fields=["clabe", "pey_codi_status", "pey_bank_account_id"]
+        )
+        self._entrar(self.usuario_a)
+        respuesta = self.client.get(_RUTA_CLABE)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["clabe"], CLABE_OFICIAL)
+        self.comercio_a.refresh_from_db()
+        self.assertEqual(self.comercio_a.clabe, CLABE_OFICIAL)
+        self.assertEqual(self.comercio_a.pey_codi_status, Comercio.PeyCodiStatus.ACTIVE)
+        self.assertEqual(self.comercio_a.pey_bank_account_id, "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P")
+
+    def test_get_clabe_sin_sesion_403(self) -> None:
+        respuesta = self.client.get(_RUTA_CLABE)
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(respuesta.json()["detail"], _MENSAJE_SIN_SESION)
+
     def test_persiste_clabe_en_comercio_de_la_sesion(self) -> None:
         self._entrar(self.usuario_a)
         respuesta = self.client.post(
