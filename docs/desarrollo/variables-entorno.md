@@ -15,6 +15,14 @@ Este documento describe **nombres y uso**, sin valores reales. Las secretas no d
 | `DEBUG` | No | `backend/.env` | `True` en local |
 | `ALLOWED_HOSTS` | No | `backend/.env` | `localhost`, `127.0.0.1` |
 | `PEY_ADAPTADOR` | No | `backend/.env` | `desarrollo` o `produccion`. Vacío: `desarrollo` si `DEBUG`, si no `produccion`. No arranca en `desarrollo` si `DEBUG=False` o si `PEY_API_KEY` tiene valor |
+| `EMAIL_HOST` | No | `backend/.env` | Servidor SMTP (p. ej. `mail.asware.com.mx`) |
+| `EMAIL_PORT` | No | `backend/.env` | Puerto SMTP (p. ej. `465` con SSL implícito) |
+| `EMAIL_HOST_USER` | No | `backend/.env` | Usuario SMTP |
+| `EMAIL_HOST_PASSWORD` | Sí | `backend/.env` | Contraseña del buzón. Vacía en local con `DEBUG`: correo a consola |
+| `EMAIL_USE_SSL` | No | `backend/.env` | `True` con puerto 465 |
+| `EMAIL_USE_TLS` | No | `backend/.env` | `False` con puerto 465 |
+| `DEFAULT_FROM_EMAIL` | No | `backend/.env` | Remitente visible (mismo buzón que el usuario SMTP) |
+| `EMAIL_BACKEND` | No | `backend/.env` | Backend Django de correo; por defecto SMTP si hay contraseña |
 
 Plantilla: `.env.example` (también en `backend/.env.example`). `scripts/dev-start.sh` carga `backend/.env` si existe y no exige variables de pey.
 
@@ -40,8 +48,16 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `PEY_API_KEY` | Sí | Bearer contra `https://api.pey.mx` |
 | `PEY_WEBHOOK_SECRET` | Sí | Firma Standard Webhooks (`whsec_...`) de `POST /api/webhooks/pey/`. Vacío: la ruta rechaza todo con 401 |
 | `PEY_ADAPTADOR` | No | `desarrollo` o `produccion`. Vacío con `DEBUG=False`: adaptador de producción. `desarrollo` exige `DEBUG` y `PEY_API_KEY` vacía |
+| `EMAIL_HOST` | No | Servidor SMTP |
+| `EMAIL_PORT` | No | Puerto SMTP |
+| `EMAIL_HOST_USER` | No | Usuario SMTP |
+| `EMAIL_HOST_PASSWORD` | Sí | Contraseña del buzón (rellenar en CI File) |
+| `EMAIL_USE_SSL` | No | `True` / `False` |
+| `EMAIL_USE_TLS` | No | `True` / `False` |
+| `DEFAULT_FROM_EMAIL` | No | Remitente |
+| `EMAIL_BACKEND` | No | Backend Django (SMTP en despliegue) |
 
-Esas cuatro secretas no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
+Esas cinco secretas (`POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY`, `PEY_WEBHOOK_SECRET`, `EMAIL_HOST_PASSWORD`) no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
 
 ### Deploy
 

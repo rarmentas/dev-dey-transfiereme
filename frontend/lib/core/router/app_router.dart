@@ -14,6 +14,14 @@ const kRutaInicio = '/inicio';
 const kRutaMovimientos = '/movimientos';
 const kRutaTablero = '/tablero';
 
+const _rutasPublicasSinSesion = <String>{
+  kRutaEntrar,
+};
+
+bool _rutaPublicaSinSesion(String ubicacion) {
+  return _rutasPublicasSinSesion.contains(ubicacion);
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ref.watch(sesionRouterRefreshProvider);
 
@@ -27,10 +35,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       final ubicacion = state.matchedLocation;
       final enEntrar = ubicacion == kRutaEntrar;
-      if (!sesion.autenticado && !enEntrar) {
+      if (!sesion.autenticado && !_rutaPublicaSinSesion(ubicacion)) {
         return kRutaEntrar;
       }
-      if (sesion.autenticado && enEntrar) {
+      if (sesion.autenticado && (enEntrar || _rutaPublicaSinSesion(ubicacion))) {
         return kRutaInicio;
       }
       return null;
@@ -38,7 +46,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: kRutaEntrar,
-        builder: (context, state) => const LoginPage(),
+        builder: (context, state) {
+          final aviso = state.uri.queryParameters['aviso'];
+          return LoginPage(
+            key: ValueKey(aviso ?? ''),
+            mensajeInicial: aviso,
+          );
+        },
       ),
       GoRoute(
         path: kRutaInicio,

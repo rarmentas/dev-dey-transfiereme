@@ -8,8 +8,10 @@ PREFIJO_SESION_ENTRAR = "/api/sesion/entrar/"
 PREFIJO_SESION_ESTADO = "/api/sesion/estado/"
 RUTA_SALUD = "/api/salud/"
 
-# alta: añadir prefijos aquí cuando exista registro público
-RUTAS_ALTA_EXENTAS: tuple[str, ...] = ()
+RUTAS_ALTA_EXENTAS: tuple[str, ...] = (
+    "/api/sesion/alta/",
+    "/api/sesion/olvido/",
+)
 
 _MENSAJE_SIN_SESION = "Debe iniciar sesión."
 
