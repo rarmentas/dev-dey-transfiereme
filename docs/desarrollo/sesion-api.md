@@ -2,6 +2,19 @@
 
 La sesión es la cookie de Django (sin JWT). El vendedor entra con correo y contraseña; el servidor no acepta comercio en el cuerpo del login.
 
+## Cierre de `/api/` sin sesión
+
+El middleware `CierraApiSinSesionMiddleware` responde `403` con `{"detail": "Debe iniciar sesión."}` a cualquier ruta bajo `/api/` si no hay cookie de sesión válida, **salvo** estas excepciones:
+
+| Ruta / prefijo | Método | Motivo |
+| --- | --- | --- |
+| `/api/sesion/entrar/` | `POST` | Inicio de sesión |
+| `/api/sesion/estado/` | Cualquiera | El propio endpoint devuelve `403` sin sesión |
+| `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login) |
+| `/api/salud/` | `GET` | Comprobación de despliegue y base de datos |
+
+Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión activa antes de ejecutar la vista.
+
 | Método | Ruta | Autenticación |
 |--------|------|----------------|
 | `POST` | `/api/sesion/entrar/` | No requiere sesión previa |

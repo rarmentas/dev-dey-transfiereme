@@ -48,6 +48,7 @@ MIDDLEWARE = [
     "ambito.middleware.AmbitoComercioMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "sesion.middleware.CierraApiSinSesionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
