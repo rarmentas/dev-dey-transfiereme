@@ -20,9 +20,13 @@ variables:
 #   Deploy, fuera de ese archivo: PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
 #     PROD_DEPLOY_PORT, PROD_DEPLOY_PATH y PROD_SSH_PRIVATE_KEY (base64).
 #     En la rama test, el mismo conjunto con prefijo TEST_.
+# El runner docker solo acepta refs protegidas. Un pipeline de merge request
+# usa refs/merge-requests/N/head, que no es una rama protegida, así que se queda
+# sin runner. Estos jobs corren en el push de una rama protegida (master, test
+# o la rama del epic, si está protegida).
 .workflow_rules:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true"
     - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_COMMIT_BRANCH == "test"
 
