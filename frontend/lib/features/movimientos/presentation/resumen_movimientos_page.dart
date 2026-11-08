@@ -8,7 +8,6 @@ import '../data/movimiento.dart';
 import '../data/movimientos_repository.dart';
 import 'movimientos_providers.dart';
 import 'widgets/formato_fechas.dart';
-import 'widgets/tf_segmentado.dart';
 
 enum PeriodoMovimientos { hoy, semana, mes }
 

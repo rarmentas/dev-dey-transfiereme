@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ui/ui.dart';
 import '../../../theme/transfiereme_theme.dart';
 import '../../movimientos/presentation/widgets/formato_fechas.dart';
-import '../../movimientos/presentation/widgets/tf_segmentado.dart';
 import '../data/tablero.dart';
 import '../data/tablero_repository.dart';
 import 'tablero_providers.dart';

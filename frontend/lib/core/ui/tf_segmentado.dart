@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/ui/ui.dart';
+import 'tf_tokens.dart';
 
 /// Filtro segmentado del mockup: contenedor tonal con el segmento activo
 /// elevado y en negritas.
@@ -10,11 +10,15 @@ class TfSegmentado<T> extends StatelessWidget {
     required this.opciones,
     required this.valor,
     required this.onCambio,
+    this.iconos,
   });
 
   final Map<T, String> opciones;
   final T valor;
   final ValueChanged<T> onCambio;
+
+  /// Ícono opcional por opción, a la izquierda de la etiqueta.
+  final Map<T, IconData>? iconos;
 
   @override
   Widget build(BuildContext context) {
@@ -43,17 +47,35 @@ class TfSegmentado<T> extends StatelessWidget {
                       color: e.key == valor ? colores.surfaceContainerLow : null,
                       borderRadius: BorderRadius.circular(TfRadius.sm),
                     ),
-                    child: Text(
-                      e.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tema.textTheme.titleSmall?.copyWith(
-                        fontWeight:
-                            e.key == valor ? FontWeight.w700 : FontWeight.w500,
-                        color: e.key == valor
-                            ? colores.onSurface
-                            : colores.onSurfaceVariant,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (iconos?[e.key] != null) ...[
+                          Icon(
+                            iconos![e.key],
+                            size: 18,
+                            color: e.key == valor
+                                ? colores.onSurface
+                                : colores.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: TfSpace.s2),
+                        ],
+                        Flexible(
+                          child: Text(
+                            e.value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: tema.textTheme.titleSmall?.copyWith(
+                              fontWeight: e.key == valor
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: e.key == valor
+                                  ? colores.onSurface
+                                  : colores.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
