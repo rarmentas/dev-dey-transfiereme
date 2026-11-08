@@ -80,6 +80,13 @@ class Movimiento(models.Model):
         unique=True,
         verbose_name="id de transacción en pey",
     )
+    # Instante del pago. El día del tablero sale de aquí en
+    # America/Mexico_City. La constraint lo exige si y solo si está pagado.
+    pagado_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="pagado en",
+    )
     creado_en = models.DateTimeField(auto_now_add=True, verbose_name="creado en")
     actualizado_en = models.DateTimeField(auto_now=True, verbose_name="actualizado en")
 
@@ -107,6 +114,16 @@ class Movimiento(models.Model):
             condition=models.Q(origen__in=Origen.values),
             name="movimiento_origen_valido",
         ),
+        models.CheckConstraint(
+            condition=(
+                models.Q(estado=Estado.PAGADO, pagado_en__isnull=False)
+                | (
+                    ~models.Q(estado=Estado.PAGADO)
+                    & models.Q(pagado_en__isnull=True)
+                )
+            ),
+            name="movimiento_pagado_en_solo_si_pagado",
+        ),
     ]
 
     def __str__(self) -> str:
@@ -117,6 +134,14 @@ class Movimiento(models.Model):
             self.pey_transaction_id = None
         if self._state.adding and not self.concepto_visible:
             self.concepto_visible = self.concepto
+        # El QR general nace pagado y no pasa por cambiar_estado. Sin este
+        # instante la constraint rechaza el INSERT.
+        if (
+            self._state.adding
+            and self.estado == self.Estado.PAGADO
+            and self.pagado_en is None
+        ):
+            self.pagado_en = timezone.now()
         # El canal (y el comercio) tienen que ser los del cobro. Un
         # CheckConstraint no cruza tablas; esta lectura por llave es barata.
         self._exigir_coherencia_con_cobro()
@@ -137,17 +162,22 @@ class Movimiento(models.Model):
             origen = bloqueado.estado
             if nuevo not in self._TRANSICIONES.get(origen, frozenset()):
                 raise TransicionInvalida(f"Transición inválida: {origen} → {nuevo}.")
+            ahora = timezone.now()
+            campos = {"estado": nuevo, "actualizado_en": ahora}
+            # Mismo UPDATE condicional: pagado y su instante quedan juntos.
+            if nuevo == self.Estado.PAGADO:
+                campos["pagado_en"] = ahora
             filas = (
                 type(self)
                 .objects.filter(pk=self.pk, estado=origen)
-                .update(estado=nuevo, actualizado_en=timezone.now())
+                .update(**campos)
             )
             if filas != 1:
                 raise TransicionInvalida(
                     f"Transición inválida: el estado ya no es {origen}."
                 )
         self.estado = nuevo
-        self.refresh_from_db(fields=["estado", "actualizado_en"])
+        self.refresh_from_db(fields=["estado", "actualizado_en", "pagado_en"])
 
     def _exigir_coherencia_con_cobro(self) -> None:
         if self.cobro_id is None:
