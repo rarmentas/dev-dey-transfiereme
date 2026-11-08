@@ -43,6 +43,11 @@ class HomeAutenticadoPage extends ConsumerWidget {
                 child: const Text('Ver movimientos'),
               ),
               const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => context.push(kRutaTablero),
+                child: const Text('Ver tablero'),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: sesion.cargando
                     ? null
