@@ -55,6 +55,14 @@ class OlvidoContrasenaTests(TestCase):
             content_type="application/json",
         )
         codigo = _codigo_desde_ultimo_correo()
+        msg = mail.outbox[-1]
+        self.assertEqual(len(msg.alternatives), 1)
+        html, mime = msg.alternatives[0]
+        self.assertEqual(mime, "text/html")
+        self.assertIn(codigo, html)
+        self.assertIn("Transfiéreme", html)
+        self.assertIn("#1E4FA3", html)
+        self.assertIn("#F4F6FA", html)
         nueva = "Nueva-clave-9"
         restablecer = self.client.post(
             "/api/sesion/olvido/restablecer/",
