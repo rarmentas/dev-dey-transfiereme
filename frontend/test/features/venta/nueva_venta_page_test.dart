@@ -75,7 +75,7 @@ void main() {
     await _montar(tester, mock);
 
     await _cobrar(tester);
-    expect(find.text('Indique el monto.'), findsOneWidget);
+    expect(find.text('Escribe el monto.'), findsOneWidget);
     expect(mock.peticiones, isEmpty);
 
     await _monto(tester, '0');
@@ -132,7 +132,7 @@ void main() {
     await _monto(tester, '12.50');
     await _cobrar(tester);
 
-    expect(find.text('Ya tenía una venta pendiente'), findsOneWidget);
+    expect(find.text('Ya tenías una venta pendiente'), findsOneWidget);
     expect(find.text('Tortas'), findsOneWidget);
     expect(mock.peticiones.map((p) => p.path), [
       rutaCrearVenta,
@@ -170,11 +170,78 @@ void main() {
     expect(find.text('pey no pudo crear el cobro.'), findsOneWidget);
     expect(
       find.text(
-        'Puede que el cobro se haya creado; revise Movimientos antes de reintentar',
+        'Puede que el cobro se haya creado; revisa Movimientos antes de reintentar',
       ),
       findsOneWidget,
     );
     expect(find.text('Reintentar'), findsOneWidget);
     expect(find.text('Cobro'), findsNothing);
+  });
+
+  testWidgets('concepto viene prellenado y el botón muestra el monto', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    await _montar(tester, mock);
+
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('campo_concepto')))
+          .controller!
+          .text,
+      'Transferencia',
+    );
+    expect(find.text('Cobrar'), findsOneWidget);
+    await _monto(tester, '120');
+    await tester.pump();
+    expect(find.text('Cobrar \$120'), findsOneWidget);
+  });
+
+  testWidgets('A su celular pide 10 dígitos y usa la notificación', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrearNotificacion(
+      201,
+      cuerpoNotificacion(
+        id: 11,
+        venceEn: DateTime.now()
+            .toUtc()
+            .add(const Duration(minutes: 5))
+            .toIso8601String(),
+      ),
+    );
+    mock.alObtener([
+      cuerpoVenta(
+        id: 11,
+        estado: 'pendiente',
+        canal: 'notificacion',
+        qrString: '',
+        concepto: 'Transferencia',
+      ),
+    ]);
+    await _montar(tester, mock);
+    expect(find.byKey(const Key('campo_celular')), findsNothing);
+    await tester.tap(find.text('A su celular'));
+    await tester.pump();
+    await _monto(tester, '120');
+    await tester.enterText(find.byKey(const Key('campo_celular')), '55123');
+    await _cobrar(tester);
+    expect(
+      find.text('Revisa el celular: deben ser 10 dígitos.'),
+      findsOneWidget,
+    );
+    expect(mock.peticiones, isEmpty);
+
+    await tester.enterText(
+      find.byKey(const Key('campo_celular')),
+      '5512344321',
+    );
+    await _cobrar(tester);
+    expect(mock.peticiones.map((p) => p.path), [
+      rutaCrearNotificacion,
+      '/api/ventas/11/',
+    ]);
+    expect(find.textContaining('terminado en 4321'), findsOneWidget);
   });
 }

@@ -65,7 +65,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await _cerrarRed(tester);
 
-    expect(find.text('El cobro venció sin pago'), findsOneWidget);
+    expect(find.text('Este cobro venció'), findsOneWidget);
     expect(find.textContaining('venció'), findsOneWidget);
     expect(find.byType(QrImageView), findsNothing);
     expect(mock.lecturas, 2);
@@ -91,10 +91,10 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await _cerrarRed(tester);
 
-    expect(find.text('Pagado'), findsOneWidget);
+    expect(find.text('¡Te pagaron!'), findsOneWidget);
     expect(find.text(horaLocalCorta(DateTime.parse(pagadoEn))), findsOneWidget);
-    expect(find.text('Nueva venta'), findsOneWidget);
-    expect(find.text('Ver movimientos'), findsOneWidget);
+    expect(find.text('Nuevo cobro'), findsOneWidget);
+    expect(find.text('Listo'), findsOneWidget);
     expect(mock.lecturas, 2);
 
     await tester.pump(const Duration(seconds: 2));
@@ -113,5 +113,28 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 3));
     expect(mock.lecturas, 1);
+  });
+
+  testWidgets('vencido ofrece generar otro igual', (tester) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alObtener([cuerpoVenta(id: 7, estado: 'vencido', monto: '120.00')]);
+    await _montar(tester, mock, 7);
+    expect(find.text('Puedes generar otro igual.'), findsOneWidget);
+    expect(find.text('Generar otro igual'), findsOneWidget);
+  });
+
+  testWidgets('pendiente muestra Vence en y el texto para escanear', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    final vence = DateTime.now().toUtc().add(const Duration(minutes: 5));
+    mock.alObtener([
+      cuerpoVenta(id: 8, estado: 'pendiente', venceEn: vence.toIso8601String()),
+    ]);
+    await _montar(tester, mock, 8);
+    expect(find.text('Vence en'), findsOneWidget);
+    expect(find.text('Pídele que escanee con la app de su banco'),
+        findsOneWidget);
+    expect(find.byTooltip('Cerrar'), findsOneWidget);
   });
 }

@@ -1,3 +1,5 @@
+import '../../../core/fecha/dia_cdmx.dart';
+
 /// Venta de lectura. `monto` se conserva como cadena del servidor.
 class Venta {
   const Venta({
@@ -11,6 +13,8 @@ class Venta {
     this.pagadoEn,
     this.cobroId,
     this.origen,
+    this.telefonoFinal,
+    this.referencia,
   });
 
   final int movimientoId;
@@ -24,6 +28,12 @@ class Venta {
   final int? cobroId;
   final String? origen;
 
+  /// Últimos 4 dígitos del celular (solo en cobros por notificación).
+  final String? telefonoFinal;
+
+  /// El API de estado hoy no la devuelve; se usa si algún día viene.
+  final String? referencia;
+
   factory Venta.fromJson(Map<String, dynamic> json) {
     return Venta(
       movimientoId: json['movimiento_id'] as int,
@@ -36,9 +46,12 @@ class Venta {
       pagadoEn: _leerFecha(json['pagado_en']),
       cobroId: json['cobro_id'] as int?,
       origen: json['origen'] as String?,
+      telefonoFinal: json['telefono_final'] as String?,
+      referencia: json['referencia'] as String?,
     );
   }
 
+  bool get esNotificacion => canal == 'notificacion';
   bool get esPendiente => estado == 'pendiente';
   bool get esPagado => estado == 'pagado';
   bool get esVencido => estado == 'vencido';
@@ -60,12 +73,8 @@ DateTime? _leerFecha(Object? valor) {
   return DateTime.parse(valor);
 }
 
-String horaLocalCorta(DateTime fecha) {
-  final local = fecha.toLocal();
-  final hora = local.hour.toString().padLeft(2, '0');
-  final minuto = local.minute.toString().padLeft(2, '0');
-  return '$hora:$minuto';
-}
+/// `HH:MM` en hora de CDMX.
+String horaLocalCorta(DateTime fecha) => horaCdmx(fecha);
 
 /// Cuenta regresiva `mm:ss` hasta [vence]. No usa `double`.
 String cuentaRegresiva(DateTime vence, DateTime ahora) {
@@ -80,7 +89,7 @@ String cuentaRegresiva(DateTime vence, DateTime ahora) {
 String? validarMontoVenta(String texto) {
   final limpio = texto.trim();
   if (limpio.isEmpty) {
-    return 'Indique el monto.';
+    return 'Escribe el monto.';
   }
   if (!RegExp(r'^\d+(\.\d+)?$').hasMatch(limpio)) {
     return 'El monto debe ser un número.';
@@ -105,6 +114,14 @@ String? validarReferenciaVenta(String texto) {
   }
   if (!RegExp(r'^\d{1,7}$').hasMatch(limpio)) {
     return 'La referencia debe ser numérica, de 1 a 7 dígitos.';
+  }
+  return null;
+}
+
+/// Celular de 10 dígitos para cobrar por notificación.
+String? validarCelularVenta(String texto) {
+  if (!RegExp(r'^\d{10}$').hasMatch(texto.trim())) {
+    return 'Revisa el celular: deben ser 10 dígitos.';
   }
   return null;
 }
