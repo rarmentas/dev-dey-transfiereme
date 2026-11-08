@@ -10,11 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 
 Dio _dio() => Dio(
-      BaseOptions(
-        baseUrl: 'http://test',
-        validateStatus: (status) => status != null && status < 500,
-      ),
-    );
+  BaseOptions(
+    baseUrl: 'http://test',
+    validateStatus: (status) => status != null && status < 500,
+  ),
+);
 
 DioAdapter _responder(Dio dio, int status, Map<String, dynamic> cuerpo) {
   final adapter = DioAdapter(dio: dio);
@@ -56,8 +56,13 @@ void main() {
       _responder(dio, 403, {'detail': 'Sin permiso.'});
       expect(
         QrGeneralRepository(dio).obtener(),
-        throwsA(isA<QrGeneralApiException>()
-            .having((e) => e.mensaje, 'mensaje', 'Sin permiso.')),
+        throwsA(
+          isA<QrGeneralApiException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            'Sin permiso.',
+          ),
+        ),
       );
     });
 
@@ -89,6 +94,7 @@ void main() {
       await montar(tester, dio);
       expect(find.byType(QrGeneralImpresoPage), findsOneWidget);
       expect(find.textContaining('Tu cliente puede pagar'), findsOneWidget);
+      expect(find.byTooltip('Volver'), findsOneWidget);
     });
 
     testWidgets('cuenta no activa muestra el aviso', (tester) async {
@@ -96,6 +102,8 @@ void main() {
       _responder(dio, 400, {'detail': 'x', 'tipo': 'INVALID_STATE'});
       await montar(tester, dio);
       expect(find.text(kMensajeCuentaNoActivaQr), findsOneWidget);
+      expect(find.text(kMensajeQrAlActivar), findsOneWidget);
+      expect(find.byTooltip('Volver'), findsOneWidget);
     });
 
     testWidgets('error ofrece Reintentar', (tester) async {
@@ -104,6 +112,7 @@ void main() {
       await montar(tester, dio);
       expect(find.text('Reintentar'), findsOneWidget);
       expect(find.text('Sin permiso.'), findsOneWidget);
+      expect(find.byTooltip('Volver'), findsOneWidget);
     });
   });
 }

@@ -22,25 +22,34 @@ class MiQrPage extends ConsumerWidget {
               qrString: resultado.qrString,
             ),
       loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Mi QR')),
+        appBar: appBarMiQr(),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        appBar: AppBar(title: const Text('Mi QR')),
+        appBar: appBarMiQr(),
         body: SafeArea(
-          child: TfPantalla(
-            padding: const EdgeInsets.all(kMargenPantalla),
-            child: Center(
-              child: TfAvisoError(
-                titulo: 'No pudimos cargar tu código',
-                mensaje: error.toString(),
-                accion: OutlinedButton(
-                  key: const Key('boton_reintentar_qr'),
-                  onPressed: () => ref.invalidate(qrGeneralProvider),
-                  child: const Text('Reintentar'),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: TfPantalla(
+                      padding: const EdgeInsets.all(kMargenPantalla),
+                      child: TfAvisoError(
+                        titulo: 'No pudimos cargar tu código',
+                        mensaje: error.toString(),
+                        accion: OutlinedButton(
+                          key: const Key('boton_reintentar_qr'),
+                          onPressed: () => ref.invalidate(qrGeneralProvider),
+                          child: const Text('Reintentar'),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),

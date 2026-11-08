@@ -19,10 +19,16 @@ class AjustesPage extends ConsumerWidget {
 
     final nombre = estado == null
         ? ''
-        : [estado.nombre.trim(), estado.apellidos.trim()]
-            .where((p) => p.isNotEmpty)
-            .join(' ');
+        : [
+            estado.nombre.trim(),
+            estado.apellidos.trim(),
+          ].where((p) => p.isNotEmpty).join(' ');
+    final correo = estado?.correo.trim() ?? '';
     final comercio = estado?.comercio?.nombre ?? 'Sin comercio asignado';
+    final fuenteInicial = estado == null ? '' : estado.nombreParaSaludo.trim();
+    final inicial = fuenteInicial.isEmpty
+        ? 'U'
+        : fuenteInicial.substring(0, 1).toUpperCase();
 
     return Scaffold(
       body: SafeArea(
@@ -57,9 +63,7 @@ class AjustesPage extends ConsumerWidget {
                               ),
                               alignment: Alignment.center,
                               child: Text(
-                                estado.nombreParaSaludo
-                                    .substring(0, 1)
-                                    .toUpperCase(),
+                                inicial,
                                 style: tema.textTheme.headlineSmall?.copyWith(
                                   color: tema.colorScheme.onPrimaryContainer,
                                   fontWeight: FontWeight.w700,
@@ -72,25 +76,28 @@ class AjustesPage extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  nombre.isNotEmpty ? nombre : estado.correo,
-                                  style: tema.textTheme.titleMedium,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (nombre.isNotEmpty && estado.correo.isNotEmpty)
+                                if (nombre.isNotEmpty)
                                   Text(
-                                    estado.correo,
-                                    style: tema.textTheme.bodyMedium
-                                        ?.copyWith(color: suave),
+                                    nombre,
+                                    style: tema.textTheme.titleMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                if (correo.isNotEmpty)
+                                  Text(
+                                    correo,
+                                    style: tema.textTheme.bodyMedium?.copyWith(
+                                      color: suave,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 const SizedBox(height: TfSpace.s1),
                                 Text(
                                   comercio,
-                                  style: tema.textTheme.bodyMedium
-                                      ?.copyWith(color: suave),
+                                  style: tema.textTheme.bodyMedium?.copyWith(
+                                    color: suave,
+                                  ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -127,10 +134,9 @@ class AjustesPage extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: TfSpace.s6),
+                const SizedBox(height: TfSpace.s8),
                 SizedBox(
                   width: double.infinity,
-                  height: 52,
                   child: OutlinedButton.icon(
                     key: const Key('boton_salir'),
                     onPressed: sesion.cargando
@@ -155,6 +161,10 @@ class AjustesPage extends ConsumerWidget {
                         : const Text('Salir'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: tema.colorScheme.onSurfaceVariant,
+                      disabledForegroundColor:
+                          tema.colorScheme.onSurfaceVariant,
+                      minimumSize: const Size.fromHeight(TfSize.touchMin),
+                      side: BorderSide(color: tema.colorScheme.outlineVariant),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(TfRadius.md),
                       ),

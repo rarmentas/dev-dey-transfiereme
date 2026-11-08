@@ -71,9 +71,9 @@ class HomeAutenticadoPage extends ConsumerWidget {
                             ),
                             const SizedBox(height: TfSpace.s1),
                             Text(
-                              'Hola, ${estado.nombreParaSaludo}',
+                              saludoInicio(estado.nombreParaSaludo),
                               style: tema.textTheme.headlineLarge,
-                              maxLines: 2,
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
@@ -144,15 +144,26 @@ class HomeAutenticadoPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: TfSpace.s6),
-                  TfSobretitulo(
-                    'ÚLTIMOS COBROS',
-                    trailing: TextButton(
-                      onPressed: () => context.go(kRutaMovimientos),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(48, 48),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'ÚLTIMOS COBROS',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tema.textTheme.labelMedium?.copyWith(
+                            color: tema.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                      child: const Text('Ver todos'),
-                    ),
+                      TextButton(
+                        onPressed: () => context.go(kRutaMovimientos),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                        ),
+                        child: const Text('Ver todos'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: TfSpace.s2),
                   ..._ultimos(resumen, tema),

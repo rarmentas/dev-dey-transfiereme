@@ -59,14 +59,17 @@ class HoyLlevasCard extends StatelessWidget {
                 TextSpan(
                   children: [
                     TextSpan(
-                      text: r.cobrosHoy == 1 ? '1 cobro' : '${r.cobrosHoy} cobros',
+                      text: r.cobrosHoy == 1
+                          ? '1 cobro'
+                          : '${r.cobrosHoy} cobros',
                       style: TextStyle(
                         color: tf.paidText,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     TextSpan(
-                      text: ' · ${r.pendientesHoy} '
+                      text:
+                          ' · ${r.pendientesHoy} '
                           '${r.pendientesHoy == 1 ? 'pendiente' : 'pendientes'}',
                       style: TextStyle(color: suave),
                     ),
@@ -82,6 +85,50 @@ class HoyLlevasCard extends StatelessWidget {
   }
 }
 
+/// Saludo de Inicio. Un correo no es un nombre: si el texto trae «@», solo «Hola».
+String saludoInicio(String nombreParaSaludo) {
+  final texto = nombreParaSaludo.trim();
+  if (texto.isEmpty || texto.contains('@')) {
+    return 'Hola';
+  }
+  return 'Hola, $texto';
+}
+
+const _diasCortos = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const _mesesCortos = [
+  'ene',
+  'feb',
+  'mar',
+  'abr',
+  'may',
+  'jun',
+  'jul',
+  'ago',
+  'sep',
+  'oct',
+  'nov',
+  'dic',
+];
+
+/// Cuándo ocurrió el cobro, en hora de CDMX.
+///
+/// Hoy: «18:20». Ayer: «Ayer 18:20». Otro día: «Jue 05 nov 18:20».
+String cuandoCobro(DateTime fecha, {DateTime? ahora}) {
+  final dia = diaCdmx(fecha);
+  final hoy = diaCdmx(ahora ?? DateTime.now());
+  final hora = horaCdmx(fecha);
+  if (dia == hoy) {
+    return hora;
+  }
+  final ayer = DateTime(hoy.year, hoy.month, hoy.day - 1);
+  if (dia == ayer) {
+    return 'Ayer $hora';
+  }
+  final numero = dia.day.toString().padLeft(2, '0');
+  return '${_diasCortos[dia.weekday - 1]} $numero '
+      '${_mesesCortos[dia.month - 1]} $hora';
+}
+
 /// Movimiento compacto para «Últimos cobros».
 class CobroRecienteCard extends StatelessWidget {
   const CobroRecienteCard({super.key, required this.movimiento});
@@ -93,7 +140,7 @@ class CobroRecienteCard extends StatelessWidget {
     final tema = Theme.of(context);
     final suave = tema.colorScheme.onSurfaceVariant;
     final vencido = movimiento.estado == 'vencido';
-    final hora = _hora(movimiento.fechaMostrada);
+    final cuando = cuandoCobro(movimiento.fechaMostrada);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -120,7 +167,7 @@ class CobroRecienteCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$hora · ${movimiento.etiquetaCanal}',
+                    '$cuando · ${movimiento.etiquetaCanal}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: tema.textTheme.bodySmall?.copyWith(color: suave),
@@ -169,5 +216,3 @@ IconData iconoCanal(String canal) {
     _ => Icons.payment_rounded,
   };
 }
-
-String _hora(DateTime fecha) => horaCdmx(fecha);

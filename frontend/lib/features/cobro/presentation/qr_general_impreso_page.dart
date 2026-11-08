@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/router/app_router.dart';
 import '../../../core/ui/ui.dart';
 import '../../../theme/transfiereme_theme.dart';
 
@@ -10,6 +12,35 @@ const double kLadoMinimoQrPantalla = 232;
 /// Alineado con [CuentaNoActiveError] del API `POST /api/cobro/qr-general/`.
 const String kMensajeCuentaNoActivaQr =
     'Tu cuenta aún no está activa para generar un código de cobro.';
+
+/// Qué sigue cuando la cuenta todavía no puede cobrar.
+const String kMensajeQrAlActivar =
+    'Cuando tu cuenta se active, aquí verás tu QR para imprimir.';
+
+/// Barra de «Mi QR» con salida aunque la ruta se abra sin historial.
+AppBar appBarMiQr() {
+  return AppBar(leading: const BotonVolverMiQr(), title: const Text('Mi QR'));
+}
+
+/// Vuelve atrás, o a Inicio si no hay a dónde regresar.
+class BotonVolverMiQr extends StatelessWidget {
+  const BotonVolverMiQr({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Volver',
+      onPressed: () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go(kRutaInicio);
+        }
+      },
+      icon: const Icon(Icons.arrow_back_rounded),
+    );
+  }
+}
 
 /// Pantalla «Mi QR»: código CoDi cobrable o bloqueo si la cuenta no está ACTIVE (C13).
 ///
@@ -40,39 +71,44 @@ class QrGeneralImpresoPage extends StatelessWidget {
     final tema = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Mi QR',
-          style: tema.textTheme.headlineMedium,
-        ),
-      ),
+      appBar: appBarMiQr(),
       body: SafeArea(
-        child: TfPantalla(
-          padding: const EdgeInsets.symmetric(
-            horizontal: kMargenPantalla,
-            vertical: TfSpace.s6,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: puedeMostrarQr
-                    ? _MarcoQr(qrString: qrString!.trim())
-                    : const _EstadoCuentaPendiente(),
-              ),
-              if (puedeMostrarQr) ...[
-                const SizedBox(height: TfSpace.s6),
-                Text(
-                  'Tu cliente puede pagar con CoDi desde la app de su banco.',
-                  textAlign: TextAlign.center,
-                  style: tema.textTheme.bodyMedium?.copyWith(
-                    color: tema.colorScheme.onSurfaceVariant,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: TfPantalla(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: kMargenPantalla,
+                      vertical: TfSpace.s6,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (puedeMostrarQr)
+                          Center(child: _MarcoQr(qrString: qrString!.trim()))
+                        else
+                          const _EstadoCuentaPendiente(),
+                        if (puedeMostrarQr) ...[
+                          const SizedBox(height: TfSpace.s6),
+                          Text(
+                            'Tu cliente puede pagar con CoDi desde la app de su banco.',
+                            textAlign: TextAlign.center,
+                            style: tema.textTheme.bodyMedium?.copyWith(
+                              color: tema.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -116,48 +152,50 @@ class _EstadoCuentaPendiente extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final tf = tema.extension<TfColors>()!;
+    final colores = tema.colorScheme;
 
-    return Container(
-      width: kLadoMinimoQrPantalla + (TfSpace.s4 * 2),
-      padding: const EdgeInsets.symmetric(
-        horizontal: TfSpace.s5,
-        vertical: TfSpace.s8,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(TfRadius.xl),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(TfSpace.s4),
-            decoration: BoxDecoration(
-              color: tf.pendingContainer,
-              shape: BoxShape.circle,
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: TfSpace.s5,
+          vertical: TfSpace.s6,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: tf.pendingContainer,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.schedule_rounded,
+                size: 32,
+                color: tf.pendingText,
+              ),
             ),
-            child: Icon(
-              Icons.schedule_rounded,
-              size: 56,
-              color: tf.pendingText,
+            const SizedBox(height: TfSpace.s5),
+            Text(
+              kMensajeCuentaNoActivaQr,
+              textAlign: TextAlign.center,
+              style: tema.textTheme.headlineSmall?.copyWith(
+                color: colores.onSurface,
+              ),
             ),
-          ),
-          const SizedBox(height: TfSpace.s5),
-          Text(
-            kMensajeCuentaNoActivaQr,
-            textAlign: TextAlign.center,
-            style: (tema.textTheme.bodyMedium ?? const TextStyle()).copyWith(
-              color: TfColors.light.pendingText,
+            const SizedBox(height: TfSpace.s2),
+            Text(
+              kMensajeQrAlActivar,
+              textAlign: TextAlign.center,
+              style: tema.textTheme.bodyMedium?.copyWith(
+                color: colores.onSurfaceVariant,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
