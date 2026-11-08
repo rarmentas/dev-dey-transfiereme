@@ -1,4 +1,8 @@
-"""Sirve el build web de Flutter que deja el deploy en FRONTEND_DIST.
+"""Sirve la landing (LANDING_DIST) en / y el build web de Flutter (FRONTEND_DIST) en lo demás.
+
+La raíz exacta entrega la landing si su build existe; si no, la app. Un
+archivo se busca primero en el build de Flutter y luego en el de la landing
+(_astro/, videos/, fonts/...).
 
 La API sigue registrada aparte. Un archivo que existe en el build se entrega
 tal cual. Una ruta de la app (/, /entrar, /inicio) entrega index.html para
@@ -40,13 +44,29 @@ def aplicacion(request: HttpRequest, ruta: str = "") -> FileResponse | HttpRespo
         return HttpResponseRedirect(destino)
 
     relativa = ruta.strip("/")
+    landing = _landing()
     if not relativa:
+        if landing is not None:
+            return _archivo(landing / "index.html", html=True)
         return _archivo(indice, html=True)
 
-    archivo = _archivo_pedido(dist, relativa)
+    archivo = _archivo_pedido(dist, relativa, estricto=landing is None)
+    if archivo is None and landing is not None:
+        archivo = _archivo_pedido(landing, relativa)
     if archivo is None:
         return _archivo(indice, html=True)
     return _archivo(archivo)
+
+
+def _landing() -> Path | None:
+    """Build de la landing, o None si no se desplegó."""
+    ruta = getattr(settings, "LANDING_DIST", None)
+    if not ruta:
+        return None
+    raiz = Path(ruta)
+    if not (raiz / "index.html").is_file():
+        return None
+    return raiz
 
 
 def _indice(dist: Path) -> Path:
@@ -56,7 +76,7 @@ def _indice(dist: Path) -> Path:
     return indice
 
 
-def _archivo_pedido(dist: Path, relativa: str) -> Path | None:
+def _archivo_pedido(dist: Path, relativa: str, estricto: bool = True) -> Path | None:
     """Archivo real dentro del build, o None si la ruta es de GoRouter.
 
     Una ruta que sale del directorio, o un archivo que no está, responde 404.
@@ -67,7 +87,7 @@ def _archivo_pedido(dist: Path, relativa: str) -> Path | None:
         raise Http404
     if candidato.is_file():
         return candidato
-    if _parece_archivo(relativa):
+    if estricto and _parece_archivo(relativa):
         raise Http404
     return None
 
