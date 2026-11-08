@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
@@ -9,8 +10,14 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from movimientos.correlacion import AvisoPago, aplicar_aviso
-from movimientos.exceptions import AvisoInvalido, AvisoSinCobro, TransicionInvalida
+from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago, aplicar_aviso
+from movimientos.exceptions import (
+    AvisoDuplicado,
+    AvisoInvalido,
+    AvisoSinCobro,
+    MontoDistinto,
+    TransicionInvalida,
+)
 from movimientos.models import Movimiento
 from webhooks.models import AvisoRecibido
 from webhooks.verificacion import FirmaInvalida, verificar_firma
@@ -20,10 +27,19 @@ logger = logging.getLogger(__name__)
 _LARGO_WEBHOOK_ID = 128
 _LARGO_TIPO = 128
 _LARGO_TRANSACTION_ID = 64
+_MONTO_MAXIMO = Decimal(10) ** 10
+_TIPOS_CONOCIDOS = frozenset({TIPO_QR, TIPO_PN})
 
 
 class _AvisoMalFormado(Exception):
     """El cuerpo no trae un aviso que se pueda leer."""
+
+
+@dataclass(frozen=True)
+class _AvisoEntrante:
+    tipo: str
+    transaction_id: str
+    aviso: AvisoPago | None
 
 
 def _respuesta(cuerpo: dict, status: int) -> JsonResponse:
@@ -44,31 +60,54 @@ def _a_decimal(valor: object) -> Decimal:
     raise ValueError
 
 
-def _leer_aviso(cuerpo: bytes) -> AvisoPago:
+def _monto_de_aviso(valor: object) -> Decimal:
+    try:
+        monto = _a_decimal(valor)
+    except (InvalidOperation, ValueError, ArithmeticError) as exc:
+        raise _AvisoMalFormado from exc
+    exponente = monto.as_tuple().exponent
+    if (
+        not isinstance(exponente, int)
+        or not monto.is_finite()
+        or monto <= 0
+        or exponente < -2
+        or monto >= _MONTO_MAXIMO
+    ):
+        raise _AvisoMalFormado
+    return monto
+
+
+def _transaction_id_usable(valor: object) -> str | None:
+    if not isinstance(valor, str) or not valor.strip() or len(valor) > _LARGO_TRANSACTION_ID:
+        return None
+    return valor
+
+
+def _objeto_json(cuerpo: bytes) -> dict:
     try:
         datos = json.loads(cuerpo, parse_float=Decimal)
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
         raise _AvisoMalFormado from exc
     if not isinstance(datos, dict):
         raise _AvisoMalFormado
+    return datos
 
+
+def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
+    datos = _objeto_json(cuerpo)
     tipo = datos.get("type")
-    transaction_id = datos.get("transactionId")
-    if (
-        not isinstance(tipo, str)
-        or not tipo.strip()
-        or len(tipo) > _LARGO_TIPO
-        or not isinstance(transaction_id, str)
-        or not transaction_id.strip()
-        or len(transaction_id) > _LARGO_TRANSACTION_ID
-        or "amount" not in datos
-    ):
+    if not isinstance(tipo, str) or not tipo.strip() or len(tipo) > _LARGO_TIPO:
         raise _AvisoMalFormado
 
-    try:
-        monto = _a_decimal(datos["amount"])
-    except (InvalidOperation, ValueError, ArithmeticError) as exc:
-        raise _AvisoMalFormado from exc
+    transaction_id = _transaction_id_usable(datos.get("transactionId"))
+    if tipo not in _TIPOS_CONOCIDOS:
+        return _AvisoEntrante(
+            tipo=tipo,
+            transaction_id=transaction_id or "",
+            aviso=None,
+        )
+    if transaction_id is None or "amount" not in datos:
+        raise _AvisoMalFormado
 
     codi_qr_id = datos.get("codiQrId") or None
     if codi_qr_id is not None and not isinstance(codi_qr_id, str):
@@ -77,12 +116,16 @@ def _leer_aviso(cuerpo: bytes) -> AvisoPago:
     if not isinstance(concepto, str):
         raise _AvisoMalFormado
 
-    return AvisoPago(
+    return _AvisoEntrante(
         tipo=tipo,
-        monto=monto,
         transaction_id=transaction_id,
-        codi_qr_id=codi_qr_id,
-        concepto=concepto,
+        aviso=AvisoPago(
+            tipo=tipo,
+            monto=_monto_de_aviso(datos["amount"]),
+            transaction_id=transaction_id,
+            codi_qr_id=codi_qr_id,
+            concepto=concepto,
+        ),
     )
 
 
@@ -93,6 +136,13 @@ def _es_choque_de_transaction_id(exc: IntegrityError) -> bool:
     return "pey_transaction_id" in f"{nombre} {exc}".lower()
 
 
+def _pago_ya_registrado(transaction_id: str) -> bool:
+    return Movimiento.objects.filter(
+        pey_transaction_id=transaction_id,
+        estado=Movimiento.Estado.PAGADO,
+    ).exists()
+
+
 def _registrar(webhook_id: str, tipo: str, resultado: str) -> None:
     logger.info(
         "aviso pey webhook_id=%s type=%s resultado=%s",
@@ -100,6 +150,29 @@ def _registrar(webhook_id: str, tipo: str, resultado: str) -> None:
         tipo,
         resultado,
     )
+
+
+def _cerrar(
+    recibido: AvisoRecibido,
+    *,
+    webhook_id: str,
+    tipo: str,
+    resultado: str,
+    movimiento: Movimiento | None = None,
+) -> JsonResponse:
+    recibido.resultado = resultado
+    recibido.movimiento = movimiento
+    recibido.save(update_fields=["resultado", "movimiento"])
+    if resultado == AvisoRecibido.Resultado.MONTO_DISTINTO:
+        logger.warning(
+            "aviso pey webhook_id=%s type=%s resultado=%s",
+            webhook_id,
+            tipo,
+            resultado,
+        )
+    else:
+        _registrar(webhook_id, tipo, resultado)
+    return _respuesta({"estado": resultado}, 200)
 
 
 @csrf_exempt
@@ -120,7 +193,7 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
         return _respuesta({"detalle": "aviso inválido"}, 400)
 
     try:
-        aviso = _leer_aviso(request.body)
+        entrada = _leer_aviso(request.body)
     except _AvisoMalFormado:
         logger.warning("aviso pey rechazado webhook_id=%s", webhook_id)
         return _respuesta({"detalle": "aviso inválido"}, 400)
@@ -131,18 +204,29 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
             with transaction.atomic():
                 recibido = AvisoRecibido.objects.create(
                     webhook_id=webhook_id,
-                    tipo=aviso.tipo,
-                    transaction_id=aviso.transaction_id,
+                    tipo=entrada.tipo,
+                    transaction_id=entrada.transaction_id,
                 )
         except IntegrityError:
-            _registrar(webhook_id, aviso.tipo, "duplicado")
+            _registrar(webhook_id, entrada.tipo, "duplicado")
             return _respuesta({"estado": "duplicado"}, 200)
 
-        if Movimiento.objects.filter(pey_transaction_id=aviso.transaction_id).exists():
-            recibido.resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
-            recibido.save(update_fields=["resultado"])
-            _registrar(webhook_id, aviso.tipo, recibido.resultado)
-            return _respuesta({"estado": recibido.resultado}, 200)
+        if entrada.aviso is None:
+            return _cerrar(
+                recibido,
+                webhook_id=webhook_id,
+                tipo=entrada.tipo,
+                resultado=AvisoRecibido.Resultado.TIPO_DESCONOCIDO,
+            )
+
+        aviso = entrada.aviso
+        if _pago_ya_registrado(aviso.transaction_id):
+            return _cerrar(
+                recibido,
+                webhook_id=webhook_id,
+                tipo=aviso.tipo,
+                resultado=AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
+            )
 
         movimiento = None
         try:
@@ -156,6 +240,10 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
                 raise
             resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
             movimiento = None
+        except AvisoDuplicado:
+            resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
+        except MontoDistinto:
+            resultado = AvisoRecibido.Resultado.MONTO_DISTINTO
         except AvisoSinCobro:
             resultado = AvisoRecibido.Resultado.SIN_COBRO
         except TransicionInvalida:
@@ -165,9 +253,10 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
         else:
             resultado = AvisoRecibido.Resultado.APLICADO
 
-        recibido.resultado = resultado
-        recibido.movimiento = movimiento
-        recibido.save(update_fields=["resultado", "movimiento"])
-        _registrar(webhook_id, aviso.tipo, resultado)
-
-    return _respuesta({"estado": resultado}, 200)
+        return _cerrar(
+            recibido,
+            webhook_id=webhook_id,
+            tipo=aviso.tipo,
+            resultado=resultado,
+            movimiento=movimiento,
+        )

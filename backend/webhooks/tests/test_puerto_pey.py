@@ -3,7 +3,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from math import floor
+from unittest.mock import patch
 
+from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from standardwebhooks import Webhook
 
@@ -295,3 +297,135 @@ class PuertoWebhookPeyTests(TestCase):
         respuesta = self.client.get(RUTA)
         self.assertEqual(respuesta.status_code, 405)
         self.assertEqual(AvisoRecibido.objects.count(), 0)
+
+    def test_tipo_desconocido_sin_transaction_id_ni_amount_se_registra(self) -> None:
+        cuerpo = '{"type":"codi.qr.rejected"}'
+        respuesta = self._post(cuerpo, "msg_raro")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json(), {"estado": "tipo_desconocido"})
+        aviso = AvisoRecibido.objects.get()
+        self.assertEqual(aviso.tipo, "codi.qr.rejected")
+        self.assertEqual(aviso.transaction_id, "")
+        self.assertEqual(aviso.resultado, AvisoRecibido.Resultado.TIPO_DESCONOCIDO)
+        self.assertIsNone(aviso.movimiento_id)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_el_cuerpo_con_espacios_no_coincide_con_la_firma(self) -> None:
+        movimiento = self._qr_venta("QR-VENTA")
+        compacto = _cuerpo_qr(transaction_id="TX-VENTA", codi_qr_id="QR-VENTA")
+        con_espacios = json.dumps(json.loads(compacto), separators=(", ", ": "))
+        self.assertNotEqual(compacto, con_espacios)
+        headers = _encabezados(compacto, "msg_espacios", datetime.now(timezone.utc))
+        respuesta = self._post(con_espacios, "msg_espacios", headers=headers)
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(respuesta.json(), {"detalle": "firma inválida"})
+        self.assertEqual(AvisoRecibido.objects.count(), 0)
+        self.assertEqual(
+            Movimiento.objects.get(pk=movimiento.pk).estado,
+            Movimiento.Estado.PENDIENTE,
+        )
+
+    def test_montos_invalidos_responden_400_sin_escribir(self) -> None:
+        casos = ("0", "-1", '"10.00"', "0.005", "1e12")
+        for indice, amount in enumerate(casos):
+            cuerpo = (
+                '{"type":"codi.qr.payment_received","amount":'
+                f"{amount}"
+                ',"transactionId":"TX-MAL","codiQrId":"QR-VENTA"}'
+            )
+            with self.subTest(amount=amount):
+                respuesta = self._post(cuerpo, f"msg_monto_{indice}")
+                self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(AvisoRecibido.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_monto_distinto_no_marca_pagado(self) -> None:
+        venta = self._qr_venta("QR-VENTA")
+        cuerpo_venta = _cuerpo_qr(
+            transaction_id="TX-VENTA",
+            codi_qr_id="QR-VENTA",
+            amount=10,
+        )
+        with self.assertLogs("webhooks.views", level="WARNING") as logs_venta:
+            respuesta_venta = self._post(cuerpo_venta, "msg_monto_venta")
+        self.assertEqual(respuesta_venta.status_code, 200)
+        self.assertEqual(respuesta_venta.json(), {"estado": "monto_distinto"})
+        self.assertTrue(any("monto_distinto" in linea for linea in logs_venta.output))
+        leido_venta = Movimiento.objects.get(pk=venta.pk)
+        self.assertEqual(leido_venta.estado, Movimiento.Estado.PENDIENTE)
+        self.assertIsNone(leido_venta.pey_transaction_id)
+
+        cobro = Cobro.objects.create(
+            comercio=self.comercio,
+            canal=Movimiento.Canal.NOTIFICACION,
+            monto=Decimal("25.00"),
+            concepto="Transferencia",
+            pey_transaction_id="TX-PN",
+        )
+        notificacion = Movimiento.objects.create(
+            comercio=self.comercio,
+            cobro=cobro,
+            monto=Decimal("25.00"),
+            concepto="Transferencia",
+            canal=Movimiento.Canal.NOTIFICACION,
+            origen=Movimiento.Origen.ORIGEN_PEY,
+        )
+        cuerpo_pn = json.dumps(
+            {
+                "type": "codi.pn.payment_received",
+                "amount": 10,
+                "transactionId": "TX-PN",
+            },
+            separators=(",", ":"),
+        )
+        with self.assertLogs("webhooks.views", level="WARNING") as logs_pn:
+            respuesta_pn = self._post(cuerpo_pn, "msg_monto_pn")
+        self.assertEqual(respuesta_pn.status_code, 200)
+        self.assertEqual(respuesta_pn.json(), {"estado": "monto_distinto"})
+        self.assertTrue(any("monto_distinto" in linea for linea in logs_pn.output))
+        leido_pn = Movimiento.objects.get(pk=notificacion.pk)
+        self.assertEqual(leido_pn.estado, Movimiento.Estado.PENDIENTE)
+        self.assertIsNone(leido_pn.pey_transaction_id)
+        self.assertEqual(
+            set(AvisoRecibido.objects.values_list("resultado", flat=True)),
+            {AvisoRecibido.Resultado.MONTO_DISTINTO},
+        )
+
+    def test_aviso_duplicado_si_el_chequeo_previo_no_lo_ve(self) -> None:
+        movimiento = self._qr_venta("QR-VENTA")
+        cuerpo = _cuerpo_qr(transaction_id="TX-VENTA", codi_qr_id="QR-VENTA")
+        primera = self._post(cuerpo, "msg_uno")
+        self.assertEqual(primera.json(), {"estado": "aplicado"})
+        with patch("webhooks.views._pago_ya_registrado", return_value=False):
+            segunda = self._post(cuerpo, "msg_dos")
+        self.assertEqual(segunda.status_code, 200)
+        self.assertEqual(segunda.json(), {"estado": "duplicado_transaccion"})
+        leido = Movimiento.objects.get(pk=movimiento.pk)
+        self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
+        self.assertEqual(leido.pey_transaction_id, "TX-VENTA")
+        self.assertEqual(Movimiento.objects.count(), 1)
+        self.assertEqual(
+            AvisoRecibido.objects.get(webhook_id="msg_dos").resultado,
+            AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
+        )
+
+    def test_choque_de_transaction_id_queda_como_duplicado(self) -> None:
+        self._qr_general("QR-GEN")
+        cuerpo = (
+            '{"type":"codi.qr.payment_received","amount":0.01,'
+            '"concept":"Transferencia","transactionId":"TX-CARRERA",'
+            '"codiQrId":"QR-GEN"}'
+        )
+        error = IntegrityError(
+            "duplicate key value violates unique constraint "
+            '"movimientos_movimiento_pey_transaction_id_key"'
+        )
+        with patch("webhooks.views.aplicar_aviso", side_effect=error):
+            respuesta = self._post(cuerpo, "msg_carrera")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json(), {"estado": "duplicado_transaccion"})
+        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertEqual(
+            AvisoRecibido.objects.get().resultado,
+            AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
+        )

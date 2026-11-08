@@ -9,6 +9,7 @@ class AvisoRecibido(models.Model):
         DUPLICADO_TRANSACCION = "duplicado_transaccion", "Duplicado por transacción"
         SIN_COBRO = "sin_cobro", "Sin cobro"
         TRANSICION_INVALIDA = "transicion_invalida", "Transición inválida"
+        MONTO_DISTINTO = "monto_distinto", "Monto distinto"
         TIPO_DESCONOCIDO = "tipo_desconocido", "Tipo desconocido"
 
     webhook_id = models.CharField(

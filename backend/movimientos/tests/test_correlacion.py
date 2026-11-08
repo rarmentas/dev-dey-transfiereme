@@ -5,7 +5,13 @@ from django.test import TestCase
 
 from ambito.models import Comercio
 from movimientos.correlacion import AvisoPago, aplicar_aviso
-from movimientos.exceptions import AvisoInvalido, AvisoSinCobro, TransicionInvalida
+from movimientos.exceptions import (
+    AvisoDuplicado,
+    AvisoInvalido,
+    AvisoSinCobro,
+    MontoDistinto,
+    TransicionInvalida,
+)
 from movimientos.models import Cobro, Movimiento
 
 
@@ -199,7 +205,7 @@ class CorrelacionTests(TestCase):
         venta = self._cobro(canal=Movimiento.Canal.QR_VENTA, pey_qr_id="QR-VENTA")
         movimiento_venta = self._movimiento(venta)
         pagado_venta = aplicar_aviso(
-            self._aviso_qr("QR-VENTA", transaction_id="TX-VENTA", monto=Decimal("1.00")),
+            self._aviso_qr("QR-VENTA", transaction_id="TX-VENTA", monto=Decimal("25.00")),
             origen=self.origen,
         )
         self.assertEqual(pagado_venta.pk, movimiento_venta.pk)
@@ -216,7 +222,7 @@ class CorrelacionTests(TestCase):
         )
         movimiento_pn = self._movimiento(notificacion)
         pagado_pn = aplicar_aviso(
-            self._aviso_pn("TX-PN", monto=Decimal("99.00")),
+            self._aviso_pn("TX-PN", monto=Decimal("25.00")),
             origen=self.origen,
         )
         self.assertEqual(pagado_pn.pk, movimiento_pn.pk)
@@ -395,3 +401,43 @@ class CorrelacionTests(TestCase):
             cobro.movimientos.get().estado,
             Movimiento.Estado.PAGADO,
         )
+
+    def test_monto_distinto_no_marca_pagado(self) -> None:
+        casos = (
+            (
+                self._cobro(canal=Movimiento.Canal.QR_VENTA, pey_qr_id="QR-MONTO"),
+                self._aviso_qr("QR-MONTO", transaction_id="TX-MONTO", monto=Decimal("1.00")),
+            ),
+            (
+                self._cobro(
+                    canal=Movimiento.Canal.NOTIFICACION,
+                    pey_transaction_id="TX-MONTO-PN",
+                    pey_qr_id=None,
+                ),
+                self._aviso_pn("TX-MONTO-PN", monto=Decimal("1.00")),
+            ),
+        )
+        for cobro, aviso in casos:
+            movimiento = self._movimiento(cobro)
+            with self.assertRaises(MontoDistinto):
+                aplicar_aviso(aviso, origen=self.origen)
+            leido = Movimiento.objects.get(pk=movimiento.pk)
+            self.assertEqual(leido.estado, Movimiento.Estado.PENDIENTE)
+            self.assertIsNone(leido.pey_transaction_id)
+            self.assertEqual(leido.monto, cobro.monto)
+
+    def test_ya_pagado_con_el_mismo_transaction_id_es_aviso_duplicado(self) -> None:
+        venta = self._cobro(canal=Movimiento.Canal.QR_VENTA, pey_qr_id="QR-DUP")
+        movimiento = self._movimiento(venta)
+        aviso = self._aviso_qr(
+            "QR-DUP",
+            transaction_id="TX-DUP",
+            monto=Decimal("25.00"),
+        )
+        aplicar_aviso(aviso, origen=self.origen)
+        with self.assertRaises(AvisoDuplicado):
+            aplicar_aviso(aviso, origen=self.origen)
+        leido = Movimiento.objects.get(pk=movimiento.pk)
+        self.assertEqual(leido.estado, Movimiento.Estado.PAGADO)
+        self.assertEqual(leido.pey_transaction_id, "TX-DUP")
+        self.assertEqual(venta.movimientos.count(), 1)

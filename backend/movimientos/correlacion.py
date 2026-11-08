@@ -5,7 +5,12 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from movimientos.exceptions import AvisoInvalido, AvisoSinCobro
+from movimientos.exceptions import (
+    AvisoDuplicado,
+    AvisoInvalido,
+    AvisoSinCobro,
+    MontoDistinto,
+)
 from movimientos.models import Cobro, Movimiento
 
 TIPO_QR = "codi.qr.payment_received"
@@ -39,12 +44,12 @@ def _aplicar_qr(aviso: AvisoPago, origen: Movimiento.Origen) -> Movimiento:
     cobro = _cobro_por_qr(aviso.codi_qr_id)
     if cobro.canal == Movimiento.Canal.QR_GENERAL:
         return _crear_movimiento_de_qr_general(cobro, aviso, origen)
-    return _marcar_ligado_pagado(cobro, aviso.transaction_id)
+    return _marcar_ligado_pagado(cobro, aviso)
 
 
 def _aplicar_pn(aviso: AvisoPago, origen: Movimiento.Origen) -> Movimiento:
     cobro = _cobro_por_notificacion(aviso.transaction_id)
-    return _marcar_ligado_pagado(cobro, aviso.transaction_id)
+    return _marcar_ligado_pagado(cobro, aviso)
 
 
 def _cobro_por_qr(codi_qr_id: str | None) -> Cobro:
@@ -95,8 +100,7 @@ def _crear_movimiento_de_qr_general(
     )
 
 
-def _marcar_ligado_pagado(cobro: Cobro, transaction_id: str) -> Movimiento:
-    # El monto del aviso no se compara con el del cobro: producto no lo ha pedido.
+def _marcar_ligado_pagado(cobro: Cobro, aviso: AvisoPago) -> Movimiento:
     movimiento = _movimiento_ligado(cobro)
     if (
         movimiento.canal != cobro.canal
@@ -105,7 +109,16 @@ def _marcar_ligado_pagado(cobro: Cobro, transaction_id: str) -> Movimiento:
         raise ValueError(
             "El canal y el comercio del movimiento tienen que ser los del cobro."
         )
-    movimiento.pey_transaction_id = transaction_id
+    if (
+        movimiento.estado == Movimiento.Estado.PAGADO
+        and movimiento.pey_transaction_id == aviso.transaction_id
+    ):
+        raise AvisoDuplicado(
+            "El movimiento ya está pagado con este transaction_id."
+        )
+    if aviso.monto != cobro.monto:
+        raise MontoDistinto("El monto del aviso no coincide con el del cobro.")
+    movimiento.pey_transaction_id = aviso.transaction_id
     # Si está vencido, cambiar_estado propaga TransicionInvalida y no queda pagado.
     movimiento.cambiar_estado(Movimiento.Estado.PAGADO)
     movimiento.save(update_fields=["pey_transaction_id", "actualizado_en"])
