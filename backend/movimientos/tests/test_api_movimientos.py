@@ -126,3 +126,49 @@ class MovimientosApiTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         ids = [item["id"] for item in respuesta.json()]
         self.assertNotIn(movimiento_cobro_b.pk, ids)
+
+    def test_listado_devuelve_los_tres_canales_con_concepto_visible(self) -> None:
+        general = self._crear_movimiento(
+            self.comercio_a,
+            monto=Decimal("1.00"),
+            concepto="QR del mostrador",
+            concepto_visible="QR del mostrador",
+            canal=Movimiento.Canal.QR_GENERAL,
+            estado=Movimiento.Estado.PAGADO,
+            origen=Movimiento.Origen.ORIGEN_PEY,
+        )
+        venta = self._crear_movimiento(
+            self.comercio_a,
+            monto=Decimal("2.50"),
+            concepto="Venta de contado",
+            concepto_visible="Venta de contado",
+            canal=Movimiento.Canal.QR_VENTA,
+            estado=Movimiento.Estado.PENDIENTE,
+            origen=Movimiento.Origen.ORIGEN_DESARROLLO,
+        )
+        aviso = self._crear_movimiento(
+            self.comercio_a,
+            monto=Decimal("3.00"),
+            concepto="Aviso al cliente",
+            concepto_visible="Aviso al cliente",
+            canal=Movimiento.Canal.NOTIFICACION,
+            estado=Movimiento.Estado.VENCIDO,
+            origen=Movimiento.Origen.ORIGEN_PEY,
+        )
+
+        self._entrar(self.usuario_a, "pass-a")
+        respuesta = self.client.get("/api/movimientos/")
+        self.assertEqual(respuesta.status_code, 200)
+
+        por_id = {item["id"]: item for item in respuesta.json()}
+        esperados = (
+            (general, Movimiento.Canal.QR_GENERAL, Movimiento.Estado.PAGADO),
+            (venta, Movimiento.Canal.QR_VENTA, Movimiento.Estado.PENDIENTE),
+            (aviso, Movimiento.Canal.NOTIFICACION, Movimiento.Estado.VENCIDO),
+        )
+        for movimiento, canal, estado in esperados:
+            self.assertIn(movimiento.pk, por_id)
+            item = por_id[movimiento.pk]
+            self.assertEqual(item["canal"], canal)
+            self.assertEqual(item["concepto_visible"], movimiento.concepto_visible)
+            self.assertEqual(item["estado"], estado)
