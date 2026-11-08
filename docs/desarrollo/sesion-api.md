@@ -38,3 +38,22 @@ Respuesta `200` con `usuario`, `correo`, `nombre`, `apellidos` y `comercio` (`id
 ## Salir
 
 Respuesta `200` con cuerpo vacío `{}`. Basta la cookie de sesión; no hace falta encabezado CSRF (la vista usa autenticación por sesión sin verificación CSRF en DRF). Tras salir, el estado vuelve a responder `403`.
+
+## Movimientos (lectura, ámbito por sesión)
+
+El servidor determina el comercio por membresía; no acepta `comercio` ni `comercio_id` en la cadena de consulta.
+
+| Método | Ruta | Autenticación |
+| --- | --- | --- |
+| `GET` | `/api/movimientos/` | Sesión activa |
+| `GET` | `/api/movimientos/<id>/` | Sesión activa |
+
+Sin sesión: `403` con `{"detail": "Debe iniciar sesión."}` (middleware, igual que el resto de `/api/`).
+
+Listado `200`: arreglo JSON ordenado por fecha de creación descendente. Cada elemento incluye `id`, `monto` (cadena decimal), `concepto_visible`, `canal`, `estado`, `origen` y `creado_en`. Solo aparecen movimientos del comercio de la sesión.
+
+Detalle propio: `200` con el mismo objeto. Id de otro comercio o inexistente en su ámbito: `404` con `{"detail": "No encontrado."}` (no `403`).
+
+Query con `comercio` o `comercio_id`: `400` con el mensaje de ámbito que indica que el servidor fija el comercio por membresía.
+
+Usuario autenticado sin membresía: `403` con el mensaje de `SinAmbitoError`.
