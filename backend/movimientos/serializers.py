@@ -22,5 +22,6 @@ class MovimientoLecturaSerializer(serializers.ModelSerializer):
             "estado",
             "origen",
             "creado_en",
+            "pagado_en",
         )
         read_only_fields = fields
