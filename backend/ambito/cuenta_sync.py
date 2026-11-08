@@ -14,7 +14,11 @@ def sincronizar_codi_status(comercio: Comercio) -> Comercio:
         comercio.pey_bank_account_id = resultado.bank_account_id
     else:
         comercio.pey_codi_status = Comercio.PeyCodiStatus.PENDING
-        comercio.pey_bank_account_id = ""
+        # PENDING con id (producción) no borra el registro. Sin id, se limpia.
+        if resultado.bank_account_id:
+            comercio.pey_bank_account_id = resultado.bank_account_id
+        else:
+            comercio.pey_bank_account_id = ""
     comercio.pey_codi_status_actualizado_en = timezone.now()
     comercio.save(
         update_fields=[
