@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/sesion/sesion_notifier.dart';
 import '../../../core/ui/ui.dart';
+import 'editar_nombre_comercio_dialog.dart';
 
 /// Ajustes: datos de la cuenta, opciones y salir.
 class AjustesPage extends ConsumerWidget {
@@ -24,7 +25,12 @@ class AjustesPage extends ConsumerWidget {
             estado.apellidos.trim(),
           ].where((p) => p.isNotEmpty).join(' ');
     final correo = estado?.correo.trim() ?? '';
-    final comercio = estado?.comercio?.nombre ?? 'Sin comercio asignado';
+    final comercioResumen = estado?.comercio;
+    final comercioNombre =
+        comercioResumen?.nombre.trim().isNotEmpty == true
+            ? comercioResumen!.nombre.trim()
+            : 'Sin comercio asignado';
+    final puedeEditarComercio = comercioResumen != null;
     final fuenteInicial = estado == null ? '' : estado.nombreParaSaludo.trim();
     final inicial = fuenteInicial.isEmpty
         ? 'U'
@@ -92,14 +98,54 @@ class AjustesPage extends ConsumerWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                const SizedBox(height: TfSpace.s1),
-                                Text(
-                                  comercio,
-                                  style: tema.textTheme.bodyMedium?.copyWith(
-                                    color: suave,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                const SizedBox(height: TfSpace.s2),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Mi comercio',
+                                            style: tema.textTheme.labelMedium
+                                                ?.copyWith(color: suave),
+                                          ),
+                                          const SizedBox(height: TfSpace.s1),
+                                          Text(
+                                            comercioNombre,
+                                            key: const Key(
+                                              'texto_nombre_comercio',
+                                            ),
+                                            style: tema.textTheme.bodyMedium
+                                                ?.copyWith(color: suave),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (puedeEditarComercio)
+                                      IconButton(
+                                        key: const Key(
+                                          'boton_editar_nombre_comercio',
+                                        ),
+                                        tooltip: 'Cambiar nombre del comercio',
+                                        onPressed: () {
+                                          mostrarEditarNombreComercio(
+                                            context: context,
+                                            ref: ref,
+                                            nombreActual: comercioNombre,
+                                          );
+                                        },
+                                        icon: const Icon(
+                                          Icons.edit_rounded,
+                                          size: 20,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                  ],
                                 ),
                               ],
                             ),

@@ -187,4 +187,19 @@ class SesionNotifier extends Notifier<SesionViewState> {
     );
     _notificarRouter();
   }
+
+  void actualizarNombreComercio(String nombre) {
+    if (!ref.mounted) {
+      return;
+    }
+    final estado = state.estado;
+    final comercio = estado?.comercio;
+    if (estado == null || comercio == null) {
+      return;
+    }
+    state = state.copyWith(
+      estado: estado.copyWith(comercio: comercio.copyWith(nombre: nombre)),
+    );
+    _notificarRouter();
+  }
 }

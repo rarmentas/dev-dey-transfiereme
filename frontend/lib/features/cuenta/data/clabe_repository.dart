@@ -16,6 +16,30 @@ class ClabeRepository {
 
   static const ruta = '/api/cuenta/clabe/';
 
+  Future<String> obtener() async {
+    try {
+      final respuesta = await _dio.get<dynamic>(ruta);
+      final status = respuesta.statusCode ?? 0;
+      if (status == 200) {
+        final mapa = _mapa(respuesta.data);
+        final clabe = mapa['clabe'];
+        if (clabe is String) {
+          return clabe.trim();
+        }
+        throw const FormatException('respuesta');
+      }
+      throw _errorDesdeRespuesta(respuesta.data, status, alGuardar: false);
+    } on ClabeApiException {
+      rethrow;
+    } on DioException catch (error) {
+      throw ClabeApiException(_mensajeDeDio(error, alGuardar: false));
+    } on FormatException {
+      throw ClabeApiException(
+        'No pudimos leer la respuesta. Inténtalo de nuevo.',
+      );
+    }
+  }
+
   Future<String> guardar(String clabe) async {
     try {
       final respuesta = await _dio.post<dynamic>(
@@ -31,11 +55,11 @@ class ClabeRepository {
         }
         throw const FormatException('respuesta');
       }
-      throw _errorDesdeRespuesta(respuesta.data, status);
+      throw _errorDesdeRespuesta(respuesta.data, status, alGuardar: true);
     } on ClabeApiException {
       rethrow;
     } on DioException catch (error) {
-      throw ClabeApiException(_mensajeDeDio(error));
+      throw ClabeApiException(_mensajeDeDio(error, alGuardar: true));
     } on FormatException {
       throw ClabeApiException('No pudimos leer la respuesta. Inténtalo de nuevo.');
     }
@@ -55,7 +79,11 @@ Map<String, dynamic> _mapa(Object? valor) {
   throw const FormatException('respuesta');
 }
 
-ClabeApiException _errorDesdeRespuesta(Object? data, int status) {
+ClabeApiException _errorDesdeRespuesta(
+  Object? data,
+  int status, {
+  required bool alGuardar,
+}) {
   final detalle = _detalle(data);
   if (detalle != null) {
     return ClabeApiException(detalle);
@@ -63,10 +91,13 @@ ClabeApiException _errorDesdeRespuesta(Object? data, int status) {
   if (status >= 500) {
     return ClabeApiException(_mensajeServidor);
   }
-  return ClabeApiException('No pudimos guardar la CLABE (código $status).');
+  if (alGuardar) {
+    return ClabeApiException('No pudimos guardar la CLABE (código $status).');
+  }
+  return ClabeApiException('No pudimos cargar la CLABE (código $status).');
 }
 
-String _mensajeDeDio(DioException error) {
+String _mensajeDeDio(DioException error, {required bool alGuardar}) {
   final detalle = _detalle(error.response?.data);
   if (detalle != null) {
     return detalle;
@@ -83,9 +114,13 @@ String _mensajeDeDio(DioException error) {
       if (codigo != null && codigo >= 500) {
         return _mensajeServidor;
       }
-      return 'No pudimos guardar la CLABE. Inténtalo de nuevo.';
+      return alGuardar
+          ? 'No pudimos guardar la CLABE. Inténtalo de nuevo.'
+          : 'No pudimos cargar la CLABE. Inténtalo de nuevo.';
     default:
-      return 'No pudimos guardar la CLABE. Inténtalo de nuevo.';
+      return alGuardar
+          ? 'No pudimos guardar la CLABE. Inténtalo de nuevo.'
+          : 'No pudimos cargar la CLABE. Inténtalo de nuevo.';
   }
 }
 
