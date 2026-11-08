@@ -112,6 +112,7 @@ class MovimientosApiTests(TestCase):
             monto=Decimal("25.00"),
             concepto="Venta B",
             pey_qr_id="QR-B-1",
+            qr_string="qr-test-venta-b",
         )
         movimiento_cobro_b = Movimiento.objects.create(
             comercio=cobro_b.comercio,

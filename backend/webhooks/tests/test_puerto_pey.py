@@ -78,6 +78,7 @@ class PuertoWebhookPeyTests(TestCase):
             monto=Decimal("25.00"),
             concepto="Transferencia",
             pey_qr_id=pey_qr_id,
+            qr_string=f"qr-test-venta-{pey_qr_id}",
         )
         return Movimiento.objects.create(
             comercio=self.comercio,
@@ -95,6 +96,7 @@ class PuertoWebhookPeyTests(TestCase):
             monto=Decimal("0.00"),
             concepto="Transferencia",
             pey_qr_id=pey_qr_id,
+            qr_string=f"qr-test-general-{pey_qr_id}",
         )
 
     def test_firma_invalida_no_escribe_ni_marca_pagado(self) -> None:
