@@ -9,6 +9,8 @@ El middleware `CierraApiSinSesionMiddleware` responde `403` con `{"detail": "Deb
 | Ruta / prefijo | Método | Motivo |
 | --- | --- | --- |
 | `/api/sesion/entrar/` | `POST` | Inicio de sesión |
+| `/api/sesion/alta/` | `POST` | Alta pública (solicitar y confirmar código) |
+| `/api/sesion/olvido/` | `POST` | Restablecimiento de contraseña por código |
 | `/api/sesion/estado/` | Cualquiera | El propio endpoint devuelve `403` sin sesión |
 | `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login). La ruta concreta es `POST /api/webhooks/pey/` |
 | `/api/salud/` | `GET` | Comprobación de despliegue y base de datos |
@@ -42,6 +44,64 @@ Respuesta `200` con `usuario`, `correo`, `nombre`, `apellidos` y `comercio` (`id
 ## Salir
 
 Respuesta `200` con cuerpo vacío `{}`. Basta la cookie de sesión; no hace falta encabezado CSRF (la vista usa autenticación por sesión sin verificación CSRF en DRF). Tras salir, el estado vuelve a responder `403`.
+
+## Alta pública
+
+Flujo en dos pasos. Los códigos son de seis dígitos, de un solo uso y caducan en 15 minutos. No exigen sesión ni CSRF (mismo patrón que `entrar`).
+
+### Solicitar código
+
+`POST /api/sesion/alta/solicitar/`
+
+```json
+{ "correo": "nuevo@ejemplo.mx", "contraseña": "su-clave" }
+```
+
+- Correo ya registrado: `400` con `{"detail": "Este correo ya tiene cuenta. Entre o restablezca su contraseña."}`
+- Correo y contraseña válidos: `200` con `{"detail": "Enviamos un código a su correo. Revise su bandeja de entrada."}`
+
+### Confirmar alta
+
+`POST /api/sesion/alta/confirmar/`
+
+```json
+{ "correo": "nuevo@ejemplo.mx", "código": "123456" }
+```
+
+- Código válido: `200` con `{"detail": "Su cuenta quedó lista. Ya puede entrar."}`. Crea `User` (`username` = correo), un `Comercio` nuevo en estado pendiente (sin CLABE) y la `Membresia`.
+- Código inválido o expirado: `403` con `{"detail": "El código no es válido o ya expiró. Solicite uno nuevo."}`
+
+La cuenta demo `vendedor@demo.mx` y los usuarios de prueba existentes entran con `entrar` como antes; no hay comprobación global de correo confirmado en el login.
+
+## Olvido de contraseña
+
+### Solicitar código
+
+`POST /api/sesion/olvido/solicitar/`
+
+```json
+{ "correo": "vendedor@ejemplo.mx" }
+```
+
+Siempre `200` con el mismo cuerpo:
+
+```json
+{ "detail": "Si existe una cuenta con ese correo, recibirá un código en breve." }
+```
+
+Solo se envía correo si el usuario existe; la respuesta no revela si el correo está registrado.
+
+### Restablecer
+
+`POST /api/sesion/olvido/restablecer/`
+
+```json
+{ "correo": "vendedor@ejemplo.mx", "código": "123456", "contraseña": "nueva-clave" }
+```
+
+- Código válido: `200` con `{"detail": "Su contraseña quedó actualizada. Ya puede entrar."}` (solo cambia la contraseña del usuario).
+- Código inválido o expirado, correo sin cuenta o sin solicitud vigente: `403` con el mismo mensaje genérico de código que en la alta (sin importar si la contraseña nueva es débil; la validación de contraseña ocurre solo tras verificar el código).
+- Contraseña que no cumple las reglas de Django: `403` con el mensaje de validación, **solo** cuando el código ya fue verificado correctamente.
 
 ## Movimientos (ámbito por sesión)
 
@@ -141,4 +201,4 @@ cd backend
 .venv/bin/python manage.py sembrar_vendedor --contraseña 'una-clave-local'
 ```
 
-Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta sola como cuenta ACTIVE: `cuenta_esta_active` solo acepta `pey_codi_status=active` tras sincronizar (en el adaptador de desarrollo, hace falta CLABE válida y `semilla_active_dev` para simular ACTIVE). Fuera de desarrollo el comando se niega. No hay alta pública.
+Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta sola como cuenta ACTIVE: `cuenta_esta_active` solo acepta `pey_codi_status=active` tras sincronizar (en el adaptador de desarrollo, hace falta CLABE válida y `semilla_active_dev` para simular ACTIVE). Fuera de desarrollo el comando se niega. El alta público por correo es independiente de este comando.

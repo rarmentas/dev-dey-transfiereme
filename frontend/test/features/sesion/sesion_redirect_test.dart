@@ -1,11 +1,11 @@
 import 'package:cody/core/network/providers.dart';
+import 'package:cody/core/sesion/registro_olvido_repository.dart';
 import 'package:cody/core/sesion/sesion_notifier.dart';
 import 'package:cody/core/sesion/sesion_providers.dart';
 import 'package:cody/core/sesion/sesion_repository.dart';
 import 'package:cody/main.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import '../../support/mock_sesion_api.dart';
 
 void main() {
@@ -19,6 +19,9 @@ void main() {
           dioProvider.overrideWithValue(dio),
           sesionRepositoryProvider.overrideWith(
             (ref) => SesionRepository(dio),
+          ),
+          registroOlvidoRepositoryProvider.overrideWith(
+            (ref) => RegistroOlvidoRepository(dio),
           ),
         ],
         child: const TransfieremeApp(),
@@ -41,6 +44,9 @@ void main() {
           dioProvider.overrideWithValue(dio),
           sesionRepositoryProvider.overrideWith(
             (ref) => SesionRepository(dio),
+          ),
+          registroOlvidoRepositoryProvider.overrideWith(
+            (ref) => RegistroOlvidoRepository(dio),
           ),
         ],
         child: const TransfieremeApp(),
@@ -65,6 +71,9 @@ void main() {
         dioProvider.overrideWithValue(dio),
         sesionRepositoryProvider.overrideWith(
           (ref) => SesionRepository(dio),
+        ),
+        registroOlvidoRepositoryProvider.overrideWith(
+          (ref) => RegistroOlvidoRepository(dio),
         ),
       ],
     );
