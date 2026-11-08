@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "sesion",
     "movimientos",
     "webhooks",
+    "pey",
 ]
 
 MIDDLEWARE = [
@@ -118,6 +119,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Vacío: POST /api/webhooks/pey/ rechaza todo con 401. No hay modo sin firma.
 PEY_WEBHOOK_SECRET = os.environ.get("PEY_WEBHOOK_SECRET", "")
+# Vacío: el adaptador de producción no llama a pey y responde CONFIGURACION.
+PEY_API_KEY = os.environ.get("PEY_API_KEY", "")
+# Vacío: obtener_puerto() elige desarrollo si DEBUG, y producción si no.
+PEY_ADAPTADOR = os.environ.get("PEY_ADAPTADOR", "")
+PEY_BASE_URL = "https://api.pey.mx"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
