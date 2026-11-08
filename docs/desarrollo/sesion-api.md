@@ -12,7 +12,7 @@ El middleware `CierraApiSinSesionMiddleware` responde `403` con `{"detail": "Deb
 | `/api/sesion/alta/` | `POST` | Alta pública (solicitar y confirmar código) |
 | `/api/sesion/olvido/` | `POST` | Restablecimiento de contraseña por código |
 | `/api/sesion/estado/` | Cualquiera | El propio endpoint devuelve `403` sin sesión |
-| `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login). La ruta concreta es `POST /api/webhooks/pey/` |
+| `/api/webhooks/` | Cualquiera | Avisos de pey o del adaptador de desarrollo (sin login). Rutas: `POST /api/webhooks/pey/` y `POST /api/webhooks/desarrollo/` |
 | `/api/salud/` | `GET` | Comprobación de despliegue y base de datos |
 
 Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión activa antes de ejecutar la vista.
@@ -25,7 +25,15 @@ Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión 
 
 ## Webhook de pey
 
-`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`. En QR general, el `codiQrId` del aviso debe coincidir con el `pey_qr_id` del cobro persistido en el alta; el movimiento pagado se crea con ese aviso, no en el `POST /api/cobro/qr-general/`.
+`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`. En QR general, el `codiQrId` del aviso debe coincidir con el `pey_qr_id` del cobro persistido en el alta; el movimiento pagado se crea con ese aviso, no en el `POST /api/cobro/qr-general/`. Los movimientos aplicados aquí llevan `origen_pey` y cuentan en el total confirmado del tablero.
+
+## Webhook del adaptador de desarrollo
+
+`POST /api/webhooks/desarrollo/` solo responde cuando el servidor está en modo adaptador de desarrollo (`DEBUG` y `PEY_ADAPTADOR=desarrollo`, sin `PEY_API_KEY`). Fuera de ese modo responde `404` y no registra avisos. No pide sesión ni CSRF; **no** verifica firma ni usa secretos de plataforma.
+
+Encabezado obligatorio: `webhook-id` (igual que en pey). Cuerpo JSON con la misma forma que un aviso real (`type`, `amount`, `transactionId`, `codiQrId` para QR, etc.). Respuestas `200` con los mismos valores de `estado` que la ruta de pey (`aplicado`, `duplicado`, `duplicado_transaccion`, …).
+
+En QR general puede simular varios pagos sobre el mismo `pey_qr_id`: cada `transactionId` distinto crea otro movimiento `pagado` con el monto del aviso; repetir el mismo `transactionId` devuelve `duplicado_transaccion` sin duplicar el movimiento. Los movimientos quedan con `origen_desarrollo` y aparecen en la sección **desarrollo** del tablero, no en el total confirmado. Para armar cuerpos de prueba puede usar `AdaptadorDesarrollo.cuerpo_aviso_qr_pagado` en el backend local.
 
 ## Entrar
 
@@ -103,21 +111,24 @@ Solo se envía correo si el usuario existe; la respuesta no revela si el correo 
 - Código inválido o expirado, correo sin cuenta o sin solicitud vigente: `403` con el mismo mensaje genérico de código que en la alta (sin importar si la contraseña nueva es débil; la validación de contraseña ocurre solo tras verificar el código).
 - Contraseña que no cumple las reglas de Django: `403` con el mensaje de validación, **solo** cuando el código ya fue verificado correctamente.
 
-## Movimientos (lectura, ámbito por sesión)
+## Movimientos (ámbito por sesión)
 
-El servidor determina el comercio por membresía; no acepta `comercio` ni `comercio_id` en la cadena de consulta.
+El servidor determina el comercio por membresía; no acepta `comercio` ni `comercio_id` en la cadena de consulta ni en el cuerpo.
 
 | Método | Ruta | Autenticación |
 | --- | --- | --- |
 | `GET` | `/api/movimientos/` | Sesión activa |
 | `GET` | `/api/movimientos/tablero/` | Sesión activa |
 | `GET` | `/api/movimientos/<id>/` | Sesión activa |
+| `PATCH` | `/api/movimientos/<id>/` | Sesión activa |
 
 Sin sesión: `403` con `{"detail": "Debe iniciar sesión."}` (middleware, igual que el resto de `/api/`).
 
-Listado `200`: arreglo JSON ordenado por fecha de creación descendente. Cada elemento incluye `id`, `monto` (cadena decimal), `concepto_visible`, `canal`, `estado`, `origen`, `creado_en` y `pagado_en` (`null` si todavía no está pagado). Solo aparecen movimientos del comercio de la sesión.
+Listado `200`: arreglo JSON ordenado por fecha de creación descendente. Cada elemento incluye `id`, `monto` (cadena decimal), `concepto` (el enviado al pagador), `concepto_visible`, `canal`, `estado`, `origen`, `creado_en` y `pagado_en` (`null` si todavía no está pagado). Solo aparecen movimientos del comercio de la sesión.
 
 Detalle propio: `200` con el mismo objeto. Id de otro comercio o inexistente en su ámbito: `404` con `{"detail": "No encontrado."}` (no `403`).
+
+`PATCH` renombra solo el concepto visible de un movimiento `pagado`. Cuerpo: `{"concepto_visible": "Tortas"}`. Se guarda con `strip()`. Vacío o solo espacios: `400`. Más de 500 caracteres: `400`. Cualquier otro campo (`concepto`, `monto`, `estado`, …): `400`. Si no está pagado: `409` con `{"detail": "Solo se puede renombrar un movimiento cobrado."}`. La respuesta `200` es el movimiento. No cambia `concepto` ni el concepto del cobro, y no llama a pey. El tablero agrupa por el visible normalizado.
 
 Query con `comercio` o `comercio_id`: `400` con el mensaje de ámbito que indica que el servidor fija el comercio por membresía.
 
@@ -171,7 +182,7 @@ Cuerpo JSON: `{}` (sin campos de negocio obligatorios).
 
 Respuesta `201` en la primera alta: `{ "qr_string": "...", "pey_qr_id": "..." }`. Si el QR general ya existe para ese comercio, `200` con los mismos campos (sin volver a llamar a pey). Cuenta inactiva: `400` con `{"detail": "...", "tipo": "INVALID_STATE"}` y sin persistir cobro. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 
-El alta no crea movimientos; los pagos sobre ese QR se registran vía webhook (historias posteriores).
+El alta no crea movimientos; en desarrollo los pagos simulados entran por `POST /api/webhooks/desarrollo/`; en integración real, por `POST /api/webhooks/pey/`.
 
 ## Alta de venta (QR)
 
@@ -209,3 +220,6 @@ cd backend
 ```
 
 Crea o actualiza `vendedor@demo.mx` en «Comercio demo», marca `semilla_active_dev` y no inserta movimientos. Al entrar, el listado de movimientos queda vacío. Esa marca no cuenta sola como cuenta ACTIVE: `cuenta_esta_active` solo acepta `pey_codi_status=active` tras sincronizar (en el adaptador de desarrollo, hace falta CLABE válida y `semilla_active_dev` para simular ACTIVE). Fuera de desarrollo el comando se niega. El alta público por correo es independiente de este comando.
+
+Con `DEBUG` activo, `manage.py sembrar_movimientos_demo` (correo por defecto `vendedor@demo.mx`) crea unos doce movimientos `origen_desarrollo` con cobros `demo-` para ver el tablero sin pey; sin `--reset` no duplica y `--reset` borra solo esos demo de ese comercio.
+Fuera de `DEBUG` el comando se niega. Esos pagos aparecen solo en la sección de desarrollo, sin sumarse a lo confirmado.

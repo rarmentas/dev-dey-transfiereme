@@ -1,0 +1,61 @@
+{
+  "zona": "America/Mexico_City",
+  "confirmado": {
+    "total": "42.50",
+    "filas": [
+      {
+        "dia": "2026-11-07",
+        "canal": "notificacion",
+        "concepto": "tortas",
+        "etiqueta": "Tortas",
+        "total": "5.00",
+        "cantidad": 1
+      },
+      {
+        "dia": "2026-11-07",
+        "canal": "qr_general",
+        "concepto": "transferencia",
+        "etiqueta": "Transferencia",
+        "total": "10.00",
+        "cantidad": 1
+      },
+      {
+        "dia": "2026-11-07",
+        "canal": "qr_venta",
+        "concepto": "tortas",
+        "etiqueta": "Tortas",
+        "total": "15.50",
+        "cantidad": 1
+      },
+      {
+        "dia": "2026-11-06",
+        "canal": "qr_venta",
+        "concepto": "refrescos",
+        "etiqueta": "Refrescos",
+        "total": "12.00",
+        "cantidad": 2
+      }
+    ]
+  },
+  "desarrollo": {
+    "total": "1.01",
+    "filas": [
+      {
+        "dia": "2026-11-07",
+        "canal": "qr_general",
+        "concepto": "prueba",
+        "etiqueta": "Prueba local",
+        "total": "0.01",
+        "cantidad": 1
+      },
+      {
+        "dia": "2026-11-06",
+        "canal": "notificacion",
+        "concepto": "prueba",
+        "etiqueta": "Prueba local",
+        "total": "1.00",
+        "cantidad": 1
+      }
+    ]
+  }
+}

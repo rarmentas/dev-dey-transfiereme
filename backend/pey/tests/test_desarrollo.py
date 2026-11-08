@@ -94,6 +94,45 @@ class CuentaActiveTests(SimpleTestCase):
         )
 
 
+class CuerpoAvisoQrPagadoTests(SimpleTestCase):
+    def test_plantilla_compatible_y_ids_distintos(self) -> None:
+        adaptador = AdaptadorDesarrollo()
+        primero = adaptador.cuerpo_aviso_qr_pagado(
+            monto=Decimal("0.01"),
+            codi_qr_id="dev-qr-abc",
+        )
+        segundo = adaptador.cuerpo_aviso_qr_pagado(
+            monto=Decimal("0.02"),
+            codi_qr_id="dev-qr-abc",
+        )
+        self.assertEqual(primero["type"], "codi.qr.payment_received")
+        self.assertEqual(primero["codiQrId"], "dev-qr-abc")
+        self.assertEqual(primero["amount"], Decimal("0.01"))
+        self.assertEqual(segundo["amount"], Decimal("0.02"))
+        self.assertNotEqual(primero["transactionId"], segundo["transactionId"])
+        self.assertTrue(str(primero["transactionId"]).startswith("dev-tx-"))
+
+    def test_transaction_id_explicito_y_validaciones(self) -> None:
+        adaptador = AdaptadorDesarrollo()
+        cuerpo = adaptador.cuerpo_aviso_qr_pagado(
+            monto=Decimal("1.50"),
+            codi_qr_id="dev-qr-x",
+            transaction_id="TX-FIJO-H3",
+        )
+        self.assertEqual(cuerpo["transactionId"], "TX-FIJO-H3")
+
+        with self.assertRaises(ParametroInvalido):
+            adaptador.cuerpo_aviso_qr_pagado(
+                monto=Decimal("0"),
+                codi_qr_id="dev-qr-x",
+            )
+        with self.assertRaises(ParametroInvalido):
+            adaptador.cuerpo_aviso_qr_pagado(
+                monto=Decimal("0.01"),
+                codi_qr_id="",
+            )
+
+
 class FallarConTests(SimpleTestCase):
     def test_el_error_sale_despues_de_validar(self) -> None:
         error = ErrorPey("INVALID_STATE", "simulada", "req-dev")

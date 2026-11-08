@@ -23,6 +23,26 @@ void main() {
     expect(movimiento.esPrueba, isFalse);
     expect(movimiento.etiquetaCanal, 'QR general');
     expect(movimiento.etiquetaEstado, 'Pagado');
+    expect(movimiento.concepto, 'Tacos al pastor');
+    expect(movimiento.muestraEnviado, isFalse);
+  });
+
+  test('concepto enviado distinto del visible se conserva', () {
+    final movimiento = Movimiento.fromJson({
+      'id': 11,
+      'monto': '0.01',
+      'concepto': 'Transferencia',
+      'concepto_visible': 'Tortas',
+      'canal': 'qr_venta',
+      'estado': 'pagado',
+      'origen': 'origen_pey',
+      'creado_en': '2026-11-07T18:00:00Z',
+      'pagado_en': '2026-11-07T18:05:00Z',
+    });
+
+    expect(movimiento.concepto, 'Transferencia');
+    expect(movimiento.conceptoVisible, 'Tortas');
+    expect(movimiento.muestraEnviado, isTrue);
   });
 
   test('fromJson acepta pagado_en nulo', () {

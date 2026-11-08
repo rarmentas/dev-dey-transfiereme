@@ -1,4 +1,4 @@
-"""Vistas de lectura de movimientos acotadas al comercio de la sesión."""
+"""Vistas de movimientos acotadas al comercio de la sesión."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -11,6 +11,7 @@ from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import (
     filtrar_por_comercio,
     obtener_por_id_en_ambito,
+    preparar_operacion_cobro,
     rechazar_comercio_en_query,
     requerir_comercio,
 )
@@ -28,6 +29,13 @@ from movimientos.tablero import (
 _CENTAVO = Decimal("0.01")
 
 _MENSAJE_NO_ENCONTRADO = "No encontrado."
+_MENSAJE_CUERPO = "El cuerpo debe ser un objeto JSON."
+_MENSAJE_SOLO_VISIBLE = "Solo puede enviar concepto_visible."
+_MENSAJE_TEXTO = "El concepto visible debe ser texto."
+_MENSAJE_VACIO = "Indique el concepto visible."
+_MENSAJE_LARGO = "El concepto visible no puede pasar de 500 caracteres."
+_MENSAJE_SOLO_PAGADO = "Solo se puede renombrar un movimiento cobrado."
+_LARGO_VISIBLE = 500
 
 
 def _respuesta_ambito(exc: AmbitoError, status: int) -> Response:
@@ -80,7 +88,7 @@ class ListadoMovimientosView(APIView):
 
 
 class DetalleMovimientoView(APIView):
-    """Detalle de un movimiento si pertenece al comercio de la sesión."""
+    """Detalle y renombre del concepto visible, si el movimiento es del comercio."""
 
     permission_classes = [IsAuthenticated]
 
@@ -99,6 +107,43 @@ class DetalleMovimientoView(APIView):
 
         serializer = MovimientoLecturaSerializer(movimiento)
         return Response(serializer.data)
+
+    def patch(self, request, pk: int):
+        datos = request.data
+        if not isinstance(datos, dict):
+            return Response({"detail": _MENSAJE_CUERPO}, status=400)
+        try:
+            rechazar_comercio_en_query(request.GET)
+            comercio = preparar_operacion_cobro(request, datos)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
+        except SinAmbitoError as exc:
+            return _respuesta_ambito(exc, 403)
+
+        if set(datos) != {"concepto_visible"}:
+            return Response({"detail": _MENSAJE_SOLO_VISIBLE}, status=400)
+        crudo = datos["concepto_visible"]
+        if not isinstance(crudo, str):
+            return Response({"detail": _MENSAJE_TEXTO}, status=400)
+        visible = crudo.strip()
+        if visible == "":
+            return Response({"detail": _MENSAJE_VACIO}, status=400)
+        if len(visible) > _LARGO_VISIBLE:
+            return Response({"detail": _MENSAJE_LARGO}, status=400)
+
+        movimiento = obtener_por_id_en_ambito(
+            Movimiento.objects.select_related("cobro"),
+            comercio,
+            pk,
+        )
+        if movimiento is None:
+            return Response({"detail": _MENSAJE_NO_ENCONTRADO}, status=404)
+        if movimiento.estado != Movimiento.Estado.PAGADO:
+            return Response({"detail": _MENSAJE_SOLO_PAGADO}, status=409)
+
+        movimiento.concepto_visible = visible
+        movimiento.save(update_fields=["concepto_visible", "actualizado_en"])
+        return Response(MovimientoLecturaSerializer(movimiento).data)
 
 
 class TableroView(APIView):

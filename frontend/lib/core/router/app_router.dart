@@ -5,12 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
+import '../../features/tablero/presentation/tablero_page.dart';
 import '../sesion/sesion_notifier.dart';
 import 'sesion_router_refresh.dart';
 
 const kRutaEntrar = '/entrar';
 const kRutaInicio = '/inicio';
 const kRutaMovimientos = '/movimientos';
+const kRutaTablero = '/tablero';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -59,6 +61,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: kRutaMovimientos,
         builder: (context, state) => const ResumenMovimientosPage(),
+      ),
+      GoRoute(
+        path: kRutaTablero,
+        builder: (context, state) => const TableroPage(),
       ),
     ],
   );

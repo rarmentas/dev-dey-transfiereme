@@ -5,12 +5,14 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponseNotFound, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago, aplicar_aviso
+from pey.seleccion import modo_adaptador
 from movimientos.exceptions import (
     AvisoDuplicado,
     AvisoInvalido,
@@ -182,6 +184,97 @@ def _cerrar(
     return _respuesta({"estado": resultado}, 200)
 
 
+def _procesar_aviso_registrado(
+    *,
+    recibido: AvisoRecibido,
+    entrada: _AvisoEntrante,
+    webhook_id: str,
+    origen: Movimiento.Origen,
+) -> JsonResponse:
+    if entrada.aviso is None:
+        return _cerrar(
+            recibido,
+            webhook_id=webhook_id,
+            tipo=entrada.tipo,
+            resultado=AvisoRecibido.Resultado.TIPO_DESCONOCIDO,
+        )
+
+    aviso = entrada.aviso
+    if _pago_ya_registrado(aviso.transaction_id):
+        return _cerrar(
+            recibido,
+            webhook_id=webhook_id,
+            tipo=aviso.tipo,
+            resultado=AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
+        )
+
+    movimiento = None
+    try:
+        with transaction.atomic():
+            movimiento = aplicar_aviso(aviso, origen=origen)
+    except IntegrityError as exc:
+        if not _es_choque_de_transaction_id(exc):
+            raise
+        resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
+        movimiento = None
+    except AvisoDuplicado:
+        resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
+    except MontoDistinto:
+        resultado = AvisoRecibido.Resultado.MONTO_DISTINTO
+    except AvisoSinCobro:
+        resultado = AvisoRecibido.Resultado.SIN_COBRO
+    except TransicionInvalida:
+        resultado = AvisoRecibido.Resultado.TRANSICION_INVALIDA
+    except AvisoInvalido:
+        resultado = AvisoRecibido.Resultado.TIPO_DESCONOCIDO
+    else:
+        resultado = AvisoRecibido.Resultado.APLICADO
+
+    return _cerrar(
+        recibido,
+        webhook_id=webhook_id,
+        tipo=aviso.tipo,
+        resultado=resultado,
+        movimiento=movimiento,
+    )
+
+
+def _recibir_aviso_http(
+    request: HttpRequest,
+    *,
+    origen: Movimiento.Origen,
+) -> JsonResponse:
+    webhook_id = request.headers.get("webhook-id", "")
+    if not webhook_id or len(webhook_id) > _LARGO_WEBHOOK_ID:
+        logger.warning("aviso rechazado webhook_id=%s", webhook_id)
+        return _respuesta({"detalle": "aviso inválido"}, 400)
+
+    try:
+        entrada = _leer_aviso(request.body)
+    except _AvisoMalFormado:
+        logger.warning("aviso rechazado webhook_id=%s", webhook_id)
+        return _respuesta({"detalle": "aviso inválido"}, 400)
+
+    with transaction.atomic():
+        try:
+            with transaction.atomic():
+                recibido = AvisoRecibido.objects.create(
+                    webhook_id=webhook_id,
+                    tipo=entrada.tipo,
+                    transaction_id=entrada.transaction_id,
+                )
+        except IntegrityError:
+            _registrar(webhook_id, entrada.tipo, "duplicado")
+            return _respuesta({"estado": "duplicado"}, 200)
+
+        return _procesar_aviso_registrado(
+            recibido=recibido,
+            entrada=entrada,
+            webhook_id=webhook_id,
+            origen=origen,
+        )
+
+
 @csrf_exempt
 @require_POST
 def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
@@ -199,71 +292,22 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
         logger.warning("aviso pey rechazado webhook_id=%s", webhook_id)
         return _respuesta({"detalle": "aviso inválido"}, 400)
 
+    return _recibir_aviso_http(
+        request,
+        origen=Movimiento.Origen.ORIGEN_PEY,
+    )
+
+
+@csrf_exempt
+@require_POST
+def recibir_aviso_desarrollo(request: HttpRequest) -> HttpResponseNotFound | JsonResponse:
     try:
-        entrada = _leer_aviso(request.body)
-    except _AvisoMalFormado:
-        logger.warning("aviso pey rechazado webhook_id=%s", webhook_id)
-        return _respuesta({"detalle": "aviso inválido"}, 400)
+        if modo_adaptador() != "desarrollo":
+            return HttpResponseNotFound()
+    except ImproperlyConfigured:
+        return HttpResponseNotFound()
 
-    # El pagado y el registro del aviso quedan en la misma transacción.
-    with transaction.atomic():
-        try:
-            with transaction.atomic():
-                recibido = AvisoRecibido.objects.create(
-                    webhook_id=webhook_id,
-                    tipo=entrada.tipo,
-                    transaction_id=entrada.transaction_id,
-                )
-        except IntegrityError:
-            _registrar(webhook_id, entrada.tipo, "duplicado")
-            return _respuesta({"estado": "duplicado"}, 200)
-
-        if entrada.aviso is None:
-            return _cerrar(
-                recibido,
-                webhook_id=webhook_id,
-                tipo=entrada.tipo,
-                resultado=AvisoRecibido.Resultado.TIPO_DESCONOCIDO,
-            )
-
-        aviso = entrada.aviso
-        if _pago_ya_registrado(aviso.transaction_id):
-            return _cerrar(
-                recibido,
-                webhook_id=webhook_id,
-                tipo=aviso.tipo,
-                resultado=AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
-            )
-
-        movimiento = None
-        try:
-            with transaction.atomic():
-                movimiento = aplicar_aviso(
-                    aviso,
-                    origen=Movimiento.Origen.ORIGEN_PEY,
-                )
-        except IntegrityError as exc:
-            if not _es_choque_de_transaction_id(exc):
-                raise
-            resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
-            movimiento = None
-        except AvisoDuplicado:
-            resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
-        except MontoDistinto:
-            resultado = AvisoRecibido.Resultado.MONTO_DISTINTO
-        except AvisoSinCobro:
-            resultado = AvisoRecibido.Resultado.SIN_COBRO
-        except TransicionInvalida:
-            resultado = AvisoRecibido.Resultado.TRANSICION_INVALIDA
-        except AvisoInvalido:
-            resultado = AvisoRecibido.Resultado.TIPO_DESCONOCIDO
-        else:
-            resultado = AvisoRecibido.Resultado.APLICADO
-
-        return _cerrar(
-            recibido,
-            webhook_id=webhook_id,
-            tipo=aviso.tipo,
-            resultado=resultado,
-            movimiento=movimiento,
-        )
+    return _recibir_aviso_http(
+        request,
+        origen=Movimiento.Origen.ORIGEN_DESARROLLO,
+    )
