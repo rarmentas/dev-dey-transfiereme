@@ -46,7 +46,7 @@ class CobroALaCuentaDelComercioTests(TestCase):
         llamadas: list[bytes] = []
         puerto = AdaptadorProduccion(transporte=_transporte_qr(llamadas))
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            crear_venta_qr(
+            venta = crear_venta_qr(
                 comercio=self.comercio,
                 monto=Decimal("0.01"),
                 concepto="Tacos",
@@ -55,12 +55,13 @@ class CobroALaCuentaDelComercioTests(TestCase):
             )
         self.assertEqual(len(llamadas), 1)
         self.assertIn(b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"', llamadas[0])
+        self.assertEqual(venta.cobro.pey_bank_account_id, _CUENTA)
 
     def test_notificacion_de_produccion_envia_bank_account_id(self) -> None:
         llamadas: list[bytes] = []
         puerto = AdaptadorProduccion(transporte=_transporte_pn(llamadas))
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            crear_venta_notificacion(
+            venta = crear_venta_notificacion(
                 comercio=self.comercio,
                 monto=Decimal("0.01"),
                 telefono="5512345678",
@@ -70,6 +71,7 @@ class CobroALaCuentaDelComercioTests(TestCase):
             )
         self.assertEqual(len(llamadas), 1)
         self.assertIn(b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"', llamadas[0])
+        self.assertEqual(venta.cobro.pey_bank_account_id, _CUENTA)
 
     def test_produccion_sin_id_rechaza_sin_llamar(self) -> None:
         self.comercio.pey_bank_account_id = ""

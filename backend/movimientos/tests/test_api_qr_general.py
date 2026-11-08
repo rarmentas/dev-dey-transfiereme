@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.models import Comercio, Membresia
 from movimientos.models import Cobro, Movimiento
+from pey.tipos import ErrorPey, ParametroInvalido
 from sesion.middleware import _MENSAJE_SIN_SESION
 
 _RUTA = "/api/cobro/qr-general/"
@@ -151,3 +152,37 @@ class AltaQrGeneralApiTests(TestCase):
             respuesta_b.json()["pey_qr_id"],
         )
         self.assertEqual(Cobro.objects.count(), 2)
+
+    def test_error_pey_responde_502(self) -> None:
+        self._entrar(self.usuario_activo)
+        error = ErrorPey(
+            "NO_DISPONIBLE",
+            "pey no respondió",
+            "req-qr",
+            puede_haberse_creado=True,
+        )
+        with patch("movimientos.views_cobro.alta_qr_general", side_effect=error):
+            respuesta = self.client.post(_RUTA, {}, format="json")
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertEqual(
+            respuesta.json(),
+            {
+                "detail": "pey no pudo crear el cobro.",
+                "tipo": "NO_DISPONIBLE",
+                "request_id": "req-qr",
+                "puede_haberse_creado": True,
+            },
+        )
+
+    def test_parametro_invalido_responde_400(self) -> None:
+        self._entrar(self.usuario_activo)
+        with patch(
+            "movimientos.views_cobro.alta_qr_general",
+            side_effect=ParametroInvalido("bank_account_id debe ser un ULID"),
+        ):
+            respuesta = self.client.post(_RUTA, {}, format="json")
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.json()["detail"],
+            "bank_account_id debe ser un ULID",
+        )
