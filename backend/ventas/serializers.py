@@ -45,6 +45,38 @@ def _texto_opcional(data: dict, campo: str, errores: dict) -> str:
     return valor
 
 
+class CrearNotificacionSerializer(serializers.Serializer):
+    """Monto, teléfono de 10 dígitos y concepto/referencia opcionales."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("El cuerpo debe ser un objeto JSON.")
+        errores: dict = {}
+        monto = _monto_entrada(data, errores)
+        telefono = _telefono_entrada(data, errores)
+        concepto = _texto_opcional(data, "concepto", errores)
+        referencia = _texto_opcional(data, "referencia", errores)
+        if errores:
+            raise serializers.ValidationError(errores)
+        return {
+            "monto": monto,
+            "telefono": telefono,
+            "concepto": concepto,
+            "referencia": referencia,
+        }
+
+
+def _telefono_entrada(data: dict, errores: dict) -> str | None:
+    if "telefono" not in data or data["telefono"] is None or data["telefono"] == "":
+        errores["telefono"] = ["Indique el teléfono."]
+        return None
+    valor = data["telefono"]
+    if not isinstance(valor, str):
+        errores["telefono"] = ["El teléfono debe ser texto."]
+        return None
+    return valor
+
+
 class CrearVentaSerializer(serializers.Serializer):
     """Acepta monto como cadena o número. Concepto y referencia son opcionales."""
 
@@ -62,6 +94,22 @@ class CrearVentaSerializer(serializers.Serializer):
             "concepto": concepto,
             "referencia": referencia,
         }
+
+
+def notificacion_creada_a_json(venta: VentaCreada, telefono_final: str) -> dict:
+    movimiento = venta.movimiento
+    cobro = venta.cobro
+    return {
+        "movimiento_id": movimiento.pk,
+        "cobro_id": cobro.pk,
+        "canal": movimiento.canal,
+        "monto": format(movimiento.monto.quantize(_CENTAVO), "f"),
+        "concepto": movimiento.concepto,
+        "estado": movimiento.estado,
+        "vence_en": cobro.vence_en.isoformat(),
+        "origen": movimiento.origen,
+        "telefono_final": telefono_final,
+    }
 
 
 def venta_creada_a_json(venta: VentaCreada) -> dict:

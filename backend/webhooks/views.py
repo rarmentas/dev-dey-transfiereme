@@ -165,7 +165,14 @@ def _cerrar(
     recibido.resultado = resultado
     recibido.movimiento = movimiento
     recibido.save(update_fields=["resultado", "movimiento"])
-    if resultado == AvisoRecibido.Resultado.MONTO_DISTINTO:
+    if resultado == AvisoRecibido.Resultado.SIN_COBRO:
+        logger.warning(
+            "aviso pey sin cobro type=%s webhook_id=%s transaction_id=%s",
+            tipo,
+            webhook_id,
+            recibido.transaction_id,
+        )
+    elif resultado == AvisoRecibido.Resultado.MONTO_DISTINTO:
         logger.warning(
             "aviso pey webhook_id=%s type=%s resultado=%s",
             webhook_id,

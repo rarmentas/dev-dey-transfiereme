@@ -202,6 +202,16 @@ El cobro guarda `pey_qr_id` y `qr_string`; `qr_string` también va en la respues
 
 `GET /api/ventas/<movimiento_id>/` devuelve el estado guardado de una venta del comercio de la sesión (`movimiento_id`, `canal`, `estado`, `monto`, `concepto`, `vence_en`, `pagado_en`, `qr_string`). `qr_string` sale del cobro y va vacío en una notificación. Otro comercio, un id inexistente o un canal que no es de venta (el QR general) responden `404`. `comercio` en la consulta responde `400`. Sin sesión: `403`. Si está `pendiente` y `vence_en` ya se cumplió, el servidor lo marca `vencido` antes de responder; `vence_en` nulo no vence. Esta consulta no llama a pey.
 
+## Alta de venta por notificación
+
+`POST /api/ventas/notificacion/` crea un cobro `notificacion` pendiente. El ámbito es el de la venta por QR: comercio de la sesión; `comercio` o `comercio_id` en el cuerpo o en la query responden `400`.
+
+Cuerpo JSON: `monto`, `telefono` (10 dígitos) y, opcionales, `concepto` y `referencia`. El monto es mayor que 0, con hasta 2 decimales y como máximo `1000000`. Concepto y referencia siguen las reglas del QR. La notificación vence a los 600 segundos. Mientras haya una venta vigente (este canal o el QR de venta), responde `409` con el mismo cuerpo de venta pendiente.
+
+Respuesta `201`: `movimiento_id`, `cobro_id`, `canal` (`notificacion`), `monto`, `concepto`, `estado` (`pendiente`), `vence_en`, `origen` y `telefono_final` (los 4 últimos dígitos). El teléfono completo no se guarda ni se escribe en los logs. Cuenta inactiva: `409` con `{"detail": "La cuenta no está ACTIVE."}`. Si pey no puede crear el aviso: `502` con los mismos campos que el QR. Cuando `puede_haberse_creado` es verdadero, el `detail` es «Puede que la notificación le haya llegado al cliente. Confírmelo con él antes de reintentar.» El cobro guarda `pey_transaction_id`. Un webhook `codi.pn.payment_received` con ese `transactionId` lo marca `pagado`.
+
+**Riesgo conocido.** Un timeout de pey o un fallo de base de datos después de crear la notificación puede dejar un pago sin cobro local. Queda `AvisoRecibido` con resultado `sin_cobro` y su `transaction_id`, más el log de error del alta, para conciliar a mano. La conciliación automática está fuera de alcance (C4).
+
 ## Semilla de desarrollo
 
 Con `DEBUG` activo:
