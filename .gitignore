@@ -1,0 +1,43 @@
+# Secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.jks
+key.properties
+local.properties
+
+# Runtime local de BMad. El trabajo del proyecto vive en _bmad-output/.
+_bmad/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/staticfiles/
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+frontend/build/
+
+# Caché de herramientas
+.impeccable/
+node_modules/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*~
+*.log
