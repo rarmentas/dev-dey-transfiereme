@@ -1,7 +1,291 @@
 ---
-// Hero.astro — Placeholder (será completado por el builder correspondiente)
+import TelefonoHero from './telefono/TelefonoHero.astro';
 ---
 
-<section id="hero">
-  <h2></h2>
+<section id="hero" aria-labelledby="hero-titulo">
+  <div class="container hero__grid">
+    <div class="hero__copy">
+      <p class="hero__insignia">
+        <svg class="hero__qr" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M4 4h6.5v6.5H4V4zm1.6 1.6v3.3h3.3V5.6H5.6zM13.5 4H20v6.5h-6.5V4zm1.6 1.6v3.3H18.4V5.6h-3.3zM4 13.5h6.5V20H4v-6.5zm1.6 1.6v3.3h3.3v-3.3H5.6zM13.5 13.5H16v2.5h-2.5v-2.5zm3.3 0H20v2.5h-3.2v-2.5zM13.5 17.3H16V20h-2.5v-2.7zm3.3 1.4H20V20h-3.2v-1.3z"
+          ></path>
+        </svg>
+        Cobros con CoDi de Banxico
+      </p>
+
+      <h1 id="hero-titulo" class="hero__titulo reveal">
+        <span class="hero__linea">Cobra en un segundo.</span>
+        <span class="hero__linea hero__linea--marca">Sin terminal.</span>
+      </h1>
+
+      <p class="hero__texto reveal">
+        Tu cliente paga desde la app de su banco y tú ves "Listo, te pagaron" al instante. Sin terminal, sin entrar a los menús de tu banco.
+      </p>
+
+      <div class="hero__acciones reveal">
+        <a class="btn btn-primary" href="https://transfiereme.asware.com.mx/">Crear mi cuenta</a>
+        <a class="btn btn-outline" href="#demo">Ver cómo funciona</a>
+      </div>
+
+      <ul class="hero__pruebas reveal">
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.25"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m5 12.5 4.2 4.2L19 7.2"></path>
+          </svg>
+          Web y Android
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.25"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m5 12.5 4.2 4.2L19 7.2"></path>
+          </svg>
+          QR impreso incluido
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.25"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m5 12.5 4.2 4.2L19 7.2"></path>
+          </svg>
+          Tablero de ventas
+        </li>
+      </ul>
+    </div>
+
+    <div class="hero__escenario">
+      <p class="solo-lectura">
+        Ejemplo ilustrativo, no es un pago real: un cobro de $120.00 pasa de «Nuevo cobro» a «¡Te pagaron!». Juan P., BBVA, 13:42.
+      </p>
+      <div class="hero__halo" aria-hidden="true"></div>
+      <div class="hero__acento" aria-hidden="true"></div>
+      <div class="hero__telefono">
+        <TelefonoHero />
+      </div>
+    </div>
+  </div>
 </section>
+
+<style>
+  #hero {
+    overflow-x: clip;
+    background: var(--bg);
+    scroll-margin-top: 80px;
+  }
+
+  .hero__grid {
+    display: grid;
+    align-items: center;
+    gap: var(--space-10);
+    padding-block: var(--space-12) var(--space-16);
+  }
+
+  .hero__copy {
+    min-width: 0;
+    container-type: inline-size;
+  }
+
+  .hero__insignia {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-5);
+    padding: 8px 14px;
+    border-radius: var(--radius-full);
+    background: var(--pending-container);
+    color: var(--pending-text);
+    font-size: var(--type-etiqueta-size);
+    line-height: var(--type-etiqueta-line);
+    font-weight: var(--type-etiqueta-weight);
+  }
+
+  .hero__qr {
+    width: 18px;
+    height: 18px;
+    flex: none;
+  }
+
+  .hero__titulo {
+    margin: 0;
+    font-size: clamp(1.875rem, 0.7rem + 4.6vw, 4.5rem);
+    font-size: clamp(1.875rem, 9.6cqi, 4.5rem);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    transition-delay: 0ms;
+  }
+
+  .hero__linea {
+    display: block;
+  }
+
+  .hero__linea--marca {
+    color: var(--primary);
+  }
+
+  .hero__texto {
+    max-width: 38rem;
+    margin: var(--space-6) 0 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+    text-wrap: pretty;
+    transition-delay: 80ms;
+  }
+
+  .hero__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-8);
+    transition-delay: 160ms;
+  }
+
+  .hero__acciones :global(.btn) {
+    max-width: 100%;
+  }
+
+  .hero__pruebas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: var(--space-5) 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-s-size);
+    line-height: var(--type-cuerpo-s-line);
+    transition-delay: 240ms;
+  }
+
+  .hero__pruebas li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .hero__pruebas svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--primary);
+  }
+
+  .hero__escenario {
+    position: relative;
+    width: min(100%, 348px);
+    margin-inline: auto;
+    min-width: 0;
+    padding-top: var(--space-6);
+  }
+
+  .hero__halo {
+    position: absolute;
+    z-index: 0;
+    top: 48%;
+    left: 42%;
+    width: min(460px, 150%);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--primary-container);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .hero__acento {
+    position: absolute;
+    z-index: 1;
+    top: 2%;
+    right: 0;
+    width: 68px;
+    aspect-ratio: 1;
+    border-radius: var(--radius-lg);
+    background: var(--accent);
+    pointer-events: none;
+  }
+
+  .hero__telefono {
+    position: relative;
+    z-index: 2;
+    width: min(280px, calc(100% - 52px));
+  }
+
+  .solo-lectura {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 560px) {
+    .hero__acciones {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (min-width: 960px) {
+    .hero__grid {
+      grid-template-columns: minmax(0, 1fr) 352px;
+      column-gap: var(--space-10);
+      padding-block: var(--space-16);
+    }
+
+    .hero__escenario {
+      width: 100%;
+    }
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .hero__acciones :global(.btn-outline):hover {
+      background: var(--primary-container);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero__acento {
+      animation: flotar 5.5s ease-in-out infinite;
+    }
+  }
+
+  @keyframes flotar {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-12px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__acento {
+      animation: none;
+      transform: none;
+    }
+  }
+</style>

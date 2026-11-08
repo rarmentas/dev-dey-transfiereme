@@ -1,7 +1,272 @@
 ---
-// AsiDeFacil.astro — Placeholder (será completado por el builder correspondiente)
 ---
 
-<section id="como-funciona">
-  <h2></h2>
+<section id="como-funciona" aria-labelledby="como-titulo">
+  <div class="container facil">
+    <header class="facil__encabezado">
+      <h2 id="como-titulo">Así de fácil</h2>
+      <p>Del monto al aviso de pago, en tres pasos.</p>
+    </header>
+
+    <ol class="facil__pasos">
+      <li class="facil__paso reveal">
+        <div class="facil__cara">
+          <span class="facil__icono" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 10.5 12 4l8 6.5"></path>
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 10.2V20h12v-9.8"></path>
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M10 20v-5h4v5"></path>
+            </svg>
+          </span>
+          <div class="facil__texto">
+            <h3>1. Arma la venta</h3>
+            <p>Escribe el monto; el concepto y la referencia son opcionales.</p>
+          </div>
+        </div>
+      </li>
+
+      <li class="facil__paso reveal">
+        <div class="facil__cara">
+          <span class="facil__icono" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M5 5h5.2v5.2H5zM13.8 5H19v5.2h-5.2zM5 13.8h5.2V19H5z"></path>
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M13.8 13.8H16v2.2h-2.2zM17 13.8h2V16h-2zM13.8 17H16v2h-2.2zM17 17h2v2h-2z"
+              ></path>
+            </svg>
+          </span>
+          <div class="facil__texto">
+            <h3>2. Tu cliente paga</h3>
+            <p>Escanea el QR con la app de su banco o recibe la notificación de cobro.</p>
+          </div>
+        </div>
+      </li>
+
+      <li class="facil__paso reveal">
+        <div class="facil__cara">
+          <span class="facil__icono" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle
+                cx="12"
+                cy="12"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"></circle>
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m8.4 12.2 2.4 2.4 4.8-5.1"></path>
+            </svg>
+          </span>
+          <div class="facil__texto">
+            <h3>3. Te avisamos</h3>
+            <p>Verás "¡Te pagaron!" con el monto en cuanto llega el pago.</p>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
 </section>
+
+<style>
+  #como-funciona {
+    background: var(--surface-2);
+    scroll-margin-top: 80px;
+  }
+
+  .facil {
+    padding-block: var(--space-16);
+  }
+
+  .facil__encabezado {
+    max-width: 40rem;
+    margin-bottom: var(--space-10);
+  }
+
+  .facil__encabezado h2 {
+    margin: 0;
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .facil__encabezado p {
+    max-width: 36rem;
+    margin: var(--space-3) 0 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-l-size);
+    line-height: var(--type-cuerpo-l-line);
+  }
+
+  .facil__pasos {
+    position: relative;
+    display: grid;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .facil__paso {
+    min-width: 0;
+  }
+
+  .facil__paso:nth-child(1) {
+    transition-delay: 0ms;
+  }
+
+  .facil__paso:nth-child(2) {
+    transition-delay: 120ms;
+  }
+
+  .facil__paso:nth-child(3) {
+    transition-delay: 240ms;
+  }
+
+  .facil__cara {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-5);
+    height: 100%;
+    padding: var(--space-6);
+    border: 1px solid var(--outline-soft);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--elev-1);
+  }
+
+  .facil__icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    flex: none;
+    border-radius: var(--radius-md);
+    background: var(--primary-container);
+    color: var(--primary);
+  }
+
+  .facil__icono svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .facil__texto {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .facil__texto h3 {
+    margin: 0;
+    font-size: var(--type-titulo-2-size);
+    line-height: var(--type-titulo-2-line);
+    font-weight: var(--type-titulo-2-weight);
+    letter-spacing: -0.01em;
+  }
+
+  .facil__texto p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: var(--type-cuerpo-size);
+    line-height: var(--type-cuerpo-line);
+  }
+
+  @media (min-width: 900px) {
+    .facil__pasos {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-6);
+    }
+
+    .facil__pasos::before {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      top: calc(var(--space-6) + 28px);
+      left: 12%;
+      right: 12%;
+      height: 2px;
+      border-radius: var(--radius-full);
+      background: var(--primary);
+      opacity: 0.35;
+      transform: scaleX(1);
+      transform-origin: left center;
+      pointer-events: none;
+    }
+
+    .facil__paso {
+      position: relative;
+      z-index: 1;
+    }
+  }
+
+  @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+    .facil__pasos::before {
+      animation: trazo-pasos 1.05s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    }
+  }
+
+  @keyframes trazo-pasos {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .facil__cara {
+      transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms ease;
+    }
+
+    .facil__paso:hover .facil__cara {
+      transform: translateY(-4px);
+      box-shadow: var(--elev-3);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .facil__cara,
+    .facil__pasos::before {
+      animation: none;
+      transform: none;
+    }
+  }
+</style>

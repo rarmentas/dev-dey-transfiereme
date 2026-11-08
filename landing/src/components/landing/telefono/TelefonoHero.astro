@@ -1,0 +1,441 @@
+---
+const qr =
+  "M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM11 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM16 0h1v1h-1zM17 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM14 1h1v1h-1zM20 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM10 2h1v1h-1zM11 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM17 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM14 3h1v1h-1zM16 3h1v1h-1zM17 3h1v1h-1zM18 3h1v1h-1zM20 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM9 4h1v1h-1zM11 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM18 4h1v1h-1zM20 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM11 5h1v1h-1zM14 5h1v1h-1zM20 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM15 6h1v1h-1zM16 6h1v1h-1zM17 6h1v1h-1zM18 6h1v1h-1zM19 6h1v1h-1zM20 6h1v1h-1zM10 7h1v1h-1zM12 7h1v1h-1zM0 8h1v1h-1zM1 8h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM17 8h1v1h-1zM19 8h1v1h-1zM20 8h1v1h-1zM0 9h1v1h-1zM1 9h1v1h-1zM7 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM12 9h1v1h-1zM14 9h1v1h-1zM17 9h1v1h-1zM18 9h1v1h-1zM20 9h1v1h-1zM2 10h1v1h-1zM3 10h1v1h-1zM4 10h1v1h-1zM6 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM15 10h1v1h-1zM16 10h1v1h-1zM0 11h1v1h-1zM1 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM8 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM16 11h1v1h-1zM19 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM17 12h1v1h-1zM19 12h1v1h-1zM20 12h1v1h-1zM9 13h1v1h-1zM13 13h1v1h-1zM14 13h1v1h-1zM16 13h1v1h-1zM19 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM8 14h1v1h-1zM12 14h1v1h-1zM14 14h1v1h-1zM17 14h1v1h-1zM18 14h1v1h-1zM19 14h1v1h-1zM20 14h1v1h-1zM0 15h1v1h-1zM6 15h1v1h-1zM8 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM16 15h1v1h-1zM20 15h1v1h-1zM0 16h1v1h-1zM2 16h1v1h-1zM3 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM11 16h1v1h-1zM15 16h1v1h-1zM16 16h1v1h-1zM19 16h1v1h-1zM20 16h1v1h-1zM0 17h1v1h-1zM2 17h1v1h-1zM3 17h1v1h-1zM4 17h1v1h-1zM6 17h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM11 17h1v1h-1zM13 17h1v1h-1zM14 17h1v1h-1zM15 17h1v1h-1zM17 17h1v1h-1zM19 17h1v1h-1zM20 17h1v1h-1zM0 18h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM13 18h1v1h-1zM15 18h1v1h-1zM16 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM20 18h1v1h-1zM0 19h1v1h-1zM6 19h1v1h-1zM10 19h1v1h-1zM11 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM17 19h1v1h-1zM18 19h1v1h-1zM19 19h1v1h-1zM0 20h1v1h-1zM1 20h1v1h-1zM2 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM5 20h1v1h-1zM6 20h1v1h-1zM8 20h1v1h-1zM17 20h1v1h-1zM19 20h1v1h-1zM20 20h1v1h-1z";
+---
+
+<div class="telefono" aria-hidden="true">
+  <div class="telefono__marco">
+    <div class="telefono__pantalla">
+      <span class="telefono__auricular" aria-hidden="true"></span>
+
+      <div class="escena escena--nuevo">
+        <p class="escena__etiqueta">Nuevo cobro</p>
+        <p class="monto monto--quieto">
+          <span class="monto__signo">$</span>120<span class="monto__centavos">.00</span>
+        </p>
+        <div class="cobrar">Cobrar</div>
+      </div>
+
+      <div class="escena escena--espera">
+        <div class="qr-tarjeta">
+          <svg class="qr" viewBox="-1 -1 23 23" aria-hidden="true">
+            <path fill="currentColor" d={qr} />
+          </svg>
+        </div>
+        <p class="espera">
+          <span class="espera__punto" aria-hidden="true"></span>
+          Esperando pago
+        </p>
+        <div class="barra" aria-hidden="true">
+          <span class="barra__llenado"></span>
+        </div>
+      </div>
+
+      <div class="escena escena--pagado" data-escena="pagado">
+        <svg class="ok" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="30" fill="var(--paid)" />
+          <path
+            class="ok__check"
+            d="M18 33.5 27.5 43 46 22"
+            fill="none"
+            stroke="var(--surface)"
+            stroke-width="4.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            pathLength="1"
+            stroke-dasharray="1"
+            stroke-dashoffset="0"></path>
+        </svg>
+        <p class="escena__aviso">¡Te pagaron!</p>
+        <p class="monto">
+          <span class="monto__signo">$</span><span data-entero>120</span><span
+            class="monto__centavos"
+            data-centavos>.00</span>
+        </p>
+        <p class="escena__meta">Juan P. · BBVA · 13:42</p>
+        <div class="nuevo">Nuevo cobro</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const entero = document.querySelector<HTMLElement>("[data-entero]");
+  const centavos = document.querySelector<HTMLElement>("[data-centavos]");
+  const escena = document.querySelector<HTMLElement>("[data-escena='pagado']");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (entero && centavos && escena && !reduce) {
+    const ciclo = 7000;
+    const inicio = 0.64;
+    const fin = 0.78;
+
+    const pintar = (valor: number) => {
+      const texto = (valor >= 119.995 ? 120 : valor).toFixed(2);
+      const punto = texto.indexOf(".");
+      entero.textContent = texto.slice(0, punto);
+      centavos.textContent = texto.slice(punto);
+    };
+
+    const frame = () => {
+      const animacion = escena.getAnimations()[0];
+      const tiempo = animacion?.currentTime;
+      const ms = typeof tiempo === "number" ? tiempo : performance.now();
+      const t = (ms % ciclo) / ciclo;
+      let valor = 0;
+      if (t >= fin && t < 0.96) {
+        valor = 120;
+      } else if (t >= inicio && t < fin) {
+        const p = (t - inicio) / (fin - inicio);
+        valor = 120 * (1 - (1 - p) ** 3);
+      }
+      pintar(valor);
+      requestAnimationFrame(frame);
+    };
+
+    requestAnimationFrame(frame);
+  }
+</script>
+
+<style>
+  .telefono {
+    width: 100%;
+    --ciclo: 7s;
+  }
+
+  .telefono__marco {
+    width: 100%;
+    aspect-ratio: 1 / 2;
+    max-height: 560px;
+    padding: 10px;
+    border-radius: var(--radius-xl);
+    background: var(--ink);
+    box-shadow: var(--elev-3);
+  }
+
+  .telefono__pantalla {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    background: var(--primary);
+    color: var(--on-primary);
+    container-type: inline-size;
+  }
+
+  .telefono__auricular {
+    position: absolute;
+    z-index: 3;
+    top: 10px;
+    left: 50%;
+    width: 58px;
+    height: 5px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-primary) 42%, transparent);
+    transform: translateX(-50%);
+  }
+
+  .escena {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    padding: 36px var(--space-4) var(--space-5);
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .escena--nuevo,
+  .escena--espera {
+    opacity: 0;
+  }
+
+  .escena--pagado {
+    opacity: 1;
+  }
+
+  .escena__etiqueta,
+  .escena__aviso,
+  .escena__meta {
+    margin: 0;
+  }
+
+  .escena__etiqueta {
+    font-family: var(--font-ui);
+    font-size: var(--type-etiqueta-size);
+    line-height: var(--type-etiqueta-line);
+    font-weight: var(--type-etiqueta-weight);
+    letter-spacing: 0.01em;
+  }
+
+  .escena__aviso {
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 12cqi, 1.5rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .escena__meta {
+    font-size: var(--type-cuerpo-s-size);
+    line-height: var(--type-cuerpo-s-line);
+    font-weight: 600;
+  }
+
+  .monto {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.7rem, 18cqi, 2.35rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .monto__signo {
+    margin-right: 1px;
+  }
+
+  .monto__centavos {
+    font-size: 0.62em;
+    letter-spacing: 0;
+    color: var(--on-primary);
+  }
+
+  .cobrar,
+  .nuevo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 48px;
+    min-height: 48px;
+    margin-top: var(--space-2);
+  }
+
+  .cobrar {
+    width: min(100%, 196px);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: var(--elev-2);
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 9cqi, 1.25rem);
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .nuevo {
+    padding: 0 var(--space-6);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--primary);
+    font-family: var(--font-ui);
+    font-size: var(--type-boton-size);
+    font-weight: var(--type-boton-weight);
+    line-height: var(--type-boton-line);
+  }
+
+  .qr-tarjeta {
+    width: min(168px, 78%);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+  }
+
+  .qr {
+    width: 100%;
+    height: auto;
+  }
+
+  .espera {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    background: var(--pending-container);
+    color: var(--pending-text);
+    font-size: var(--type-etiqueta-size);
+    line-height: var(--type-etiqueta-line);
+    font-weight: var(--type-etiqueta-weight);
+  }
+
+  .espera__punto {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--pending);
+  }
+
+  .barra {
+    width: min(168px, 78%);
+    height: 6px;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-primary) 28%, transparent);
+  }
+
+  .barra__llenado {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--pending);
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+
+  .ok {
+    width: min(84px, 36%);
+    height: auto;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .telefono__marco {
+      background: var(--surface);
+      box-shadow: var(--elev-3), inset 0 0 0 1px var(--outline);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .escena--nuevo {
+      animation: escena-nuevo var(--ciclo) linear infinite;
+    }
+
+    .escena--espera {
+      animation: escena-espera var(--ciclo) linear infinite;
+    }
+
+    .escena--pagado {
+      animation: escena-pagado var(--ciclo) linear infinite;
+    }
+
+    .cobrar {
+      animation: pulsar-cobrar var(--ciclo) linear infinite;
+    }
+
+    .barra__llenado {
+      animation: barra-espera var(--ciclo) linear infinite;
+    }
+
+    .ok__check {
+      animation: trazo-check var(--ciclo) linear infinite;
+    }
+  }
+
+  @keyframes escena-nuevo {
+    0%,
+    28% {
+      opacity: 1;
+      transform: none;
+    }
+    34%,
+    90% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    96%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes escena-espera {
+    0%,
+    28% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    34%,
+    56% {
+      opacity: 1;
+      transform: none;
+    }
+    64%,
+    100% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+
+  @keyframes escena-pagado {
+    0%,
+    56% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    64%,
+    92% {
+      opacity: 1;
+      transform: none;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+
+  @keyframes pulsar-cobrar {
+    0%,
+    15% {
+      transform: scale(1);
+    }
+    18% {
+      transform: scale(0.94);
+    }
+    22%,
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes barra-espera {
+    0%,
+    32% {
+      transform: scaleX(0.06);
+    }
+    56% {
+      transform: scaleX(1);
+    }
+    66%,
+    100% {
+      transform: scaleX(0.06);
+    }
+  }
+
+  @keyframes trazo-check {
+    0%,
+    62% {
+      stroke-dashoffset: 1;
+    }
+    74%,
+    94% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .escena--nuevo,
+    .escena--espera {
+      display: none;
+    }
+
+    .escena--pagado,
+    .ok__check,
+    .barra__llenado,
+    .cobrar {
+      animation: none;
+      transform: none;
+    }
+  }
+</style>
