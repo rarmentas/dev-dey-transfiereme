@@ -12,7 +12,7 @@ El middleware `CierraApiSinSesionMiddleware` responde `403` con `{"detail": "Deb
 | `/api/sesion/alta/` | `POST` | Alta pública (solicitar y confirmar código) |
 | `/api/sesion/olvido/` | `POST` | Restablecimiento de contraseña por código |
 | `/api/sesion/estado/` | Cualquiera | El propio endpoint devuelve `403` sin sesión |
-| `/api/webhooks/` | Cualquiera | Avisos firmados de pey (sin login). La ruta concreta es `POST /api/webhooks/pey/` |
+| `/api/webhooks/` | Cualquiera | Avisos de pey o del adaptador de desarrollo (sin login). Rutas: `POST /api/webhooks/pey/` y `POST /api/webhooks/desarrollo/` |
 | `/api/salud/` | `GET` | Comprobación de despliegue y base de datos |
 
 Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión activa antes de ejecutar la vista.
@@ -25,7 +25,15 @@ Cualquier otra ruta de la API (por ejemplo `POST /api/cobro/`) requiere sesión 
 
 ## Webhook de pey
 
-`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`. En QR general, el `codiQrId` del aviso debe coincidir con el `pey_qr_id` del cobro persistido en el alta; el movimiento pagado se crea con ese aviso, no en el `POST /api/cobro/qr-general/`.
+`POST /api/webhooks/pey/` no pide sesión ni CSRF. Verifica la firma Standard Webhooks sobre el cuerpo crudo con `PEY_WEBHOOK_SECRET`. Si el secreto está vacío o la firma no es válida, responde `401` con `{"detalle": "firma inválida"}` y no escribe nada. Un aviso legible responde `200` con `{"estado": ...}`: `aplicado`, `duplicado` (mismo `webhook-id`), `duplicado_transaccion`, `sin_cobro`, `transicion_invalida` o `tipo_desconocido`. La misma ruta recibe `codi.qr.payment_received` y `codi.pn.payment_received`. En QR general, el `codiQrId` del aviso debe coincidir con el `pey_qr_id` del cobro persistido en el alta; el movimiento pagado se crea con ese aviso, no en el `POST /api/cobro/qr-general/`. Los movimientos aplicados aquí llevan `origen_pey` y cuentan en el total confirmado del tablero.
+
+## Webhook del adaptador de desarrollo
+
+`POST /api/webhooks/desarrollo/` solo responde cuando el servidor está en modo adaptador de desarrollo (`DEBUG` y `PEY_ADAPTADOR=desarrollo`, sin `PEY_API_KEY`). Fuera de ese modo responde `404` y no registra avisos. No pide sesión ni CSRF; **no** verifica firma ni usa secretos de plataforma.
+
+Encabezado obligatorio: `webhook-id` (igual que en pey). Cuerpo JSON con la misma forma que un aviso real (`type`, `amount`, `transactionId`, `codiQrId` para QR, etc.). Respuestas `200` con los mismos valores de `estado` que la ruta de pey (`aplicado`, `duplicado`, `duplicado_transaccion`, …).
+
+En QR general puede simular varios pagos sobre el mismo `pey_qr_id`: cada `transactionId` distinto crea otro movimiento `pagado` con el monto del aviso; repetir el mismo `transactionId` devuelve `duplicado_transaccion` sin duplicar el movimiento. Los movimientos quedan con `origen_desarrollo` y aparecen en la sección **desarrollo** del tablero, no en el total confirmado. Para armar cuerpos de prueba puede usar `AdaptadorDesarrollo.cuerpo_aviso_qr_pagado` en el backend local.
 
 ## Entrar
 
@@ -174,7 +182,7 @@ Cuerpo JSON: `{}` (sin campos de negocio obligatorios).
 
 Respuesta `201` en la primera alta: `{ "qr_string": "...", "pey_qr_id": "..." }`. Si el QR general ya existe para ese comercio, `200` con los mismos campos (sin volver a llamar a pey). Cuenta inactiva: `400` con `{"detail": "...", "tipo": "INVALID_STATE"}` y sin persistir cobro. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 
-El alta no crea movimientos; los pagos sobre ese QR se registran vía webhook (historias posteriores).
+El alta no crea movimientos; en desarrollo los pagos simulados entran por `POST /api/webhooks/desarrollo/`; en integración real, por `POST /api/webhooks/pey/`.
 
 ## Alta de venta (QR)
 

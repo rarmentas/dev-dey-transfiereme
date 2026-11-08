@@ -49,6 +49,11 @@ def validar_qr(
     )
 
 
+def validar_monto_pago(monto: Decimal) -> Decimal:
+    """Monto positivo de un aviso simulado o real (hasta 2 decimales)."""
+    return _monto(monto, tope=_TOPE_PN, exclusivo_tope=False, permitir_cero=False)
+
+
 def validar_notificacion(
     *,
     monto: Decimal,
