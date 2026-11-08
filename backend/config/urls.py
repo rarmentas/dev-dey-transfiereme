@@ -8,6 +8,7 @@ urlpatterns = [
     path("api/cuenta/", include("ambito.urls")),
     path("api/sesion/", include("sesion.urls")),
     path("api/movimientos/", include("movimientos.urls")),
+    path("api/cobro/", include("movimientos.cobro_urls")),
     path("api/webhooks/", include("webhooks.urls")),
     re_path(r"^(?P<ruta>.*)$", aplicacion, name="aplicacion"),
 ]

@@ -38,6 +38,7 @@ class CorrelacionTests(TestCase):
             datos["pey_transaction_id"] = "TX-DEFAULT"
         else:
             datos["pey_qr_id"] = "QR-DEFAULT"
+            datos.setdefault("qr_string", "qr-test-dummy")
         datos.update(kwargs)
         return Cobro.objects.create(**datos)
 

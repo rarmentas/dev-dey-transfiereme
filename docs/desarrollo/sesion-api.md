@@ -97,7 +97,21 @@ Cuerpo JSON: `{ "clabe": "012180015826225713" }` (18 dígitos con dígito verifi
 
 Respuesta `200`: `{ "clabe": "<guardada>" }`. CLABE inválida: `400` con `{"detail": "Indique una CLABE válida de 18 dígitos."}`. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
 
-Tras guardar una CLABE válida, en la misma petición `POST /api/cuenta/clabe/` `GuardarClabeView` llama a `sincronizar_codi_status` antes de responder: el adaptador pey configurado actualiza el `codiStatus` persistido en `pey_codi_status` (`pending` / `active`; en desarrollo, sin red a pey). El alta de QR general usa `preparar_alta_qr_general`, que lee ese campo vía `cuenta_esta_active` y, si la cuenta no está activa, devuelve un error controlado. La respuesta del POST sigue siendo solo `{"clabe": ...}`; no expone secretos de plataforma.
+Tras guardar una CLABE válida, en la misma petición `POST /api/cuenta/clabe/` `GuardarClabeView` llama a `sincronizar_codi_status` antes de responder: el adaptador pey configurado actualiza el `codiStatus` persistido en `pey_codi_status` (`pending` / `active`; en desarrollo, sin red a pey). La respuesta del POST sigue siendo solo `{"clabe": ...}`; no expone secretos de plataforma.
+
+## Cobro: alta QR general
+
+El servidor crea o devuelve el QR general del comercio de la membresía; no acepta `comercio` ni `comercio_id` en el cuerpo. Antes de crear el cobro llama a `preparar_alta_qr_general`, que exige `pey_codi_status=active` (`cuenta_esta_active`). En desarrollo ese estado lo deja `sincronizar_codi_status`: hace falta CLABE válida y `semilla_active_dev`. La marca sola no alcanza. La respuesta no incluye secretos de plataforma.
+
+| Método | Ruta | Autenticación |
+| --- | --- | --- |
+| `POST` | `/api/cobro/qr-general/` | Sesión activa |
+
+Cuerpo JSON: `{}` (sin campos de negocio obligatorios).
+
+Respuesta `201` en la primera alta: `{ "qr_string": "...", "pey_qr_id": "..." }`. Si el QR general ya existe para ese comercio, `200` con los mismos campos (sin volver a llamar a pey). Cuenta inactiva: `400` con `{"detail": "...", "tipo": "INVALID_STATE"}` y sin persistir cobro. Comercio en el cuerpo: `400` (ámbito). Sin sesión: `403` del middleware. Sin membresía: `403` con el mensaje de `SinAmbitoError`.
+
+El alta no crea movimientos; los pagos sobre ese QR se registran vía webhook (historias posteriores).
 
 ## Semilla de desarrollo
 
