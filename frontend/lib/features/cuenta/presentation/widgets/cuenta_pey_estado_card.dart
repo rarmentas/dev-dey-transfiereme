@@ -166,10 +166,17 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
       final repo = ref.read(cuentaEstadoRepositoryProvider);
       final estado = await repo.sincronizar();
       ref.invalidate(cuentaEstadoProvider);
-      if (context.mounted && estado.puedeCobrar) {
+      if (!context.mounted) {
+        return;
+      }
+      if (estado.puedeCobrar) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Tu cuenta ya está activa para cobrar.')),
         );
+        return;
+      }
+      if (estado.fase == 'pendiente_activacion') {
+        await _mostrarDetalleActivacion(context, estado);
       }
     } on CuentaPeyApiException catch (error) {
       if (context.mounted) {
@@ -187,4 +194,32 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
       }
     }
   }
+}
+
+Future<void> _mostrarDetalleActivacion(
+  BuildContext context,
+  EstadoCuentaPey estado,
+) {
+  final tema = Theme.of(context);
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Activación de tu CLABE'),
+        content: SingleChildScrollView(
+          child: Text(
+            mensajeActivacionClabe(estado),
+            style: tema.textTheme.bodyLarge,
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('cerrar_activacion_clabe'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      );
+    },
+  );
 }

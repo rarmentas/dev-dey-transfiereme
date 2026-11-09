@@ -44,5 +44,8 @@ void main() {
     );
     expect(mensajeSiguientePaso(sinClabe), contains('Paso 1'));
     expect(mensajeSiguientePaso(paso3), contains('Paso 3'));
+    expect(mensajeSiguientePaso(paso3), contains('Revisar estado'));
+    expect(mensajeActivacionClabe(paso3), contains('····5713'));
+    expect(mensajeActivacionClabe(paso3), contains('Banco de México'));
   });
 }

@@ -43,6 +43,25 @@ String etiquetaFase(EstadoCuentaPey estado) {
   };
 }
 
+/// Explicación de la espera. Solo se muestra en el diálogo, tras sincronizar y seguir pendiente.
+String mensajeActivacionClabe(EstadoCuentaPey estado) {
+  final sufijo = _ultimosCuatro(estado.clabeEnmascarada);
+  final cuenta = sufijo.isEmpty ? 'tu CLABE' : 'tu CLABE ····$sufijo';
+  return 'Registramos $cuenta. La primera vez que das de alta una CLABE, '
+      'Banco de México tarda hasta 5 días hábiles en activarla para cobrar con CoDi. '
+      'No tienes que hacer nada más. Cuando quede lista, podrás cobrar.\n\n'
+      'Si registras otra CLABE, esa cuenta vuelve a esperar. '
+      'Puedes revisar el estado, pero no cambia al momento.';
+}
+
+String _ultimosCuatro(String enmascarada) {
+  final digitos = enmascarada.replaceAll(RegExp(r'\D'), '');
+  if (digitos.length < 4) {
+    return '';
+  }
+  return digitos.substring(digitos.length - 4);
+}
+
 String detalleCuentaPey(EstadoCuentaPey estado) {
   final partes = <String>[];
   if (estado.clabeEnmascarada.isNotEmpty) {
