@@ -28,7 +28,7 @@ String mensajeSiguientePaso(EstadoCuentaPey? estado) {
     2 =>
       'Paso 2 de 3: registra el titular y la entidad (persona o negocio) en pey.',
     3 =>
-      'Paso 3 de 3: espera que pey active tu cuenta. Usa «Revisar estado» para actualizar.',
+      'Banco de México tarda hasta 5 días hábiles en activar tu CLABE. Toca Verificar para el detalle.',
     _ => kMensajeQrAlActivar,
   };
 }
@@ -41,6 +41,25 @@ String etiquetaFase(EstadoCuentaPey estado) {
     'activa' => 'Cuenta activa',
     _ => estado.fase,
   };
+}
+
+/// Explicación larga de la espera. Vive en el diálogo de «Verificar», no en la tarjeta.
+String mensajeActivacionClabe(EstadoCuentaPey estado) {
+  final sufijo = _ultimosCuatro(estado.clabeEnmascarada);
+  final cuenta = sufijo.isEmpty ? 'tu CLABE' : 'tu CLABE ····$sufijo';
+  return 'Registramos $cuenta. La primera vez que das de alta una CLABE, '
+      'Banco de México tarda hasta 5 días hábiles en activarla para cobrar con CoDi. '
+      'No tienes que hacer nada más. Cuando quede lista, podrás cobrar.\n\n'
+      'Si registras otra CLABE, esa cuenta vuelve a esperar. '
+      'Puedes revisar el estado, pero no cambia al momento.';
+}
+
+String _ultimosCuatro(String enmascarada) {
+  final digitos = enmascarada.replaceAll(RegExp(r'\D'), '');
+  if (digitos.length < 4) {
+    return '';
+  }
+  return digitos.substring(digitos.length - 4);
 }
 
 String detalleCuentaPey(EstadoCuentaPey estado) {

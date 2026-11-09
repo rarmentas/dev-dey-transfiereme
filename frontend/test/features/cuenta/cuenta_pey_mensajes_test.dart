@@ -43,6 +43,8 @@ void main() {
       peyBankAccountIdSufijo: 'Q0P',
     );
     expect(mensajeSiguientePaso(sinClabe), contains('Paso 1'));
-    expect(mensajeSiguientePaso(paso3), contains('Paso 3'));
+    expect(mensajeSiguientePaso(paso3), contains('5 días hábiles'));
+    expect(mensajeActivacionClabe(paso3), contains('····5713'));
+    expect(mensajeActivacionClabe(paso3), contains('Banco de México'));
   });
 }

@@ -82,7 +82,7 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
                       ),
                     ),
                   ),
-                if (!compacto) ...[
+                if (!compacto && estado.paso != 3) ...[
                   const SizedBox(height: TfSpace.s2),
                   Text(
                     mensajeSiguientePaso(estado),
@@ -106,10 +106,10 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
                   ),
                 ] else if (estado.paso == 3) ...[
                   OutlinedButton.icon(
-                    key: const Key('boton_revisar_estado_cuenta'),
-                    onPressed: () => _sincronizar(ref, context),
-                    icon: const Icon(Icons.sync_rounded, size: 20),
-                    label: const Text('Revisar estado'),
+                    key: const Key('boton_verificar_activacion'),
+                    onPressed: () => _abrirVerificacion(ref, context, estado),
+                    icon: const Icon(Icons.info_outline_rounded, size: 20),
+                    label: const Text('Verificar'),
                   ),
                 ],
               ],
@@ -161,30 +161,121 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
     ref.invalidate(cuentaEstadoProvider);
   }
 
-  Future<void> _sincronizar(WidgetRef ref, BuildContext context) async {
-    try {
-      final repo = ref.read(cuentaEstadoRepositoryProvider);
-      final estado = await repo.sincronizar();
-      ref.invalidate(cuentaEstadoProvider);
-      if (context.mounted && estado.puedeCobrar) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tu cuenta ya está activa para cobrar.')),
+  Future<void> _abrirVerificacion(
+    WidgetRef ref,
+    BuildContext context,
+    EstadoCuentaPey estado,
+  ) async {
+    final activo = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return _DialogoActivacionClabe(
+          estado: estado,
+          onRevisar: () => ref.read(cuentaEstadoRepositoryProvider).sincronizar(),
         );
+      },
+    );
+    if (!context.mounted || activo != true) {
+      if (activo == false) {
+        ref.invalidate(cuentaEstadoProvider);
       }
-    } on CuentaPeyApiException catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.mensaje)),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No pudimos sincronizar. Inténtalo de nuevo.'),
-          ),
-        );
-      }
+      return;
     }
+    ref.invalidate(cuentaEstadoProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Tu cuenta ya está activa para cobrar.')),
+    );
+  }
+}
+
+class _DialogoActivacionClabe extends StatefulWidget {
+  const _DialogoActivacionClabe({
+    required this.estado,
+    required this.onRevisar,
+  });
+
+  final EstadoCuentaPey estado;
+  final Future<EstadoCuentaPey> Function() onRevisar;
+
+  @override
+  State<_DialogoActivacionClabe> createState() => _DialogoActivacionClabeState();
+}
+
+class _DialogoActivacionClabeState extends State<_DialogoActivacionClabe> {
+  var _revisando = false;
+  String? _error;
+
+  Future<void> _revisar() async {
+    if (_revisando) {
+      return;
+    }
+    setState(() {
+      _revisando = true;
+      _error = null;
+    });
+    try {
+      final estado = await widget.onRevisar();
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(estado.puedeCobrar);
+    } on CuentaPeyApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _revisando = false;
+        _error = error.mensaje;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _revisando = false;
+        _error = 'No pudimos sincronizar. Inténtalo de nuevo.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Activación de tu CLABE'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              mensajeActivacionClabe(widget.estado),
+              style: tema.textTheme.bodyLarge,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: TfSpace.s3),
+              Text(
+                _error!,
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tema.colorScheme.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('cerrar_activacion_clabe'),
+          onPressed: _revisando ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
+        ),
+        FilledButton(
+          key: const Key('revisar_estado_activacion'),
+          onPressed: _revisando ? null : _revisar,
+          child: Text(_revisando ? 'Revisando…' : 'Revisar estado'),
+        ),
+      ],
+    );
   }
 }
