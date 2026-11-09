@@ -18,45 +18,106 @@ const _pendiente = EstadoCuentaPey(
   peyBankAccountIdSufijo: 'PADD',
 );
 
-class _RepoQuieto extends CuentaEstadoRepository {
-  _RepoQuieto() : super(Dio(BaseOptions(baseUrl: 'http://test')));
+const _activa = EstadoCuentaPey(
+  fase: 'activa',
+  paso: null,
+  codiStatus: 'active',
+  puedeCobrar: true,
+  clabeEnmascarada: '**************3553',
+  tieneCuentaPey: true,
+  peyBankAccountIdSufijo: 'PADD',
+);
+
+class _RepoControlado extends CuentaEstadoRepository {
+  _RepoControlado(this.resultado) : super(Dio(BaseOptions(baseUrl: 'http://test')));
+
+  EstadoCuentaPey resultado;
+  Object? error;
+  var llamadas = 0;
 
   @override
-  Future<EstadoCuentaPey> sincronizar() async => _pendiente;
+  Future<EstadoCuentaPey> sincronizar() async {
+    llamadas++;
+    if (error != null) {
+      throw error!;
+    }
+    return resultado;
+  }
+}
+
+Future<void> _montar(WidgetTester tester, _RepoControlado repo) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        cuentaEstadoProvider.overrideWith((ref) async => _pendiente),
+        cuentaEstadoRepositoryProvider.overrideWithValue(repo),
+      ],
+      child: MaterialApp(
+        theme: TfTheme.light,
+        home: const Scaffold(body: CuentaPeyEstadoCard(compacto: true)),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('Verificar abre el detalle y Cerrar lo quita de la vista', (
+  testWidgets('la tarjeta pending conserva Revisar estado y no explica los 5 días', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          cuentaEstadoProvider.overrideWith((ref) async => _pendiente),
-          cuentaEstadoRepositoryProvider.overrideWithValue(_RepoQuieto()),
-        ],
-        child: MaterialApp(
-          theme: TfTheme.light,
-          home: const Scaffold(body: CuentaPeyEstadoCard(compacto: true)),
-        ),
-      ),
-    );
+    await _montar(tester, _RepoControlado(_pendiente));
+
+    expect(find.text('Revisar estado'), findsOneWidget);
+    expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
+    expect(find.text('Verificar'), findsNothing);
+    expect(find.textContaining('5 días hábiles'), findsNothing);
+    expect(find.textContaining('Pendiente de activación'), findsWidgets);
+  });
+
+  testWidgets('si sigue pendiente, el detalle sale después de sincronizar', (
+    tester,
+  ) async {
+    final repo = _RepoControlado(_pendiente);
+    await _montar(tester, repo);
+
+    await tester.tap(find.text('Revisar estado'));
     await tester.pumpAndSettle();
 
-    expect(find.text('5 días hábiles'), findsNothing);
-    expect(find.text('Verificar'), findsOneWidget);
-
-    await tester.tap(find.text('Verificar'));
-    await tester.pumpAndSettle();
-
+    expect(repo.llamadas, 1);
     expect(find.text('Activación de tu CLABE'), findsOneWidget);
     expect(find.textContaining('····3553'), findsOneWidget);
     expect(find.textContaining('5 días hábiles'), findsOneWidget);
+    expect(find.byKey(const Key('revisar_estado_activacion')), findsNothing);
 
     await tester.tap(find.byKey(const Key('cerrar_activacion_clabe')));
     await tester.pumpAndSettle();
 
     expect(find.text('Activación de tu CLABE'), findsNothing);
-    expect(find.text('Verificar'), findsOneWidget);
+    expect(find.text('Revisar estado'), findsOneWidget);
+    expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
+  });
+
+  testWidgets('si queda activa, avisa y no abre el detalle', (tester) async {
+    final repo = _RepoControlado(_activa);
+    await _montar(tester, repo);
+
+    await tester.tap(find.text('Revisar estado'));
+    await tester.pumpAndSettle();
+
+    expect(repo.llamadas, 1);
+    expect(find.text('Tu cuenta ya está activa para cobrar.'), findsOneWidget);
+    expect(find.text('Activación de tu CLABE'), findsNothing);
+  });
+
+  testWidgets('si la sincronización falla, no abre el detalle', (tester) async {
+    final repo = _RepoControlado(_pendiente)
+      ..error = CuentaPeyApiException('Espere antes de volver a sincronizar.');
+    await _montar(tester, repo);
+
+    await tester.tap(find.text('Revisar estado'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Espere antes de volver a sincronizar.'), findsOneWidget);
+    expect(find.text('Activación de tu CLABE'), findsNothing);
   });
 }
