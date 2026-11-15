@@ -57,7 +57,7 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `DEFAULT_FROM_EMAIL` | No | Remitente |
 | `EMAIL_BACKEND` | No | Backend Django (SMTP en despliegue) |
 
-Esas cinco secretas (`POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY`, `PEY_WEBHOOK_SECRET`, `EMAIL_HOST_PASSWORD`) no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
+Las siete secretas (`POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY`, `PEY_WEBHOOK_SECRET`, `EMAIL_HOST_PASSWORD`, `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET`) no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
 
 ### Deploy
 
@@ -76,8 +76,32 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 | `TEST_DEPLOY_PATH` | Variable, protegida | `test` | `test` |
 | `TEST_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `test` | `test` |
 
-`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH y `DEPLOY_PATH` una ruta absoluta de al menos dos niveles, dedicada a la app (no el home). `PROD_SSH_PRIVATE_KEY` y `TEST_SSH_PRIVATE_KEY` son la llave privada en base64 de una sola línea (`base64 -w 0`). El job la decodifica a un archivo temporal y no la copia al `.env`. El script rechaza el archivo de la app si trae esas claves o un bloque `PRIVATE KEY`.
+`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH y `DEPLOY_PATH` exactamente `/opt/codi/prod` para producción, sin barra final. `PROD_SSH_PRIVATE_KEY` y `TEST_SSH_PRIVATE_KEY` son la llave privada en base64 de una sola línea (`base64 -w 0`). El job la decodifica a un archivo temporal y no la copia al `.env`. El script rechaza el archivo de la app si trae esas claves o un bloque `PRIVATE KEY`.
 
-El pipeline solo se crea en un push (o un lanzamiento manual) a `master` o a `test`. `deploy:prod` usa el prefijo `PROD_` y el ámbito `production`; `deploy:test` usa `TEST_` y el ámbito `test`. Cada uno copia el árbol a su `DEPLOY_PATH`, instala el `.env` en `backend/.env`, levanta el Postgres de `deploy/compose.yaml` y espera a que responda, crea el venv, migra, publica estáticos, instala `cody.service` y espera HTTP 200 en `/api/salud/`. En intec-vps-001 ese contenedor es `codi-postgres` y publica `127.0.0.1:5435`; el archivo de la app tiene que traer `POSTGRES_PORT=5435`. Los datos quedan en `/var/lib/codi/postgres`, fuera del árbol que sincroniza el job. El usuario de deploy necesita `sudo` sin contraseña para `systemctl`, `install` y `mkdir`, y pertenecer al grupo `docker`. Opcional: `PROD_PYTHON` o `TEST_PYTHON` (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`, el mismo intérprete que denti). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`: Traefik llega por el puente Docker y UFW solo abre el 8000 a `172.16.0.0/12`. La comprobación del job sigue en `127.0.0.1`. Dentro del archivo de la app se pueden fijar `GUNICORN_WORKERS` y `GUNICORN_TIMEOUT`. Un `GUNICORN_BIND` ahí pisa la unit, porque systemd aplica `EnvironmentFile=` después de `Environment=`. `DEBUG` tiene que ser `False`.
+El deploy de test está deshabilitado hasta aislar sus recursos. Producción utiliza
+`/opt/codi/prod`, las units `cody` y `cody-canal` y el bind existente de Gunicorn.
+El usuario necesita sudo sin contraseña para systemctl e install, acceso a Docker,
+y escritura en `/opt/codi` para el candado `/opt/codi/.deploy.lock`. Operación
+puede impedir despliegues creando `/opt/codi/.maintenance`; debe coordinarse con
+el mismo candado. El candado cubre validación, transferencias y reinicios; los
+jobs antiguos deben deshabilitarse aparte. Revise los drop-ins de ambas units.
+
+PostgreSQL `codi-postgres` del proyecto `codi`, servicio `postgres`, debe estar
+operativo en `127.0.0.1:5435`; operación administra su ciclo de vida y datos.
+El venv existente debe incluir psycopg para verificar la conexión antes de parar
+servicios. El Postgres local usa 5433. El deploy no administra contenedores.
+
+WAHA se administra por separado en `/opt/codi/waha-prod` (proyecto
+`codi-waha-prod`). Django usa `WAHA_BASE_URL=http://127.0.0.1:3004`,
+`WAHA_API_KEY`, `WAHA_INSTANCIA=waha` y `WAHA_WEBHOOK_SECRET`. La configuración independiente de WAHA define `WHATSAPP_HOOK_URL` como URL
+pública completa terminada en `/api/webhooks/waha/`, `WHATSAPP_HOOK_EVENTS=message`
+y `WHATSAPP_HOOK_HMAC_KEY` igual a `WAHA_WEBHOOK_SECRET`. El callback debe ser
+alcanzable desde el contenedor; loopback dentro de WAHA apunta al contenedor.
+Django verifica la firma HMAC SHA-512 sobre el cuerpo original.
+La API key y el HMAC son diferentes. `WEBHOOK_BASE_URL` sigue disponible para
+pey y su callback `/api/webhooks/pey/` usa `PEY_WEBHOOK_SECRET` independiente.
+El worker recibe solo configuración de base, modo y API WAHA; su `.env.canal`
+tiene modo 600 y excluye secretos pey, HMAC y SMTP. El latido solo indica que
+el worker funciona, no que WAHA esté conectado o tenga sesión vinculada.
 
 El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`. `obtener_puerto()` lo rechaza cuando `PEY_API_KEY` tiene valor, para que un `DEBUG` encendido por error no conviva con la llave real.
