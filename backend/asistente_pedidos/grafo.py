@@ -11,16 +11,17 @@ from asistente_pedidos.proveedor import crear_modelo
 
 FUERA = "Solo puedo ayudarle con sus pedidos"
 SALUDO = "Hola. Dígame qué productos y cantidades desea pedir."
-_ACCION = re.compile(r"\b(quiero|quisiera|pedir|agrega|anade|añade|dame|llevo|mejor|cambia|corrige|corregir|quita|quitar|elimina|eliminar|borra|borrar|pon|necesito|pido)\b", re.I)
-_QUITAR = re.compile(r"\b(quita|quitar|elimina|eliminar|borra|borrar)\b", re.I)
+_ACCION = re.compile(r"\b(quiero|quisiera|pedir|agrega|anade|añade|suma|sumar|dame|llevo|mejor|cambia|corrige|corregir|quita|quitar|elimina|eliminar|borra|borrar|pon|necesito|pido)\b", re.I)
 _CONSULTA = re.compile(r"\b(precio|cuanto cuesta|cuánto cuesta|total|estado|mi pedido|que pedi|qué pedí)\b", re.I)
-_NUMERO = re.compile(r"\b\d+(?:[.,]\d+)?\b|\b(uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b", re.I)
-_RESPUESTA_CORTA = re.compile(r"^(?:\d+(?:[.,]\d+)?|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)(?:\s+(?:kg|kilos?|piezas?|litros?|l|lt|g|gr))?$", re.I)
-_NUMEROS = {"1": ["uno", "una"], "2": ["dos"], "3": ["tres"], "4": ["cuatro"],
+_NUMERO = re.compile(r"\b\d+(?:[.,]\d+)?\b|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b", re.I)
+_RESPUESTA_CORTA = re.compile(r"^(?:\d+(?:[.,]\d+)?|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)(?:\s+(?:kg|kilos?|piezas?|litros?|l|lt|g|gr))?$", re.I)
+_NUMEROS = {"1": ["un", "uno", "una"], "2": ["dos"], "3": ["tres"], "4": ["cuatro"],
             "5": ["cinco"], "6": ["seis"], "7": ["siete"], "8": ["ocho"],
             "9": ["nueve"], "10": ["diez"], "0.5": ["medio", "media"]}
 _UNIDAD_EXPRESA = re.compile(r"\b(kg|kilo|kilos|pieza|piezas|pza|pzas|litro|litros|lt|l|gramo|gramos|gr|g)\b")
 _NO_PEDIDO = re.compile(r"\b(quiero saber|explica|escribe|programa|codigo|receta|como hacer)\b")
+_ACCIONES_TEXTO = re.compile(r"\b(agrega|agregar|anade|anadir|añade|añadir|suma|sumar|quita|quitar|elimina|eliminar|borra|borrar|mejor|cambia|cambiar|corrige|corregir|quiero|quisiera|dame|necesito|pido|pon)\b")
+_SEPARADOR_LISTA = re.compile(r",(?!\d)|(?<!\d),|;")
 
 
 def _orden_directa(norm, productos):
@@ -28,7 +29,7 @@ def _orden_directa(norm, productos):
     nombres = sorted({normalizar(n) for p in productos for n in [p.nombre, *p.alias] if n}, key=len, reverse=True)
     for nombre in nombres:
         resto = re.sub(r"(?<!\w)" + re.escape(nombre) + r"(?!\w)", " ", resto)
-    resto = re.sub(r"\b(?:\d+(?:[.,]\d+)?|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|kg|kilos?|piezas?|pzas?|litros?|lt|l|g|gr|de|y|por|favor)\b", " ", resto)
+    resto = re.sub(r"\b(?:\d+(?:[.,]\d+)?|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|kg|kilos?|piezas?|pzas?|litros?|lt|l|g|gr|de|y|por|favor)\b", " ", resto)
     return not re.sub(r"[\s,;.!?]+", "", resto)
 
 
@@ -41,16 +42,24 @@ def _accion_mixta_valida(norm, productos):
     return False
 
 
-def _segmento_producto(texto, nombre, productos=(), pendiente=False):
+def _posiciones_producto(texto, nombre):
+    return [m.start() for m in re.finditer(r"(?<!\w)" + re.escape(normalizar(nombre)) + r"(?!\w)", normalizar(texto))]
+
+
+def _segmento_producto(texto, nombre, productos=(), pendiente=False, posicion=None):
     norm = normalizar(texto)
-    posicion = norm.find(normalizar(nombre))
+    if posicion is None:
+        posiciones = _posiciones_producto(texto, nombre)
+        posicion = posiciones[0] if posiciones else -1
     if posicion < 0:
         return norm if pendiente else ""
     inicio = 0
-    for separador in (" y ", ",", ";", "\n"):
+    for separador in (" y ",):
         anterior = norm.rfind(separador, 0, posicion)
         if anterior >= 0:
             inicio = max(inicio, anterior + len(separador))
+    for separador in _SEPARADOR_LISTA.finditer(norm[:posicion]):
+        inicio = max(inicio, separador.end())
     for producto in productos:
         for candidato in (producto.nombre, *producto.alias):
             nombre_anterior = normalizar(candidato)
@@ -59,21 +68,41 @@ def _segmento_producto(texto, nombre, productos=(), pendiente=False):
     return norm[inicio:posicion]
 
 
-def _cantidad_respaldada(texto, nombre, cantidad, pendiente=False, productos=()):
+def _cantidad_respaldada(texto, nombre, cantidad, pendiente=False, productos=(), posicion=None):
     if cantidad is None:
         return False
     representaciones = [str(cantidad).replace(".", ","), str(cantidad)]
     representaciones += _NUMEROS.get(str(cantidad), [])
-    zona = _segmento_producto(texto, nombre, productos, pendiente)
+    zona = _segmento_producto(texto, nombre, productos, pendiente, posicion)
     return any(re.search(r"(?<![\w.,])" + re.escape(v) + r"(?![\w.,])", zona) for v in representaciones)
 
 
-def _unidad_verificada(texto, nombre, unidad, productos=(), pendiente=False):
-    zona = _segmento_producto(texto, nombre, productos, pendiente)
+def _unidad_verificada(texto, nombre, unidad, productos=(), pendiente=False, posicion=None):
+    zona = _segmento_producto(texto, nombre, productos, pendiente, posicion)
     expresas = list(_UNIDAD_EXPRESA.finditer(zona))
     if expresas:
         return expresas[-1].group(1)
     return unidad if normalizar(unidad or "") in {"pieza", "piezas", "pza", "pzas"} else None
+
+
+def _accion_producto(texto, posicion):
+    """Último verbo operativo antes de la mención, también para enumeraciones."""
+    if posicion is None or posicion < 0:
+        return "reemplazar"
+    previo = normalizar(texto)[:posicion]
+    acciones = list(_ACCIONES_TEXTO.finditer(previo))
+    if not acciones:
+        return "reemplazar"
+    ultima = acciones[-1]
+    verbo = ultima.group(1)
+    if verbo in {"quita", "quitar", "elimina", "eliminar", "borra", "borrar"}:
+        antes = previo[max(0, ultima.start() - 24):ultima.start()]
+        if re.search(r"\bno\s+(?:(?:quiero|deseo|vayas a)\s+)?$", antes):
+            return "negado"
+        return "quitar"
+    if verbo in {"agrega", "agregar", "anade", "anadir", "añade", "añadir", "suma", "sumar"}:
+        return "agregar"
+    return "reemplazar"
 
 
 class Estado(TypedDict, total=False):
@@ -143,6 +172,8 @@ def _extraer(s, modelo):
     items = []
     eliminaciones = []
     aclaracion_de = None
+    negados = 0
+    cantidad_dudosa_al_quitar = False
     norm = normalizar(s["texto"])
     for item in datos["items"][:100]:
         if not isinstance(item, dict) or not isinstance(item.get("nombre"), str):
@@ -151,28 +182,45 @@ def _extraer(s, modelo):
         respuesta_pendiente = (len(s.get("pendientes", [])) == 1 and
                              normalizar(nombre) == normalizar(s["pendientes"][0]) and
                              _RESPUESTA_CORTA.fullmatch(norm))
-        if not nombre or (normalizar(nombre) not in norm and not respuesta_pendiente):
-            continue
-        segmento = _segmento_producto(s["texto"], nombre, s["productos"], bool(respuesta_pendiente))
-        if _QUITAR.search(segmento):
-            eliminaciones.append(nombre)
-            continue
-        if item.get("accion") == "quitar":
+        posiciones = _posiciones_producto(s["texto"], nombre)
+        if not nombre or (not posiciones and not respuesta_pendiente):
             continue
         cantidad = item.get("cantidad")
         unidad = item.get("unidad")
         if cantidad is not None and (not isinstance(cantidad, str) or len(cantidad) > 16):
             cantidad = None
-        if cantidad is not None and not _cantidad_respaldada(s["texto"], nombre, cantidad, bool(respuesta_pendiente), s["productos"]):
+        respaldadas = [p for p in posiciones if cantidad is not None and _cantidad_respaldada(
+            s["texto"], nombre, cantidad, False, s["productos"], p)]
+        posicion = respaldadas[-1] if respaldadas else (posiciones[-1] if posiciones else None)
+        if cantidad is not None and not _cantidad_respaldada(
+            s["texto"], nombre, cantidad, bool(respuesta_pendiente), s["productos"], posicion):
             cantidad = None
+        accion = _accion_producto(s["texto"], posicion)
+        if accion == "negado":
+            negados += 1
+            continue
+        if accion == "quitar" and cantidad is None:
+            zona = _segmento_producto(s["texto"], nombre, s["productos"], posicion=posicion)
+            if _NUMERO.search(zona):
+                cantidad_dudosa_al_quitar = True
+                continue
+            eliminaciones.append(nombre)
+            continue
         if unidad is not None and (not isinstance(unidad, str) or len(unidad) > 30):
             unidad = None
-        unidad = _unidad_verificada(s["texto"], nombre, unidad, s["productos"], bool(respuesta_pendiente))
+        unidad = _unidad_verificada(s["texto"], nombre, unidad, s["productos"],
+                                    bool(respuesta_pendiente), posicion)
         if respuesta_pendiente:
             aclaracion_de = s.get("pendiente_id")
-        items.append({"nombre": nombre, "cantidad": cantidad, "unidad": unidad})
+        items.append({"nombre": nombre, "cantidad": cantidad, "unidad": unidad,
+                      "operacion": "reducir" if accion == "quitar" else
+                                   "incrementar" if accion == "agregar" else "reemplazar"})
     if datos.get("intencion") in {"fuera", "consulta"}:
         return {"intencion": datos["intencion"], "items": [], "eliminaciones": []}
+    if cantidad_dudosa_al_quitar:
+        return {"intencion": "aclaracion_requerida", "items": [], "eliminaciones": []}
+    if negados and not items and not eliminaciones:
+        return {"intencion": "sin_cambios", "items": [], "eliminaciones": []}
     intencion = "correccion" if datos.get("intencion") == "correccion" or normalizar(s["texto"]).startswith(("mejor", "cambia", "corrige", "quita")) else "nuevo"
     if eliminaciones:
         intencion = "correccion"
@@ -191,6 +239,10 @@ def _presentar(s):
         return {"respuesta": SALUDO}
     if s["intencion"] == "consulta":
         return {"respuesta": "Consultar estado y total del pedido en el servidor."}
+    if s["intencion"] == "sin_cambios":
+        return {"respuesta": "No hice cambios en su pedido."}
+    if s["intencion"] == "aclaracion_requerida":
+        return {"respuesta": "Indíqueme la cantidad exacta que desea quitar."}
     if s.get("eliminaciones") and not s.get("filas"):
         return {"respuesta": "Corrección solicitada; revisaré los renglones del pedido."}
     if not s.get("filas"):

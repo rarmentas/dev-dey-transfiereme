@@ -29,6 +29,7 @@ def resolver(items, productos):
         nombre = normalizar(item["nombre"])
         candidatos = [p for p in productos if nombre in [normalizar(p.nombre), *[normalizar(a) for a in p.alias]]]
         fila = {"nombre": item["nombre"], "cantidad": item.get("cantidad"), "unidad": item.get("unidad"),
+                "operacion": item.get("operacion", "reemplazar"),
                 "producto_id": None, "descripcion": "", "precio_centavos": None, "resolucion": "pendiente"}
         try:
             cantidad = Decimal(str(item.get("cantidad"))) if item.get("cantidad") is not None else None

@@ -15,7 +15,7 @@ from canales.conversacion import contexto
 from canales.models import ConversacionCanal, MensajeEntrante
 from canales.salidas import preparar
 from pedidos.contratos.calculo import subtotal_centavos, total_centavos
-from pedidos.contratos.v1 import CONTRATO_VERSION, RenglonSolicitadoV1, message_key
+from pedidos.contratos.v1 import CANTIDAD_MAXIMA, CONTRATO_VERSION, RenglonSolicitadoV1, message_key
 from pedidos.contratos.validacion import ErrorContrato
 from pedidos.models import Pedido, ProductoCatalogo
 
@@ -68,6 +68,26 @@ def _preparar_renglones(estado, dto, mensaje):
                             and r.resolucion.value == "pendiente"]
         if len(coincidencias) > 1:
             return None, {}, "Hay varios renglones iguales; indique cuál desea corregir."
+        operacion = fila.get("operacion", "reemplazar")
+        if operacion in {"incrementar", "reducir"} and coincidencias:
+            anterior = next(r for r in dto.renglones if r.renglon_id == coincidencias[0].renglon_id)
+            if (anterior.resolucion.value != "incluido" or fila["resolucion"] != "incluido"
+                    or anterior.descripcion != fila["descripcion"] or anterior.unidad != fila["unidad"]):
+                return None, {}, "No puedo ajustar esa cantidad; indique el producto y su cantidad final."
+            try:
+                actual = Decimal(str(anterior.cantidad))
+                diferencia = Decimal(str(fila["cantidad"]))
+            except (InvalidOperation, ValueError, TypeError):
+                return None, {}, "Indique cuántas unidades desea cambiar."
+            cantidad_nueva = actual + diferencia if operacion == "incrementar" else actual - diferencia
+            if operacion == "reducir" and cantidad_nueva == 0:
+                eliminados.add(coincidencias[0].renglon_id)
+                continue
+            if not 0 < cantidad_nueva <= CANTIDAD_MAXIMA:
+                return None, {}, "La cantidad resultante no es válida; indique la cantidad final."
+            fila = {**fila, "cantidad": str(cantidad_nueva)}
+        elif operacion == "reducir":
+            return None, {}, "Ese producto no está en el pedido; indique cuál desea quitar."
         identidad = coincidencias[0].renglon_id if len(coincidencias) == 1 else str(uuid5(NAMESPACE_URL, f"agente:{mensaje.pk}:{indice}"))
         if identidad in eliminados:
             return None, {}, "Indique si desea quitar o corregir ese producto."
@@ -138,6 +158,40 @@ def _respuesta_pedido(pedido_id, comercio_id):
     return f"Pedido #{pedido.numero} guardado. Total comercial propuesto: ${total / 100:.2f}. El tendero revisará y publicará la cotización."
 
 
+def _respuesta_estado(dto):
+    """Estado y montos publicados obtenidos únicamente del núcleo."""
+    preparacion = dto.preparacion.value
+    estado = dto.estado.value
+    if preparacion == "entregado":
+        etapa = "entregado"
+    elif preparacion == "listo":
+        etapa = "listo para entregar"
+    else:
+        etapa = {
+            "borrador": "en borrador",
+            "en_revision": "en revisión",
+            "cotizado": "cotizado; cotización publicada",
+            "aceptado": "aceptado",
+            "cerrado": "cerrado",
+        }.get(estado, estado)
+    partes = [f"Pedido #{dto.numero}: {etapa}."]
+    cotizacion = dto.cotizacion
+    if cotizacion:
+        total = cotizacion.total_comercial_centavos
+        partes.append(f"Total comercial publicado: ${total // 100}.{total % 100:02d}.")
+        if cotizacion.demo_mode:
+            efectivo = cotizacion.importe_efectivo_centavos
+            partes.append(f"Importe efectivo: ${efectivo // 100}.{efectivo % 100:02d}.")
+    elif preparacion != "entregado":
+        partes.append("Pendiente de cotizar.")
+    pago = dto.pago_estado.value
+    if pago == "pagado":
+        partes.append("Pago confirmado por el servidor.")
+    elif pago == "incierto":
+        partes.append("El pago sigue sin confirmar.")
+    return " ".join(partes)
+
+
 def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
     conv = mensaje.conversacion
     ctx = contexto(conv)
@@ -190,9 +244,7 @@ def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
                 salida = ("; ".join(f"{p.nombre}: ${p.precio_centavos // 100}.{p.precio_centavos % 100:02d} por {p.unidad}" for p in encontrados[:5])
                           if len(encontrados) == 1 else "Indíqueme cuál producto de la lista desea consultar.")
             elif dto:
-                salida = _respuesta_pedido(pedido_id, comercio_id)
-                if dto.pago_estado.value == "pagado":
-                    salida += " Pago confirmado por el servidor."
+                salida = _respuesta_estado(dto)
             else:
                 salida = "Aún no tiene un pedido registrado. Indíqueme productos y cantidades."
         if estado["intencion"] in {"nuevo", "correccion"} and (estado.get("filas") or estado.get("eliminaciones")):

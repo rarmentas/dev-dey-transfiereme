@@ -14,6 +14,7 @@ from canales.lector import LectorProcedenciaCanal
 from canales.models import ConversacionCanal, MensajeEntrante, SalidaCanal, SesionCanal
 from pedidos.models import Pedido, ProductoCatalogo
 from pedidos.nucleo_real import NucleoRealV1
+from pedidos.servicios.tendero import operar
 from asistente_pedidos.grafo import _extraer
 
 
@@ -50,6 +51,44 @@ class ExtraccionSeguraTests(SimpleTestCase):
             {"nombre": "refrescos", "cantidad": "2", "unidad": None},
         ])
         self.assertIsNone(resultado["items"][1]["cantidad"])
+
+    def test_coma_decimal_no_separa_producto(self):
+        resultado = self.extraer("Quiero 0,5 kg de tortilla", [
+            {"nombre": "tortilla", "cantidad": "0.5", "unidad": "kg"}])
+        self.assertEqual(resultado["items"][0]["cantidad"], "0.5")
+        self.assertEqual(resultado["items"][0]["unidad"], "kg")
+
+    def test_agregar_y_reducir_con_cantidad_conservan_operacion(self):
+        for texto, operacion in (("agrega dos refrescos", "incrementar"),
+                                  ("quita un refresco", "reducir")):
+            with self.subTest(texto=texto):
+                nombre = "refrescos" if "refrescos" in texto else "refresco"
+                cantidad = "2" if operacion == "incrementar" else "1"
+                resultado = self.extraer(texto, [
+                    {"nombre": nombre, "cantidad": cantidad, "unidad": None}])
+                self.assertEqual(resultado["eliminaciones"], [])
+                self.assertEqual(resultado["items"][0]["operacion"], operacion)
+                self.assertEqual(resultado["items"][0]["cantidad"], cantidad)
+
+    def test_negacion_no_elimina_producto(self):
+        resultado = self.extraer("No quiero quitar los refrescos, quiero tres refrescos", [
+            {"nombre": "refrescos", "cantidad": "3", "unidad": None, "accion": "actualizar"}])
+        self.assertEqual(resultado["eliminaciones"], [])
+        self.assertEqual(resultado["items"][0]["operacion"], "reemplazar")
+        self.assertEqual(resultado["items"][0]["cantidad"], "3")
+
+    def test_quitar_enumeracion_alcanza_ambos_productos(self):
+        resultado = self.extraer("Quita tortilla y refrescos", [
+            {"nombre": "tortilla", "cantidad": None, "unidad": None},
+            {"nombre": "refrescos", "cantidad": None, "unidad": None}])
+        self.assertEqual(resultado["eliminaciones"], ["tortilla", "refrescos"])
+        self.assertEqual(resultado["items"], [])
+
+    def test_cantidad_no_respaldada_no_convierte_reduccion_en_borrado(self):
+        resultado = self.extraer("quita dos refrescos", [
+            {"nombre": "refrescos", "cantidad": "3", "unidad": None}])
+        self.assertEqual(resultado["intencion"], "aclaracion_requerida")
+        self.assertEqual(resultado["eliminaciones"], [])
 
 
 class AgentePedidosTests(TestCase):
@@ -244,6 +283,100 @@ class AgentePedidosTests(TestCase):
         self.assertEqual(pedido.renglones.count(), 1)
         self.assertEqual(pedido.renglones.get().pk, tortilla_id)
         self.assertIn("$50.00", salida)
+
+    def test_agregar_cantidad_incrementa_sin_reemplazar(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [{"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+            {"intencion": "correccion", "items": [{"nombre": "refrescos", "cantidad": "2", "unidad": None, "accion": "agregar"}]},
+        )
+        self.enviar("tres refrescos", modelo)
+        renglon = Pedido.objects.get().renglones.get()
+        _, salida = self.enviar("agrega dos refrescos", modelo)
+        renglon.refresh_from_db()
+        self.assertEqual(renglon.cantidad, Decimal("5"))
+        self.assertIn("$90.00", salida)
+
+    def test_quitar_una_unidad_reduce_sin_eliminar_producto(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"},
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"}]},
+        )
+        self.enviar("2 kg de tortilla y 3 refrescos", modelo)
+        renglon = Pedido.objects.get().renglones.get(descripcion="refresco")
+        _, salida = self.enviar("quita un refresco", modelo)
+        renglon.refresh_from_db()
+        self.assertEqual(renglon.cantidad, Decimal("2"))
+        self.assertEqual(Pedido.objects.get().renglones.count(), 2)
+        self.assertIn("$86.00", salida)
+
+    def test_negacion_no_borra_y_correccion_posterior_actualiza(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [{"nombre": "refrescos", "cantidad": "2", "unidad": None}]},
+            {"intencion": "correccion", "items": [{"nombre": "refrescos", "cantidad": "3", "unidad": None, "accion": "actualizar"}]},
+        )
+        self.enviar("dos refrescos", modelo)
+        renglon = Pedido.objects.get().renglones.get()
+        _, salida = self.enviar("No quiero quitar los refrescos, quiero tres refrescos", modelo)
+        renglon.refresh_from_db()
+        self.assertEqual(renglon.cantidad, Decimal("3"))
+        self.assertIn("$54.00", salida)
+
+    def test_quitar_enumeracion_aplica_todas_las_eliminaciones(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="pan", alias=["panes"],
+                                        unidad="pieza", precio_centavos=500)
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"},
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None},
+                {"nombre": "pan", "cantidad": "1", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "tortilla", "cantidad": None, "unidad": None},
+                {"nombre": "refrescos", "cantidad": None, "unidad": None}]},
+        )
+        self.enviar("2 kg de tortilla y 3 refrescos y un pan", modelo)
+        _, salida = self.enviar("Quita tortilla y refrescos", modelo)
+        self.assertEqual(list(Pedido.objects.get().renglones.values_list("descripcion", flat=True)), ["pan"])
+        self.assertIn("$5.00", salida)
+
+    def test_coma_decimal_cotiza_en_centavos(self):
+        _, salida = self.enviar("Quiero 0,5 kg de tortilla", ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "tortilla", "cantidad": "0.5", "unidad": "kg"}]}))
+        renglon = Pedido.objects.get().renglones.get()
+        self.assertEqual(renglon.cantidad, Decimal("0.5"))
+        self.assertEqual(renglon.precio_unitario_centavos, 2500)
+        self.assertIn("$12.50", salida)
+
+    def test_consulta_refleja_cotizacion_y_preparacion_vigentes(self):
+        self.enviar("tres refrescos", ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "refrescos", "cantidad": "3", "unidad": None}]}))
+        pedido = Pedido.objects.get()
+        operar(self.comercio, pedido.pk, "publicar_cotizacion", {
+            "command_key": "publicar-test", "expected_version": pedido.version})
+        _, cotizado = self.enviar("estado de mi pedido", ModeloFalso())
+        self.assertIn("cotización publicada", cotizado)
+        self.assertIn("$54.00", cotizado)
+        self.assertNotIn("publicará", cotizado)
+        usuario = get_user_model().objects.create_user(username="preparador", password="clave")
+        pedido.refresh_from_db()
+        pedido.preparacion = "listo"
+        pedido.listo_en = timezone.now()
+        pedido.listo_por = usuario
+        pedido.save(update_fields=["preparacion", "listo_en", "listo_por"])
+        _, listo = self.enviar("estado de mi pedido", ModeloFalso())
+        self.assertIn("listo para entregar", listo)
+        self.assertIn("$54.00", listo)
+        pedido.estado = "cerrado"
+        pedido.abierto = False
+        pedido.preparacion = "entregado"
+        pedido.entregado_en = timezone.now()
+        pedido.entregado_por = usuario
+        pedido.save(update_fields=["estado", "abierto", "preparacion", "entregado_en", "entregado_por"])
+        _, entregado = self.enviar("estado de mi pedido", ModeloFalso())
+        self.assertIn("entregado", entregado)
+        self.assertIn("$54.00", entregado)
 
     def test_pedido_nuevo_tras_cierre_conserva_historial(self):
         modelo = ModeloFalso(
