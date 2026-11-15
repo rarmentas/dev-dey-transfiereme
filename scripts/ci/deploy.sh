@@ -6,7 +6,7 @@ set -euo pipefail
 scope="${1:-}"
 case "$scope" in
   prod) prefix="PROD" ;;
-  test) prefix="TEST" ;;
+  test) echo "Deploy test deshabilitado." >&2; exit 2 ;;
   *)
     echo "Indique prod o test." >&2
     exit 2
@@ -29,13 +29,13 @@ ci_val() {
 key_file="${SSH_PRIVATE_KEY_FILE:?}"
 app_env="$ROOT/backend/.env"
 remote_path="$(ci_val DEPLOY_PATH)"
-remote_path="${remote_path%/}"
+
 ssh_port="$(ci_val DEPLOY_PORT)"
 ssh_host="$(ci_val DEPLOY_HOST)"
 ssh_user="$(ci_val DEPLOY_USER)"
 unit_base_var="${prefix}_UNIT_BASE"
 unit_base="${!unit_base_var:-cody}"
-if [[ ! "$unit_base" =~ ^[a-z][a-z0-9-]*$ ]]; then
+if [[ "$unit_base" != cody ]]; then
   echo "${unit_base_var} no es un nombre de unit válido." >&2
   exit 1
 fi
@@ -47,8 +47,8 @@ if grep -Eq '^[[:space:]]*DEBUG[[:space:]]*=[[:space:]]*(True|true|1|yes|on)[[:s
   exit 1
 fi
 
-if [[ ! "$remote_path" =~ ^(/[A-Za-z0-9._-]+){2,}$ || "$remote_path" == *..* ]]; then
-  echo "${prefix}_DEPLOY_PATH debe ser una ruta absoluta de al menos dos niveles, sin '..'." >&2
+if [[ "$remote_path" != /opt/codi/prod ]]; then
+  echo "Destino de producción rechazado." >&2
   exit 1
 fi
 
@@ -105,18 +105,20 @@ ssh_base=(-i "$key_file" -p "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -
 remote="${ssh_user}@${ssh_host}"
 
 echo "Desplegando en ${remote}:${ssh_port} ${remote_path}"
-ssh "${ssh_base[@]}" "$remote" mkdir -p "${remote_path}/backend" "${remote_path}/frontend"
-
-remote_home="$(ssh "${ssh_base[@]}" "$remote" 'printf %s "$HOME"')"
-if [[ "$remote_path" == "$remote_home" ]]; then
-  echo "${prefix}_DEPLOY_PATH no puede ser el home del usuario." >&2
+# La conexión conserva flock hasta terminar rsync, scp y el reinicio.
+guard_command="$(printf 'bash -c %q -- lock %q %q' "$(cat scripts/ci/deploy-guard.sh)" "$scope" "$remote_path")"
+coproc GUARD { ssh "${ssh_base[@]}" "$remote" "$guard_command"; }
+guard_pid=$GUARD_PID
+guard_out=${GUARD[0]}
+guard_in=${GUARD[1]}
+trap 'exec {guard_in}>&-; wait "$guard_pid" || true; rm -f "${SSH_PRIVATE_KEY_FILE:-}"; rm -rf "${ssh_dir:-}"' EXIT
+if ! read -r -t 30 respuesta token <&"$guard_out" || \
+  [[ "$respuesta" != READY || ! "$token" =~ ^[a-f0-9-]{36}$ ]]; then
+  echo "No se obtuvo el candado remoto." >&2
   exit 1
 fi
-if ssh "${ssh_base[@]}" "$remote" test -e "${remote_path}/.ssh"; then
-  echo "${prefix}_DEPLOY_PATH contiene .ssh. Use un directorio solo para la app." >&2
-  exit 1
-fi
-
+# La sesión del candado debe seguir viva durante toda la operación.
+kill -0 "$guard_pid"
 rsync_rsh="$(printf 'ssh -i %q -p %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=%q' "$key_file" "$ssh_port" "$known_hosts")"
 rsync -az --delete -e "$rsync_rsh" \
   --exclude '.git/' \
@@ -139,14 +141,24 @@ rsync -az --delete -e "$rsync_rsh" \
   --exclude '_bmad-output/' \
   --exclude '.agents/' \
   --exclude '.cursor/' \
+  --exclude '*.tmp' \
+  --exclude '*.lock' \
+  --include '/backend/***' \
+  --include '/frontend/***' \
+  --include '/landing/***' \
+  --include '/deploy/***' \
+  --include '/scripts/***' \
+  --exclude '*' \
   ./ "${remote}:${remote_path}/"
 
+kill -0 "$guard_pid"
 scp -i "$key_file" -P "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o "UserKnownHostsFile=${known_hosts}" \
   "$app_env" \
   "${remote}:${remote_path}/backend/.env.incoming"
 
+kill -0 "$guard_pid"
 ssh "${ssh_base[@]}" "$remote" \
   bash "${remote_path}/scripts/ci/deploy-remoto.sh" \
-  "$remote_path" "$python_bin" "$ssh_user" "$health_host" "$health_port" "$unit_base"
+  "$scope" "$remote_path" "$python_bin" "$ssh_user" "$health_host" "$health_port" "$unit_base" "$token"
 
 echo "Listo. Cody responde en el servidor."
