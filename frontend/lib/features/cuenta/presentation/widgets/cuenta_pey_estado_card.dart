@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../../core/ui/ui.dart';
+import '../../../../theme/transfiereme_theme.dart';
 import '../../data/cuenta_estado.dart';
 import '../cuenta_pey_mensajes.dart';
 import '../cuenta_providers.dart';
@@ -37,16 +38,20 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
         if (estado.puedeCobrar && !compacto) {
           return Card(
             margin: EdgeInsets.zero,
-            child: ListTile(
-              leading: Icon(
-                Icons.verified_rounded,
-                color: tema.colorScheme.primary,
-              ),
-              title: Text(etiquetaFase(estado)),
-              subtitle: Text(
-                _resumenActivo(estado),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsets.all(TfSpace.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const TfEstadoChip.pagado(etiqueta: 'Lista para cobrar'),
+                  const SizedBox(height: TfSpace.s3),
+                  Text(
+                    etiquetaFase(estado),
+                    style: tema.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: TfSpace.s1),
+                  Text(_resumenActivo(estado), style: tema.textTheme.bodySmall),
+                ],
               ),
             ),
           );
@@ -61,14 +66,13 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Cuenta para cobrar', style: tema.textTheme.titleMedium),
+                Text('Cuenta para cobrar', style: tema.textTheme.headlineSmall),
                 const SizedBox(height: TfSpace.s2),
-                Text(
-                  etiquetaFase(estado),
-                  style: tema.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                const TfEstadoChip.pendiente(
+                  etiqueta: 'Pendiente de activación',
                 ),
+                const SizedBox(height: TfSpace.s3),
+                Text(etiquetaFase(estado), style: tema.textTheme.titleMedium),
                 if (detalleCuentaPey(estado) != etiquetaFase(estado))
                   Padding(
                     padding: const EdgeInsets.only(top: TfSpace.s1),
@@ -120,10 +124,14 @@ class CuentaPeyEstadoCard extends ConsumerWidget {
           padding: const EdgeInsets.all(TfSpace.s5),
           child: Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  color:
+                      tema.extension<TfColors>()?.pending ?? tema.colorScheme.primary,
+                  strokeWidth: 2,
+                ),
               ),
               const SizedBox(width: TfSpace.s3),
               Expanded(
