@@ -21,11 +21,19 @@ def cobro_habilitado() -> bool:
     return settings.PEDIDOS_COBRO_HABILITADO
 
 
+def validar_stub_sin_credenciales() -> None:
+    """Impide simular con credenciales financieras presentes."""
+    if settings.PEY_API_KEY or settings.PEY_ADAPTADOR.strip().lower() == "produccion":
+        raise ImproperlyConfigured("El stub no admite credenciales financieras")
+
+
 def validar_configuracion() -> None:
     demo = demo_activo()
     if cobro_habilitado():
         raise ImproperlyConfigured("el cobro de pedidos no existe en este release")
     adaptador = settings.NUCLEO_ADAPTADOR.strip().lower()
+    if adaptador == "stub":
+        validar_stub_sin_credenciales()
     if not settings.DEBUG:
         if not settings.DEMO_MODE.strip():
             raise ImproperlyConfigured("DEMO_MODE debe declararse explícitamente")

@@ -76,3 +76,30 @@ class ConfiguracionTests(SimpleTestCase):
     def test_demo_rechaza_debug(self) -> None:
         with self.assertRaises(ImproperlyConfigured):
             validar_configuracion()
+
+    @override_settings(
+        DEBUG=True,
+        DEMO_MODE="false",
+        NUCLEO_ADAPTADOR="stub",
+        PEDIDOS_COBRO_HABILITADO=False,
+    )
+    def test_stub_con_credenciales_no_arranca(self) -> None:
+        casos = (
+            {"PEY_API_KEY": "llave-ficticia", "PEY_ADAPTADOR": "desarrollo"},
+            {"PEY_API_KEY": "", "PEY_ADAPTADOR": " Produccion "},
+        )
+        for caso in casos:
+            with self.subTest(caso=caso), override_settings(**caso):
+                with self.assertRaises(ImproperlyConfigured):
+                    validar_configuracion()
+
+    @override_settings(
+        DEBUG=True,
+        DEMO_MODE="false",
+        NUCLEO_ADAPTADOR="stub",
+        PEDIDOS_COBRO_HABILITADO=False,
+        PEY_API_KEY="",
+        PEY_ADAPTADOR="",
+    )
+    def test_stub_sin_credenciales_arranca(self) -> None:
+        validar_configuracion()
