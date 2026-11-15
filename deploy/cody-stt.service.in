@@ -1,0 +1,23 @@
+[Unit]
+Description=Cody STT (worker)
+After=network.target @UNIT_BASE@.service
+
+[Service]
+Type=simple
+User=@DEPLOY_USER@
+WorkingDirectory=@DEPLOY_PATH@/backend
+Environment=CODY_ROL=stt HF_HOME=@STT_HOME@/modelos HF_HUB_OFFLINE=1
+EnvironmentFile=@DEPLOY_PATH@/backend/.env.stt
+ExecStart=@STT_HOME@/venv/bin/python manage.py procesar_audio
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+MemoryMax=2G
+CPUQuota=200%
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=@DEPLOY_PATH@ @STT_HOME@
+
+[Install]
+WantedBy=multi-user.target

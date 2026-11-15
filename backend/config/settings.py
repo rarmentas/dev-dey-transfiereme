@@ -134,6 +134,8 @@ PEY_API_KEY = os.environ.get("PEY_API_KEY", "")
 PEY_ADAPTADOR = os.environ.get("PEY_ADAPTADOR", "")
 PEY_BASE_URL = "https://api.pey.mx"
 
+CODY_ROL = os.environ.get("CODY_ROL", "web")
+
 DEMO_MODE = os.environ.get("DEMO_MODE", "")
 DEMO_PEY_BANK_ACCOUNT_ID = os.environ.get("DEMO_PEY_BANK_ACCOUNT_ID", "")
 POLITICA_COBRO_VERSION = os.environ.get("POLITICA_COBRO_VERSION", "")

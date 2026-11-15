@@ -29,8 +29,6 @@ def validar_stub_sin_credenciales() -> None:
 
 def validar_configuracion() -> None:
     demo = demo_activo()
-    if cobro_habilitado():
-        raise ImproperlyConfigured("el cobro de pedidos no existe en este release")
     adaptador = settings.NUCLEO_ADAPTADOR.strip().lower()
     if adaptador == "stub":
         validar_stub_sin_credenciales()
@@ -41,9 +39,21 @@ def validar_configuracion() -> None:
             raise ImproperlyConfigured("NUCLEO_ADAPTADOR debe ser real")
         if not settings.POLITICA_COBRO_VERSION.strip():
             raise ImproperlyConfigured("POLITICA_COBRO_VERSION es requerida")
-    if demo:
-        from pey.seleccion import modo_adaptador
+    from pey.seleccion import modo_adaptador
 
+    rol = settings.CODY_ROL.strip().lower()
+    if rol in ("canal", "stt") and settings.PEY_API_KEY:
+        raise ImproperlyConfigured("El rol no admite la llave pey")
+    if cobro_habilitado():
+        if (
+            adaptador not in ("", "real")
+            or settings.DEBUG
+            or modo_adaptador() != "produccion"
+        ):
+            raise ImproperlyConfigured("Configuración de cobro inválida")
+        if rol in ("web", "cobros") and not settings.PEY_API_KEY:
+            raise ImproperlyConfigured("PEY_API_KEY es requerida para este rol")
+    if demo:
         if (
             settings.DEBUG
             or adaptador not in ("", "real")

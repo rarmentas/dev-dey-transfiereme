@@ -153,7 +153,7 @@ frontend:test:
   script:
     - cd frontend
     - flutter pub get
-    - flutter test test/widget_smoke_test.dart test/features/pedidos
+    - flutter test test/widget_smoke_test.dart test/features/pedidos test/features/cuenta test/features/venta
   needs:
     - frontend:analyze
 

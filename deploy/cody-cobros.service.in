@@ -1,0 +1,23 @@
+[Unit]
+Description=Cody cobros (worker)
+After=network.target @UNIT_BASE@.service
+
+[Service]
+Type=simple
+User=@DEPLOY_USER@
+WorkingDirectory=@DEPLOY_PATH@/backend
+Environment=CODY_ROL=cobros
+EnvironmentFile=@DEPLOY_PATH@/backend/.env.cobros
+ExecStart=@DEPLOY_PATH@/backend/.venv/bin/python manage.py procesar_cobros
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+MemoryMax=384M
+CPUQuota=50%
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=@DEPLOY_PATH@
+
+[Install]
+WantedBy=multi-user.target
