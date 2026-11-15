@@ -1,12 +1,62 @@
 # Transfiéreme
 
-**Capa de cobro CoDi para el pequeño comercio: un QR general en el local, un QR por venta, y un tablero que agrupa lo cobrado.**
+**Capa de cobro CoDi para el pequeño comercio y sus pedidos, con la API de pey.**
 
-Proyecto para el **DevDay Exchange Community Hackathon CDMX** (7 de noviembre de 2026, UTOPÍA Elena Poniatowska, Coyoacán). Organizan AI Builders México, UTOPÍAS, SEDECO y pey.
+**En producción:** [transfiereme.asware.com.mx](https://transfiereme.asware.com.mx/)
 
-Reto: construir con CoDi usando la API abierta de pey. Documentación: [https://docs.pey.mx](https://docs.pey.mx). Base: `https://api.pey.mx`.
+## Hackatón México
 
-**En producción:** [https://transfiereme.asware.com.mx/](https://transfiereme.asware.com.mx/)
+Este repositorio es el entregable del **Cursor Hackatón México: Ciudad de México**, continuación del DevDay Exchange Community Hackathon CDMX del 7 de noviembre de 2026, donde Transfiéreme obtuvo el **tercer lugar**. El periodo de construcción es del **14 de noviembre al 12 de diciembre de 2026**; la entrega preliminar de Fase 1 es el **15 de noviembre** y la entrega final de Fase 2 el **12 de diciembre de 2026**. Fuente: [reglas del hackatón](https://hackatonmexico.com/reglas).
+
+## Declaración de componentes previos
+
+Para las reglas 9.1 y 9.7, todo lo existente antes del 14 de noviembre de 2026 se declara **Fase 0**. El historial de Git permite verificar el corte: el último commit de trabajo anterior es `1971153` (8 de noviembre de 2026, 22:38 en Ciudad de México); el merge `85e24d8` figura el 9 de noviembre en UTC y el 8 de noviembre en Ciudad de México. El primer commit de trabajo nuevo es `b3b07af` (14 de noviembre, 18:06 en Ciudad de México). El DevDay fue el 7 de noviembre: el corte incluye trabajo del 7 al 8 de noviembre, entre otros diseño, landing y cuenta pey, todo previo al 14.
+
+La lista de Fase 0 identifica código existente en el árbol de `85e24d8`; no certifica pruebas de punta a punta. Las capacidades de Fase 1 se describen por su implementación, no como evidencia de una demo ejecutada.
+
+## Fases del proyecto
+
+| Fase | Fecha | Alcance y estado |
+| --- | --- | --- |
+| 0 | Antes del 14 de noviembre | Componentes previos declarados. |
+| 1 | 15 de noviembre de 2026 | Entrega preliminar: código de pedidos, canal y cobro; evidencia de demo pendiente. |
+| 2 | 12 de diciembre de 2026 | Entrega final: trabajo planeado. |
+
+### Fase 0: componentes previos
+
+- Backend Django 6 y DRF con las apps `ambito`, `sesion`, `movimientos`, `ventas`, `webhooks`, `pey` e `integracion`; sesión por cookie, alta y recuperación mediante códigos enviados por correo SMTP, comercio y membresía.
+- CLABE del comercio y registro, consulta y sincronización de la cuenta en pey; bloqueo de cobros sin cuenta `ACTIVE`.
+- QR general mediante `POST /codi/qr` con monto 0; QR por venta con monto, concepto y referencia, y notificación push con `POST /codi/pn`. Una venta tiene un solo canal vivo y pantalla de espera.
+- Webhooks de pey con firma Standard Webhooks e idempotencia, correlación de pagos, movimientos, resumen y tablero por concepto, día y canal.
+- Frontend Flutter web con sesión, inicio, cobro, venta, espera, movimientos, tablero, ajustes, cuenta y Mi QR; sistema de diseño y landing en Astro.
+- CI en GitLab y despliegue a producción.
+
+### Fase 1: entrega preliminar del 15 de noviembre
+
+El código de esta fase incluye:
+
+- Canal de pedidos por WhatsApp con WAHA (`backend/canales`), conversación guiada, texto y notas de voz con cola de audio y STT local mediante `faster-whisper`.
+- Núcleo de pedidos y contrato núcleo-canal v1: cotización y revisión por el tendero en la app Flutter **Pedidos**, y aceptación explícita de la cotización vigente con `ACEPTAR <token>`.
+- Cobro CoDi ligado al pedido mediante pey: `IntentoCobro` durable, worker `procesar_cobros` y comando operativo `resolver_intento`. El webhook actualiza el pedido; el canal prepara avisos de pago, listo y entregado, y el tendero marca los dos últimos estados.
+- Modo demo por comercio (`es_demo`): el importe efectivo es MXN 0.01 y el destino es el `pey_bank_account_id` de la `CuentaCobro` seleccionada en la base de datos; se designa con `designar_comercio_demo`.
+- Varias CLABE por comercio y cuenta predeterminada; rol de dueño y comando `designar_dueno`. Cancelación de pedidos sin cobro en curso ni pago, desde el servicio y la app.
+- Agente de pedidos LangGraph opcional por comercio, apagado por defecto, con lista de precios y catálogo; productos demo con `sembrar_productos_demo`. La revisión y publicación corresponden al tendero.
+- Despliegue con respaldo `pg_dump` y migraciones antes del reinicio; units systemd de web, canal, cobros y STT, y WAHA aislado en Compose separado.
+- Comando `evidencia_fase1`, guion y plantilla de evidencia; migración de merge `0006` de pedidos.
+
+### Fase 2: plan para el 12 de diciembre
+
+Lo siguiente es **plan**, no funcionalidad implementada:
+
+- **F2-01 Pedidos y cobros concurrentes:** resolver el límite de un cobro pendiente por comercio, asociar intentos y avisos al pedido correcto y manejar vencimiento, rechazo o abandono.
+- **F2-02 WhatsApp operable:** estabilizar texto y audio, mostrar estado de conexión, recuperar sesión, permitir pausas para intervención humana y evaluar la vía oficial de WhatsApp.
+- **F2-03 POS y catálogo progresivo:** cobro rápido por total y venta detallada que alimente el catálogo.
+- **F2-04 Productos por peso o presupuesto:** acordar precio y tolerancias, registrar peso real y pedir nueva aceptación si se exceden.
+- **F2-05 Compra móvil por tienda:** carrito propio, pago y seguimiento para recolección.
+- **F2-06 Separación de comercios:** aislar catálogo, pedidos, sesiones de WhatsApp y cuenta destino por tienda, con alta asistida y verificación con dos comercios.
+- **F2-07 Piloto:** probar con un abarrote real y medir pedidos completados, tiempos, errores y abandonos.
+
+Ampliaciones condicionadas: escaneo de código de barras para autoservicio, inventario opcional y reparto propio básico. Fuera de alcance: marketplace o comparador, fiado y cobranza autónoma, conciliación avanzada, TTS y asesor analítico.
 
 ## Problema
 
@@ -138,18 +188,11 @@ Alta en Transfiéreme una vez (vendedor no abre banco por cobro)
 
 ### Ventajas documentadas
 
-- **Cambio de CLABE de destino en el mismo comercio y la misma app.** El vendedor puede registrar otra CLABE válida (`POST /api/cuenta/clabe/`; contrato en [sesion-api.md](docs/desarrollo/sesion-api.md)). Al cambiarla, Transfiéreme actualiza la CLABE del comercio de la sesión y reinicia el vínculo con pey (`pey_codi_status` vuelve a `pending` hasta volver a `active`; ver [cuenta-pey-api.md](docs/desarrollo/cuenta-pey-api.md)). El **resumen de ventas** y el **tablero** siguen mostrando los movimientos ya guardados para ese mismo comercio: en el modelo local cada movimiento pertenece al comercio, no a la CLABE vigente, y un cambio de CLABE no reescribe cobros pasados. No afirma retención de historial en la app del banco ni reasignación retroactiva de SPEI ya liquidados hacia la cuenta nueva.
-
-### Evolución posible (no disponible hoy)
-
-Estas líneas son **roadmap**, no capacidades del producto en producción:
-
-- **Multi-CLABE** (varias CLABE por comercio o elegir cuenta destino al cobrar). Hoy hay **una** CLABE por comercio en el modelo y en la UI de registro.
-- **Operación offline.** No está implementada. Un alcance futuro **no** implicaría, por sí solo, liquidar ni confirmar pagos sin conexión; los detalles financieros y de conciliación quedarían por definir.
+El comercio puede registrar varias CLABE y designar una cuenta predeterminada propia y `ACTIVE`. Los cobros conservan la cuenta de destino asociada; cambiar la predeterminada no reasigna pagos históricos. La operación offline no está implementada.
 
 ## Alcance
 
-La app es del **vendedor**, en pequeños comercios. El alcance es la **capa de cobro**. El punto de venta (inventario, ticket, caja) queda fuera.
+La app atiende al vendedor de pequeños comercios con cobros y el flujo de pedidos descrito en Fase 1. El POS y el inventario son parte del plan o ampliaciones condicionadas, según se indica arriba.
 
 ## Solución
 
@@ -206,13 +249,34 @@ pey  ──webhooks──►  Transfiéreme
         │
         ▼
 Resumen de ventas y tablero
-  agrupado por concepto (editable), día y canal
+  agrupado por concepto, día y canal
 ```
 
 - **Cobro:** la app llama la API de pey (`https://api.pey.mx`). `POST /codi/qr` arma el QR de la venta y el QR general. `POST /codi/pn` manda la notificación al celular. El NFC lo resuelve la app bancaria del cliente sobre ese mismo cobro; pey no tiene un endpoint de NFC. El contrato verificado está en [docs/stack-tecnologico](docs/stack-tecnologico/000-stack.md#cobros-api-de-pey).
 - **Webhooks:** el endpoint en Django recibe `codi.qr.payment_received` y `codi.pn.payment_received`, verifica la firma y marca el cobro como pagado. Otras restricciones de producto: [limitaciones](#limitaciones-conocidas).
 - **Espera en pantalla:** la app consulta a Django cada pocos segundos; Django responde con lo que llegó por webhook y, como respaldo, con `GET /transaction/...` de pey.
 - **Tablero:** suma por concepto normalizado (minúsculas, sin espacios sobrantes), día y canal. Es una consulta a Postgres.
+
+### Flujo de pedidos de Fase 1
+
+```text
+Cliente por WhatsApp → WAHA → canal (cody-canal)
+                              └→ audio: cola y STT local (cody-stt)
+                                    ↓
+                         Núcleo de pedidos (Django)
+                                    ↓
+                  App del tendero: revisión y cotización
+                                    ↓
+                  Cliente: ACEPTAR <token> por WhatsApp
+                                    ↓
+              cody-cobros → pey: POST /codi/qr o /codi/pn
+                                    ↓
+                  webhook pey → pedido pagado → aviso
+                                    ↓
+              Tendero marca listo y entregado → avisos
+```
+
+El agente LangGraph es opcional por comercio; el flujo guiado sigue disponible. Las plantillas de systemd definen `cody.service` para web y `cody-canal`, `cody-cobros` y `cody-stt` para los workers. WAHA usa un Compose separado en `deploy/waha-prod`. Este diagrama describe el código y su despliegue previsto, no una prueba de extremo a extremo.
 
 ## Stack
 
@@ -241,17 +305,21 @@ Requisitos: Docker, Python 3.12, Flutter 3.47.x (ver [stack](docs/stack-tecnolog
 
 Las variables de producción, prueba y deploy están en [variables de entorno](docs/desarrollo/variables-entorno.md). Estado de cuenta pey, registro y sincronización desde la app: [cuenta-pey-api.md](docs/desarrollo/cuenta-pey-api.md).
 
+En `master`, la CI de GitLab despliega a producción: el proceso realiza respaldo de la base con `pg_dump`, aplica migraciones y reinicia servicios. Consulta [.gitlab-ci.yml](.gitlab-ci.yml) y [script de despliegue](scripts/ci/deploy-remoto.sh).
+
 ## Nota de pruebas
 
 pey se prueba en **producción** (el ambiente de pruebas de pey todavía no está disponible). Usar montos de **$0.01**; lo que se paga no se devuelve.
 
-Comprobaciones locales: `manage.py check`, `manage.py test config.tests`, `flutter analyze` y un smoke test en `frontend/test/widget_smoke_test.dart`. El cobro de punta a punta se ejercita en [producción](https://transfiereme.asware.com.mx/).
+Para pruebas locales ejecuta `cd backend && .venv/bin/python manage.py test`; en `frontend`, ejecuta `flutter analyze` y `flutter test`. La evidencia de los recorridos de Fase 1 debe registrarse conforme a la [plantilla](docs/planes/hackaton-mexico/fase-1-evidencia.md); no se presume un pago real verificado.
 
 ## Limitaciones conocidas
 
-- No hay reintento, cancelación ni conciliación.
+- Un solo cobro vivo por comercio; otros pedidos esperan. Un intento `incierto` bloquea nuevos envíos hasta resolverlo con evidencia, sin reintento a ciegas.
+- Se puede cancelar un pedido bajo las condiciones indicadas en Fase 1; no hay cancelación bancaria ni conciliación.
+- WAHA es una integración no oficial; la sesión o el manejo de medios pueden fallar. La voz en CPU puede tardar y requiere modelo y recursos locales.
 
-## Resultado del hackatón
+## Resultado del DevDay (Fase 0)
 
 Plan del 7 de noviembre de 2026. El producto en producción está en [https://transfiereme.asware.com.mx/](https://transfiereme.asware.com.mx/). 
 
@@ -262,8 +330,14 @@ Plan del 7 de noviembre de 2026. El producto en producción está en [https://tr
 | 3      | QR por venta: monto, concepto y referencia opcionales                                 | Listo              |
 | 4      | `POST /codi/pn` al número del cliente, y espera del pago (QR, NFC o notificación)     | Listo              |
 | 5      | Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` con firma verificada | Listo              |
-| 6      | Resumen de ventas, edición del concepto y tablero por concepto, día y canal           | Listo              |
+| 6      | Resumen de ventas y tablero por concepto, día y canal                                 | Listo              |
 | 7      | Demo de punta a punta con un cobro de $0.01                                           | Listo              |
+
+## Documentación
+
+- Desarrollo: [variables de entorno](docs/desarrollo/variables-entorno.md), [sesión](docs/desarrollo/sesion-api.md), [cuenta pey](docs/desarrollo/cuenta-pey-api.md) y [gates pey](docs/desarrollo/gates-pey.md).
+- Operación: [agente de pedidos](docs/operacion/agente-pedidos.md), [productos demo](docs/operacion/productos-demo.md), [WAHA en producción](docs/operacion/waha-prod.md) y [traslado a producción](docs/operacion/traslado-prod.md).
+- [Guion y plantilla de evidencia de Fase 1](docs/planes/hackaton-mexico/fase-1-evidencia.md), [stack tecnológico](docs/stack-tecnologico/000-stack.md), [diseño](docs/diseno/README.md) y [flujo CoDi actual](docs/flujos-de-trabajo/flujo-codi-actual.md).
 
 ## Contribuidores
 
