@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from ambito.models import Comercio, Membresia
+from ambito.models import Membresia
 from sesion.models import CodigoCorreo
 
 User = get_user_model()
@@ -60,9 +60,12 @@ class RegistroPublicoTests(TestCase):
         membresia = Membresia.objects.get(usuario=usuario)
         comercio = membresia.comercio
         self.assertEqual(comercio.nombre, "Mi comercio")
-        self.assertEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
-        self.assertEqual(comercio.clabe, "")
+        self.assertTrue(membresia.es_dueno)
+        self.assertFalse(comercio.cuentas.exists())
+        self.assertIsNone(comercio.cuenta_por_defecto_id)
         self.assertFalse(comercio.semilla_active_dev)
+        self.assertFalse(comercio.es_demo)
+        self.assertNotIn("es_demo", confirmar.json())
 
         entrar = self.client.post(
             "/api/sesion/entrar/",

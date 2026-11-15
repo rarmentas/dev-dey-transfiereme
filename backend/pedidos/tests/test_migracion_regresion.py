@@ -6,12 +6,15 @@ from django.test import TransactionTestCase
 class MigracionRegresionTests(TransactionTestCase):
     def test_conserva_comercio_cobro_y_movimiento_previos(self):
         anteriores = [
-            ("ambito", "0004_comercio_pey_codi_status"),
+            ("ambito", "0005_comercio_secuencia_evento"),
             ("movimientos", "0005_cobro_pey_bank_account_id"),
+            ("pedidos", "0001_initial"),
+            ("webhooks", "0002_alter_avisorecibido_resultado"),
+            ("canales", "0001_initial"),
         ]
         ejecutor = MigrationExecutor(connection)
         try:
-            ejecutor.migrate([("pedidos", None), *anteriores])
+            ejecutor.migrate(anteriores)
             apps = ejecutor.loader.project_state(anteriores).apps
             comercio = apps.get_model("ambito", "Comercio").objects.create(
                 nombre="Existente", clabe="123456789012345678"
@@ -41,7 +44,9 @@ class MigracionRegresionTests(TransactionTestCase):
             self.assertEqual(
                 (actual.secuencia_evento, actual.clabe), (0, "123456789012345678")
             )
-            self.assertEqual(Cobro.objects.get(pk=cobro.pk).concepto, "Pan")
+            cobro_actual = Cobro.objects.get(pk=cobro.pk)
+            self.assertEqual(cobro_actual.concepto, "Pan")
+            self.assertEqual(cobro_actual.pey_bank_account_id, "")
             self.assertEqual(
                 Movimiento.objects.get(pk=movimiento.pk).cobro_id, cobro.pk
             )

@@ -35,31 +35,36 @@ class AvisoPago:
 
 
 def aplicar_aviso(aviso: AvisoPago, *, origen: Movimiento.Origen) -> Movimiento:
-    with transaction.atomic():
-        if aviso.tipo == TIPO_QR:
-            return _aplicar_qr(aviso, origen)
-        if aviso.tipo == TIPO_PN:
-            return _aplicar_pn(aviso, origen)
+    from pedidos.models import IntentoCobro
+    from pedidos.servicios.candados import bloquear_para_pago
+
+    if aviso.tipo == TIPO_QR:
+        cobro = _cobro_por_qr(aviso.codi_qr_id)
+    elif aviso.tipo == TIPO_PN:
+        cobro = _cobro_por_notificacion(aviso.transaction_id)
+    else:
         raise AvisoInvalido(f"Tipo de aviso desconocido: {aviso.tipo}.")
-
-
-def _aplicar_qr(aviso: AvisoPago, origen: Movimiento.Origen) -> Movimiento:
-    cobro = _cobro_por_qr(aviso.codi_qr_id)
-    if cobro.canal == Movimiento.Canal.QR_GENERAL:
-        return _crear_movimiento_de_qr_general(cobro, aviso, origen)
-    return _marcar_ligado_pagado(cobro, aviso)
-
-
-def _aplicar_pn(aviso: AvisoPago, origen: Movimiento.Origen) -> Movimiento:
-    cobro = _cobro_por_notificacion(aviso.transaction_id)
-    return _marcar_ligado_pagado(cobro, aviso)
+    intento = IntentoCobro.objects.filter(cobro_id=cobro.pk).first()
+    if intento:
+        raise AvisoInvalido("Los intentos requieren un aviso verificado.")
+    movimiento_id = None if cobro.canal == "qr_general" else (
+        cobro.movimientos.order_by("pk").values_list("pk", flat=True).first()
+    )
+    with transaction.atomic():
+        _, _, _, _, cobro, _ = bloquear_para_pago(
+            cobro.comercio_id, intento.pedido_id if intento else None,
+            intento.pk if intento else None, cobro.cuenta_id, cobro.pk, movimiento_id,
+        )
+        if cobro.canal == Movimiento.Canal.QR_GENERAL:
+            return _crear_movimiento_de_qr_general(cobro, aviso, origen)
+        return _marcar_ligado_pagado(cobro, aviso)
 
 
 def _cobro_por_qr(codi_qr_id: str | None) -> Cobro:
     if not codi_qr_id:
         raise AvisoSinCobro("El aviso de QR no trae codi_qr_id.")
     try:
-        return Cobro.objects.select_for_update().get(
+        return Cobro.objects.get(
             pey_qr_id=codi_qr_id,
             canal__in=_CANALES_QR,
         )
@@ -71,7 +76,7 @@ def _cobro_por_notificacion(transaction_id: str) -> Cobro:
     if not transaction_id:
         raise AvisoSinCobro("El aviso de notificación no trae transaction_id.")
     try:
-        return Cobro.objects.select_for_update().get(
+        return Cobro.objects.get(
             pey_transaction_id=transaction_id,
             canal=Movimiento.Canal.NOTIFICACION,
         )

@@ -37,6 +37,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
 
   var _guardando = false;
   String? _error;
+  String? _errorMonto;
   PeyException? _pey;
   var _cuentaInactiva = false;
 
@@ -47,7 +48,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     _montoController.addListener(_alCambiarMonto);
   }
 
-  void _alCambiarMonto() => setState(() {});
+  void _alCambiarMonto() => setState(() => _errorMonto = null);
 
   @override
   void didChangeDependencies() {
@@ -56,9 +57,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       return;
     }
     _prellenado = true;
-    final consulta =
-        GoRouter.maybeOf(context)?.routeInformationProvider.value.uri
-            .queryParameters;
+    final consulta = GoRouter.maybeOf(context)
+        ?.routeInformationProvider
+        .value
+        .uri
+        .queryParameters;
     if (consulta == null) {
       return;
     }
@@ -90,6 +93,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     setState(() {
       _guardando = true;
       _error = null;
+      _errorMonto = null;
       _pey = null;
       _cuentaInactiva = false;
     });
@@ -139,7 +143,13 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       if (!mounted) {
         return;
       }
-      setState(() => _error = error.mensaje);
+      setState(() {
+        if (error.campo == 'monto') {
+          _errorMonto = error.mensaje;
+        } else {
+          _error = error.mensaje;
+        }
+      });
     } on VentaApiException catch (error) {
       if (!mounted) {
         return;
@@ -214,14 +224,18 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (estadoCuenta != null && !estadoCuenta.puedeCobrar) ...[
+                        if (estadoCuenta != null &&
+                            !estadoCuenta.puedeCobrar) ...[
                           TfAvisoError(
                             titulo: tituloBloqueoCuenta(estadoCuenta),
                             mensaje: mensajeSiguientePaso(estadoCuenta),
                           ),
                           const SizedBox(height: TfSpace.s4),
                         ],
-                        _CampoMonto(controller: _montoController),
+                        _CampoMonto(
+                          controller: _montoController,
+                          errorServidor: _errorMonto,
+                        ),
                         const SizedBox(height: TfSpace.s5),
                         etiqueta('Concepto'),
                         TextFormField(
@@ -252,7 +266,8 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                             true: Icons.smartphone_rounded,
                           },
                           valor: _aCelular,
-                          onCambio: (valor) => setState(() => _aCelular = valor),
+                          onCambio: (valor) =>
+                              setState(() => _aCelular = valor),
                         ),
                         if (_aCelular) ...[
                           const SizedBox(height: TfSpace.s4),
@@ -336,9 +351,10 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
 
 /// Tarjeta del monto: borde primary de 2 px, anillo de foco y cifra grande.
 class _CampoMonto extends StatefulWidget {
-  const _CampoMonto({required this.controller});
+  const _CampoMonto({required this.controller, this.errorServidor});
 
   final TextEditingController controller;
+  final String? errorServidor;
 
   @override
   State<_CampoMonto> createState() => _CampoMontoState();
@@ -380,7 +396,7 @@ class _CampoMontoState extends State<_CampoMonto> {
       autovalidateMode: AutovalidateMode.onUserInteraction,
       validator: (_) => validarMontoVenta(controller.text),
       builder: (estado) {
-        final hayError = estado.hasError;
+        final hayError = estado.hasError || widget.errorServidor != null;
         final colorBorde = hayError ? tf.expired : colores.primary;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -436,30 +452,31 @@ class _CampoMontoState extends State<_CampoMonto> {
                                 controller: controller,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                      decimal: true,
+                                    ),
                                 textAlign: TextAlign.center,
                                 style: estiloMonto,
                                 onChanged: estado.didChange,
-                                decoration: const InputDecoration(
-                                  hintText: '0.00',
-                                  isCollapsed: true,
-                                  filled: false,
-                                  constraints: BoxConstraints(
-                                    minWidth: 0,
-                                    minHeight: 0,
-                                  ),
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  errorBorder: InputBorder.none,
-                                  focusedErrorBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ).copyWith(
-                                  hintStyle: estiloMonto?.copyWith(
-                                    color: colores.onSurfaceVariant,
-                                  ),
-                                ),
+                                decoration:
+                                    const InputDecoration(
+                                      hintText: '0.00',
+                                      isCollapsed: true,
+                                      filled: false,
+                                      constraints: BoxConstraints(
+                                        minWidth: 0,
+                                        minHeight: 0,
+                                      ),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      focusedErrorBorder: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                    ).copyWith(
+                                      hintStyle: estiloMonto?.copyWith(
+                                        color: colores.onSurfaceVariant,
+                                      ),
+                                    ),
                               ),
                             ),
                           ),
@@ -474,7 +491,7 @@ class _CampoMontoState extends State<_CampoMonto> {
               Padding(
                 padding: const EdgeInsets.only(top: TfSpace.s2),
                 child: Text(
-                  estado.errorText!,
+                  estado.errorText ?? widget.errorServidor!,
                   style: tema.textTheme.bodySmall?.copyWith(
                     color: tf.expiredText,
                   ),

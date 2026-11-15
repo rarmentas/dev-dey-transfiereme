@@ -150,7 +150,8 @@ class Movimiento(models.Model):
             estado_en_bd = self._estado_persistido()
             if estado_en_bd is not None and estado_en_bd != self.estado:
                 raise TransicionInvalida(
-                    "El estado de un movimiento existente solo cambia con cambiar_estado()."
+                    "El estado de un movimiento existente solo cambia "
+                    "con cambiar_estado()."
                 )
         super().save(*args, **kwargs)
 
@@ -222,6 +223,10 @@ class Cobro(models.Model):
         on_delete=models.PROTECT,
         related_name="cobros",
         verbose_name="comercio",
+    )
+    cuenta = models.ForeignKey(
+        "ambito.CuentaCobro", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="cobros",
     )
     canal = models.CharField(
         max_length=20,

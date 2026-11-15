@@ -32,3 +32,7 @@ class ComercioEnCuerpoError(AmbitoError):
             f"No debe enviar el campo «{clave}» en la petición; "
             "el servidor determina su comercio por membresía."
         )
+
+
+class NoEsDuenoError(AmbitoError):
+    """La operación requiere ser dueño del comercio."""

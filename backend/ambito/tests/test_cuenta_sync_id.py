@@ -1,38 +1,38 @@
-"""PENDING con id de pey no borra el registro. En desarrollo, sin id, sí se limpia."""
+"""Sincronizar conserva el identificador de la cuenta registrada."""
 
 from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
-from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.models import Comercio
+from ambito.operaciones_cuenta import sincronizar
+from ambito.tests.soporte import crear_cuenta
 from pey.cuentas import CuentaPey
+from pey.tipos import ErrorPey
 
 
 class CuentaSyncIdTests(TestCase):
-    @override_settings(DEBUG=False, PEY_ADAPTADOR="produccion", PEY_API_KEY="llave")
     def test_pending_de_produccion_conserva_el_id(self) -> None:
-        comercio = Comercio.objects.create(
-            nombre="En proceso",
-            pey_bank_account_id="01J9ZQ4C8X7Y6W5V4T3S2R1Q0P",
-        )
+        comercio = Comercio.objects.create(nombre="En proceso")
+        cuenta = crear_cuenta(comercio)
+        identificador = cuenta.pey_bank_account_id
         with patch(
-            "integracion.pey.adaptador_produccion.consultar_cuenta",
-            return_value=CuentaPey(id="01J9ZQ4C8X7Y6W5V4T3S2R1Q0P", codi_status="PROCESSING"),
+            "ambito.operaciones_cuenta.consultar_cuenta",
+            return_value=CuentaPey(id=identificador, codi_status="PROCESSING"),
         ):
-            sincronizar_codi_status(comercio)
-        comercio.refresh_from_db()
-        self.assertEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
-        self.assertEqual(comercio.pey_bank_account_id, "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P")
+            sincronizar(cuenta)
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.codi_status, "pending")
+        self.assertEqual(cuenta.pey_bank_account_id, identificador)
 
-    @override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="")
-    def test_desarrollo_sin_id_en_el_resultado_sigue_limpiando(self) -> None:
-        comercio = Comercio.objects.create(
-            nombre="Local",
-            semilla_active_dev=False,
-            pey_bank_account_id="01VIEJO",
-        )
-        sincronizar_codi_status(comercio)
-        comercio.refresh_from_db()
-        self.assertEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.PENDING)
-        self.assertEqual(comercio.pey_bank_account_id, "")
+    def test_cuenta_no_encontrada_conserva_el_id(self) -> None:
+        cuenta = crear_cuenta(Comercio.objects.create(nombre="Local"))
+        identificador = cuenta.pey_bank_account_id
+        with patch(
+            "ambito.operaciones_cuenta.consultar_cuenta",
+            side_effect=ErrorPey("BANK_ACCOUNT_NOT_FOUND", "no encontrada"),
+        ):
+            sincronizar(cuenta)
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.codi_status, "pending")
+        self.assertEqual(cuenta.pey_bank_account_id, identificador)

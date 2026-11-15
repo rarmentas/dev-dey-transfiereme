@@ -79,10 +79,10 @@ El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML
 
 ## Fase 1: pedidos y canal WhatsApp
 
-La aplicación conserva `DEMO_MODE`, `NUCLEO_ADAPTADOR`,
-`POLITICA_COBRO_VERSION`, `PEDIDOS_COBRO_HABILITADO=false` y, si corresponde,
-`DEMO_PEY_BANK_ACCOUNT_ID`. El release MR-1 aún no habilita cobros de pedidos.
-Estas variables pertenecen a Django; no modifican el mecanismo de deploy.
+El demo se decide por comercio. Django usa `NUCLEO_ADAPTADOR` y
+`PEDIDOS_COBRO_HABILITADO`, que admite `true` o `false`; opcionalmente,
+`DEMO_PEY_BANK_ACCOUNT_ID` identifica el destino de la cuenta demo. Estas
+variables no modifican el mecanismo de deploy.
 
 Para WhatsApp, Django usa `WAHA_BASE_URL` (por defecto
 `http://127.0.0.1:3004`), `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET` y
@@ -100,10 +100,11 @@ es una operación independiente, al igual que vincular el número.
 
 El remoto instala `requirements-canal.txt`, que incluye los requisitos de
 la app. Antes de detener servicios prepara dependencias, checks, estáticos,
-las dos units y `backend/.env.canal` filtrado, modo 600, sin llaves pey,
-secretos de firma ni contraseña SMTP. Conserva URL/API/instancia WAHA y
-configuración Django/BD/modo. El File común completo sigue en `backend/.env`.
-Rsync protege ambos env, el venv y staticfiles.
+las cuatro units y los archivos `.env.canal`, `.env.cobros` y `.env.stt`
+filtrados con modo 600. Canal y STT reciben URL/API/instancia WAHA; cobros
+recibe la clave API pey. Ninguno recibe secretos de firma ni contraseña SMTP.
+El File común completo sigue en `backend/.env`; solo admite `CODY_ROL=web`
+o su ausencia. Rsync protege los env, el venv y staticfiles.
 
 `cody-canal.service` ejecuta `manage.py procesar_canal` desde
 `/opt/codi/prod/backend`, con el mismo usuario y venv de la app. Tras reiniciar
@@ -111,9 +112,11 @@ web y comprobar salud HTTP 200, reinicia canal y exige un latido posterior
 al reinicio más unit activa. Solo entonces habilita la unit canal y acepta
 el deploy. Si falla el arranque, restaura units/env previos, vuelve a arrancar
 web y recupera el estado previo del canal, incluida su primera instalación.
-Esta recuperación no revierte código ni dependencias sincronizadas.
+La misma recuperación conserva el estado previo de cobros y STT. Esta
+recuperación no revierte código ni dependencias sincronizadas.
 
-En cada deploy normal se crea un respaldo `pg_dump -Fc` en
+Tras validar configuración, roles, units y dependencias STT, cada deploy
+normal crea un respaldo `pg_dump -Fc` en
 `~/respaldos/codi` del usuario de deploy y se conservan los 10 más recientes.
 Después se ejecutan `migrate --plan`, `migrate --noinput` y
 `migrate --check --noinput`, antes de detener servicios. Si falla cualquiera
@@ -126,3 +129,34 @@ se revierte y el respaldo no se restaura automáticamente. Se necesita espacio
 en disco para un respaldo adicional antes de aplicar la retención. El `pg_dump`
 alarga el tiempo que se mantiene el bloqueo del deploy. El mecanismo de exclusión
 sigue siendo el flock remoto sostenido por SSH y `guardian_alive`.
+
+**Bloqueante de compatibilidad MR-2:** mientras siga ejecutándose el código de
+master, las inserciones pueden fallar tras migrar. Las columnas nuevas
+`Comercio.es_demo`, `Membresia.es_dueno`, `Pedido.preparacion` y varios campos
+de `AvisoRecibido` son `NOT NULL` y sus migraciones retiran el default SQL;
+el código anterior no incluye esas columnas al insertar. Además, el backfill de
+cuentas es una pasada única: escrituras legacy concurrentes pueden dejar las
+cuentas nuevas desactualizadas. No ejecutar este deploy con tráfico activo hasta
+resolver y verificar la compatibilidad y la sincronización de datos. El respaldo
+no evita esos fallos ni se restaura automáticamente.
+
+## Cobros y voz
+
+`PEDIDOS_COBRO_HABILITADO` admite `true` o `false`. El demo se decide por
+comercio; `DEMO_PEY_BANK_ACCOUNT_ID` es el destino opcional usado por web,
+canal y cobros. `DEMO_MODE` y `POLITICA_COBRO_VERSION` se ignoran.
+
+`STT_HABILITADO=0` deshabilita la unit STT; `STT_MODELO` y `STT_CPU_THREADS`
+configuran el modelo. Al habilitarlo, operación provisiona previamente
+`/var/lib/codi/stt/venv` y `/var/lib/codi/stt/modelos`, con ffmpeg y ffprobe.
+Antes de detener servicios, el deploy comprueba las versiones de los paquetes,
+permisos, 512 MiB libres y carga del modelo offline. No modifica ese venv.
+La unit usa ese directorio como única escritura adicional al release. Tras la
+salud web se requieren latidos nuevos de cobros y canal, y de STT si está activo.
+
+Para voz, operación debe verificar que WAHA descarga media y anuncia archivos
+`/api/files/` con origen `http://127.0.0.1:3004`, igual a la API de Django.
+La configuración independiente actual conserva media con
+`WHATSAPP_FILES_LIFETIME=0`; su crecimiento requiere seguimiento. Confirmar
+`WHATSAPP_DOWNLOAD_MEDIA` y el origen anunciado con la imagen instalada antes
+de declarar voz lista. La aplicación no despliega ni configura WAHA.

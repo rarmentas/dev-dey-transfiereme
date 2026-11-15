@@ -8,7 +8,6 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, InterfaceError, OperationalError
 
 from ambito.models import Comercio
-from config.modo import demo_activo, politica_cobro_version
 from pedidos.contratos.v1 import (
     CodigoError,
     ContextoCanalV1,
@@ -17,7 +16,7 @@ from pedidos.contratos.v1 import (
 )
 from pedidos.contratos.validacion import ErrorContrato, hash_canonico, validar_comando
 from pedidos.errores import ErrorNucleo
-from pedidos.models import Aceptacion, Pedido, RenglonPedido
+from pedidos.models import Pedido, RenglonPedido
 from pedidos.servicios import aceptaciones, solicitudes
 from pedidos.servicios.eventos import consultar
 from pedidos.servicios.presentacion import pedido_dto
@@ -182,18 +181,10 @@ class NucleoRealV1:
 
     @respuesta
     def solicitar_cobro(self, ctx, **datos):
-        comercio, _ = self._preparar("solicitar_cobro", ctx, datos)
+        from pedidos.servicios.cobros import solicitar
+        comercio, huella = self._preparar("solicitar_cobro", ctx, datos)
         pedido = self._pedido(comercio, ctx, datos["pedido_id"])
-        if not Aceptacion.objects.filter(
-            pk=datos["aceptacion_id"],
-            pedido=pedido,
-            cotizacion__revision=pedido.revision_vigente,
-            cotizacion__demo_mode=demo_activo(),
-            cotizacion__politica_cobro_version=politica_cobro_version(),
-            pedido__estado="aceptado",
-        ).exists():
-            raise ErrorNucleo(CodigoError.ACEPTACION_REQUERIDA)
-        raise ErrorNucleo(CodigoError.PROVEEDOR_NO_DISPONIBLE)
+        return solicitar(comercio, pedido, datos, huella)
 
     @respuesta
     def consultar_eventos(self, ctx, **datos):

@@ -70,6 +70,59 @@ Future<void> _cobrar(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('exito envia clave y navega a la venta', (tester) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrear(201, cuerpoVenta(id: 15, estado: 'pendiente'));
+    mock.alObtener([cuerpoVenta(id: 15, estado: 'pendiente')]);
+    await _montar(tester, mock);
+    await _monto(tester, '12.50');
+    await _cobrar(tester);
+    expect(mock.peticiones.first.headers['Idempotency-Key'], isNotEmpty);
+    expect(mock.peticiones.last.path, '/api/ventas/15/');
+    expect(find.byType(VentaEsperaPage), findsOneWidget);
+  });
+
+  for (final codigo in ['COBRO_EN_CURSO', 'COBRO_INCIERTO']) {
+    testWidgets('$codigo muestra aviso sin confundir cuenta', (tester) async {
+      final mock = MockVentaApi(crearDioVenta());
+      mock.alCrear(409, {'codigo': codigo});
+      await _montar(tester, mock);
+      await _monto(tester, '12.50');
+      await _cobrar(tester);
+      expect(find.textContaining('no lo repitas'), findsOneWidget);
+      expect(find.text(kMensajeCuentaNoActivaQr), findsNothing);
+    });
+  }
+
+  testWidgets('403 demo muestra bloqueo', (tester) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrear(403, {'codigo': 'RUTA_BLOQUEADA_EN_DEMO'});
+    await _montar(tester, mock);
+    await _monto(tester, '12.50');
+    await _cobrar(tester);
+    expect(find.textContaining('no está disponible en demo'), findsOneWidget);
+  });
+
+  testWidgets('400 deja formulario editable y permite otro intento', (
+    tester,
+  ) async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrear(400, {
+      'monto': ['Revisa el monto.'],
+    });
+    await _montar(tester, mock);
+    await _monto(tester, '12.50');
+    await _cobrar(tester);
+    expect(find.text('Revisa el monto.'), findsOneWidget);
+    await _monto(tester, '13');
+    await _cobrar(tester);
+    expect(mock.peticiones.length, 2);
+    expect(
+      mock.peticiones.first.headers['Idempotency-Key'],
+      isNot(mock.peticiones.last.headers['Idempotency-Key']),
+    );
+  });
+
   testWidgets('monto vacío, cero, de más de 2 decimales o letras no piden', (
     tester,
   ) async {
@@ -154,7 +207,10 @@ void main() {
 
   testWidgets('409 de cuenta muestra el mensaje de Mi QR', (tester) async {
     final mock = MockVentaApi(crearDioVenta());
-    mock.alCrear(409, {'detail': 'La cuenta no está ACTIVE.'});
+    mock.alCrear(409, {
+      'codigo': 'CUENTA_NO_ACTIVE',
+      'detail': 'La cuenta no está ACTIVE.',
+    });
 
     await _montar(tester, mock);
     await _monto(tester, '12.50');

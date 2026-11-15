@@ -134,9 +134,9 @@ PEY_API_KEY = os.environ.get("PEY_API_KEY", "")
 PEY_ADAPTADOR = os.environ.get("PEY_ADAPTADOR", "")
 PEY_BASE_URL = "https://api.pey.mx"
 
-DEMO_MODE = os.environ.get("DEMO_MODE", "")
+CODY_ROL = os.environ.get("CODY_ROL", "web")
+
 DEMO_PEY_BANK_ACCOUNT_ID = os.environ.get("DEMO_PEY_BANK_ACCOUNT_ID", "")
-POLITICA_COBRO_VERSION = os.environ.get("POLITICA_COBRO_VERSION", "")
 NUCLEO_ADAPTADOR = os.environ.get("NUCLEO_ADAPTADOR", "")
 NUCLEO_STUB_PERMITIDO = DEBUG or "test" in sys.argv
 PEDIDOS_COBRO_HABILITADO = _env_bool("PEDIDOS_COBRO_HABILITADO", False)
@@ -192,3 +192,10 @@ WAHA_API_KEY = os.environ.get("WAHA_API_KEY", "")
 WAHA_WEBHOOK_SECRET = os.environ.get("WAHA_WEBHOOK_SECRET", "")
 WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "").strip() or "waha"
 CANAL_TRANSPORTE = "canales.waha.AdaptadorWaha"
+
+STT_HABILITADO = os.environ.get("STT_HABILITADO", "0") == "1"
+STT_MODELO = os.environ.get("STT_MODELO", "small")
+STT_CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "2"))
+STT_PRESUPUESTO_S = 45
+WHATSAPP_AUDIO_MAX_BYTES = 5_000_000
+WHATSAPP_AUDIO_MAX_SEGUNDOS = 90

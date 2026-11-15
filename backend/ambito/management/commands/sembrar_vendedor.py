@@ -1,9 +1,11 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from ambito.models import Comercio, Membresia
+from ambito.models import Comercio, CuentaCobro, Membresia
 
 CORREO_DEMO = "vendedor@demo.mx"
 COMERCIO_DEMO = "Comercio demo"
@@ -38,19 +40,35 @@ class Command(BaseCommand):
             membresia = getattr(usuario, "membresia", None)
             if membresia is None:
                 comercio = _comercio_de_semilla(nombre)
-                Membresia.objects.create(usuario=usuario, comercio=comercio)
+                Membresia.objects.create(
+                    usuario=usuario, comercio=comercio, es_dueno=True
+                )
             else:
                 comercio = membresia.comercio
                 if not comercio.semilla_active_dev and comercio.nombre != nombre:
                     raise CommandError(
                         "Ese correo ya pertenece a otro comercio. No se reasigna."
                     )
+                membresia.es_dueno = True
+                membresia.save(update_fields=["es_dueno"])
                 comercio.nombre = nombre
                 comercio.semilla_active_dev = True
                 comercio.save(update_fields=["nombre", "semilla_active_dev"])
 
+            if not comercio.cuenta_por_defecto_id:
+                identificador = uuid.uuid4()
+                cuenta = CuentaCobro.objects.create(
+                    id=identificador,
+                    pey_bank_account_id=("01DEVS1M" + identificador.hex.upper())[:26],
+                    comercio=comercio, clabe="000000000000000000",
+                    registro_estado="registrado", codi_status="active",
+                )
+                comercio.cuenta_por_defecto = cuenta
+                comercio.save(update_fields=["cuenta_por_defecto"])
+
         self.stdout.write(
-            f"Vendedor {correo} listo en «{comercio.nombre}». No se crearon movimientos."
+            f"Vendedor {correo} listo en «{comercio.nombre}». "
+            "No se crearon movimientos."
         )
 
 

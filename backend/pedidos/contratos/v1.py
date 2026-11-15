@@ -82,6 +82,8 @@ class CodigoError(str, Enum):
     CLAVE_REUTILIZADA = "CLAVE_REUTILIZADA"
     PEDIDO_ABIERTO = "PEDIDO_ABIERTO"
     PEDIDO_CONGELADO = "PEDIDO_CONGELADO"
+    PAGO_NO_CONFIRMADO = "PAGO_NO_CONFIRMADO"
+    PREPARACION_INVALIDA = "PREPARACION_INVALIDA"
     RENGLON_PENDIENTE = "RENGLON_PENDIENTE"
     ACEPTACION_REQUERIDA = "ACEPTACION_REQUERIDA"
     IMPORTE_NO_COINCIDE = "IMPORTE_NO_COINCIDE"
@@ -199,6 +201,7 @@ class CobroDTO(Serializable):
     qr: str | None = None
     vencimiento: datetime | None = None
     destino_enmascarado: str | None = None
+    aceptacion_id: str | None = None
 
 
 @dataclass(frozen=True)

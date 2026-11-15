@@ -32,7 +32,10 @@ def _vencer_si_cumplio_el_plazo(movimiento: Movimiento) -> None:
     if cobro.vence_en is None or cobro.vence_en > timezone.now():
         return
     try:
-        movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
+        from pedidos.servicios.cobros import vencer_intento
+
+        vencer_intento(movimiento)
+        movimiento.refresh_from_db()
     except TransicionInvalida:
         movimiento.refresh_from_db()
 

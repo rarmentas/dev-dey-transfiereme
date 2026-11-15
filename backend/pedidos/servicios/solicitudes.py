@@ -3,13 +3,14 @@
 from django.db import transaction
 from django.db.models import Max
 
+from ambito.candados import bloquear_comercio
 from pedidos.contratos.v1 import CodigoError, TipoEvento
 from pedidos.errores import ErrorNucleo
 from pedidos.models import Pedido
 from pedidos.servicios.comandos import guardar, repeticion
 from pedidos.servicios.cotizaciones import invalidar
 from pedidos.servicios.eventos import emitir
-from ventas.canal import bloquear_comercio
+from pedidos.servicios.intentos import exigir_editable
 
 
 def registrar_solicitud(self, ctx, **datos):
@@ -71,9 +72,10 @@ def corregir_borrador(self, ctx, **datos):
             raise ErrorNucleo(CodigoError.VERSION_OBSOLETA)
         if pedido.estado == "cerrado":
             raise ErrorNucleo(CodigoError.PEDIDO_CONGELADO)
+        tenia_cotizacion = pedido.revision_vigente is not None
+        exigir_editable(comercio, pedido)
         self._renglones(pedido, datos["renglones"])
         pedido.version += 1
-        tenia_cotizacion = pedido.revision_vigente is not None
         invalidar(comercio, pedido)
         pedido.estado = "en_revision" if tenia_cotizacion else "borrador"
         pedido.secuencia_conversacion_aplicada = datos["secuencia_conversacion"]

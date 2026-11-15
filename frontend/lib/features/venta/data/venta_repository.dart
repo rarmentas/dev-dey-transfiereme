@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'venta.dart';
+import '../../pedidos/data/clave_comando.dart';
 
 class VentaApiException implements Exception {
   VentaApiException(this.mensaje);
@@ -31,15 +32,17 @@ class PeyException implements Exception {
 }
 
 class ValidacionVentaException implements Exception {
-  ValidacionVentaException(this.mensaje);
+  ValidacionVentaException(this.mensaje, {this.campo});
 
   final String mensaje;
+  final String? campo;
 }
 
 class VentaRepository {
   VentaRepository(this._dio);
 
   final Dio _dio;
+  final ClaveComando _clave = ClaveComando();
 
   static const ruta = '/api/ventas/';
 
@@ -74,24 +77,50 @@ class VentaRepository {
 
   Future<Venta> _crearEn(String destino, Map<String, dynamic> datos) async {
     try {
-      final respuesta = await _dio.post<dynamic>(destino, data: datos);
-      return _leerCreacion(respuesta.statusCode ?? 0, respuesta.data);
+      final respuesta = await _dio.post<dynamic>(
+        destino,
+        data: datos,
+        options: Options(
+          headers: {
+            'Idempotency-Key': _clave.para({'ruta': destino, ...datos}),
+          },
+        ),
+      );
+      final venta = _leerCreacion(respuesta.statusCode ?? 0, respuesta.data);
+      _clave.limpiar();
+      return venta;
     } on VentaPendienteException {
+      _clave.limpiar();
       rethrow;
     } on CuentaNoActiveException {
+      _clave.limpiar();
       rethrow;
-    } on PeyException {
+    } on PeyException catch (e) {
+      if (!e.puedeHaberseCreado) _clave.limpiar();
       rethrow;
     } on ValidacionVentaException {
+      _clave.limpiar();
       rethrow;
     } on VentaApiException {
+      _clave.limpiar();
       rethrow;
     } on DioException catch (error) {
-      final pey = _peyDesdeDio(error);
-      if (pey != null) {
-        throw pey;
+      final response = error.response;
+      if (response != null) {
+        try {
+          return _leerCreacion(response.statusCode ?? 0, response.data);
+        } on PeyException catch (e) {
+          if (!e.puedeHaberseCreado) _clave.limpiar();
+          rethrow;
+        } catch (_) {
+          if ((response.statusCode ?? 0) < 500) _clave.limpiar();
+          rethrow;
+        }
       }
-      throw VentaApiException(_mensajeDeDio(error));
+      throw PeyException(
+        puedeHaberseCreado: true,
+        mensaje: 'No sabemos si se generó el cobro; no lo repitas.',
+      );
     }
   }
 
@@ -123,29 +152,50 @@ Venta _leerCreacion(int status, Object? data) {
     if (id is int) {
       throw VentaPendienteException(id);
     }
-    final detalle = _detalle(data);
-    throw CuentaNoActiveException(detalle ?? 'La cuenta no está ACTIVE.');
+    final codigo = mapa['codigo'];
+    if (codigo == 'CUENTA_NO_ACTIVE' ||
+        (codigo == null &&
+            !mapa.containsKey('movimiento_id') &&
+            mapa['detail'] == 'La cuenta no está ACTIVE.')) {
+      throw CuentaNoActiveException('La cuenta no está activa.');
+    }
+    if (codigo == 'COBRO_EN_CURSO' || codigo == 'COBRO_INCIERTO') {
+      throw VentaApiException(
+        'Hay un cobro en curso o sin confirmar; no lo repitas.',
+      );
+    }
+    throw VentaApiException('No pudimos completar el cobro. Intenta de nuevo.');
   }
   if (status == 400) {
-    throw ValidacionVentaException(_mensajeValidacion(data));
+    throw ValidacionVentaException(
+      _mensajeValidacion(data),
+      campo: data is Map && data.containsKey('monto') ? 'monto' : null,
+    );
   }
   if (status == 502) {
     throw _pey(data);
   }
-  throw _errorDesdeRespuesta(data, status);
-}
-
-PeyException? _peyDesdeDio(DioException error) {
-  if (error.response?.statusCode == 502) {
-    return _pey(error.response?.data);
+  if (status == 401 || (data is Map && data['codigo'] == 'SESION_TERMINADA')) {
+    throw VentaApiException('Tu sesión terminó. Vuelve a entrar.');
   }
-  return null;
+  if (status == 403 &&
+      data is Map &&
+      data['codigo'] == 'RUTA_BLOQUEADA_EN_DEMO') {
+    throw VentaApiException('Este cobro no está disponible en demo.');
+  }
+  if (status >= 500) {
+    throw PeyException(
+      puedeHaberseCreado: true,
+      mensaje: 'No sabemos si se generó el cobro; no lo repitas.',
+    );
+  }
+  throw _errorDesdeRespuesta(data, status);
 }
 
 PeyException _pey(Object? data) {
   final mapa = data is Map ? data : const <String, dynamic>{};
   return PeyException(
-    puedeHaberseCreado: mapa['puede_haberse_creado'] == true,
+    puedeHaberseCreado: mapa['puede_haberse_creado'] != false,
     mensaje: _detalle(data) ?? 'pey no pudo crear el cobro.',
   );
 }
@@ -155,7 +205,9 @@ String _mensajeValidacion(Object? data) {
     return 'Revisa los datos del cobro.';
   }
   final partes = <String>[];
-  for (final valor in data.values) {
+  for (final entrada in data.entries) {
+    if (entrada.key == 'codigo') continue;
+    final valor = entrada.value;
     if (valor is List) {
       for (final item in valor) {
         if (item is String && item.isNotEmpty) {

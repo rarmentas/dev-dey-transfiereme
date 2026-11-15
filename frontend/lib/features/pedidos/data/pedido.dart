@@ -11,11 +11,14 @@ class PedidoResumen {
       estado = json['estado'] as String,
       cliente = json['cliente_etiqueta'] as String? ?? '',
       pendientes = json['renglones_pendientes'] as int,
-      total = json['total_comercial_centavos'] as int?;
+      total = json['total_comercial_centavos'] as int?,
+      pagoEstado = json['pago_estado'] as String? ?? 'sin_cobro',
+      preparacion = json['preparacion'] as String? ?? 'pendiente';
   final String id;
   final int numero;
   final String estado;
   final String cliente;
+  final String pagoEstado, preparacion;
   final int pendientes;
   final int? total;
 }
@@ -35,7 +38,18 @@ class Pedido {
           : Cotizacion.fromJson(
               Map<String, dynamic>.from(json['cotizacion'] as Map),
             ),
-      aceptado = json['aceptacion'] != null;
+      aceptado = json['aceptacion'] != null,
+      aceptacionId = json['aceptacion'] is Map
+          ? (json['aceptacion'] as Map)['id'] as String?
+          : null,
+      pagoEstado = json['pago_estado'] as String? ?? 'sin_cobro',
+      preparacion = json['preparacion'] as String? ?? 'pendiente',
+      intento = json['intento'] is Map
+          ? Map<String, dynamic>.from(json['intento'] as Map)
+          : null,
+      entrega = json['entrega'] is Map
+          ? Map<String, dynamic>.from(json['entrega'] as Map)
+          : {};
   final String id;
   final int numero;
   final int version;
@@ -44,6 +58,10 @@ class Pedido {
   final List<Renglon> renglones;
   final Cotizacion? cotizacion;
   final bool aceptado;
+  final String? aceptacionId;
+  final String pagoEstado, preparacion;
+  final Map<String, dynamic>? intento;
+  final Map<String, dynamic> entrega;
 }
 
 class Cotizacion {
@@ -95,3 +113,22 @@ class Renglon {
     'motivo_exclusion': motivo,
   };
 }
+
+String etiquetaPago(String estado) => switch (estado) {
+  'sin_cobro' => 'Sin cobro',
+  'en_espera' => 'En espera',
+  'reservado' || 'enviando' => 'Generando',
+  'pendiente' => 'Pendiente',
+  'incierto' => 'Sin confirmar',
+  'pagado' => 'Pagado',
+  'descartado' => 'Descartado',
+  'rechazado' => 'Rechazado',
+  'vencido' => 'Vencido',
+  _ => 'Desconocido',
+};
+
+String etiquetaPreparacion(String estado) => switch (estado) {
+  'listo' => 'Listo',
+  'entregado' => 'Entregado',
+  _ => 'Pendiente',
+};

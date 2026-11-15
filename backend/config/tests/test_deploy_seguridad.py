@@ -17,6 +17,7 @@ class DeploySeguridadTests(SimpleTestCase):
         self.addCleanup(self.temporal.cleanup)
         self.raiz = Path(self.temporal.name)
         self.codi = self.raiz / "codi"
+        self.stt = self.raiz / "stt"
         self.destino = self.codi / "prod"
         self.units = self.raiz / "units"
         self.units.mkdir()
@@ -34,13 +35,15 @@ class DeploySeguridadTests(SimpleTestCase):
             contenido = (RAIZ / "scripts/ci" / nombre).read_text()
             for origen, destino in (
                 ("/opt/codi", self.codi),
+                ("/var/lib/codi/stt", self.stt),
                 ("/run/lock/codi-deploy.lock", self.lock),
                 ("/run/codi-maintenance", self.maintenance),
                 ("/etc/systemd/system", self.units),
             ):
                 contenido = contenido.replace(origen, str(destino))
             (self.destino / "scripts/ci" / nombre).write_text(contenido)
-        for nombre in ("cody.service.in", "cody-canal.service.in"):
+        for nombre in ("cody.service.in", "cody-canal.service.in",
+                       "cody-cobros.service.in", "cody-stt.service.in"):
             shutil.copy(RAIZ / "deploy" / nombre, self.destino / "deploy" / nombre)
         self.entrada = self.destino / "backend/.env.incoming"
         self.activo = self.destino / "backend/.env"
@@ -51,10 +54,13 @@ class DeploySeguridadTests(SimpleTestCase):
             "POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
             "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
             "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
+            "NUCLEO_ADAPTADOR=real\nPEDIDOS_COBRO_HABILITADO=true\n"
             "WAHA_WEBHOOK_SECRET=ficticio\nEMAIL_HOST_PASSWORD=ficticia\n"
         )
         self.activo.write_text("ANTERIOR=1\n")
         self.canal.write_text("CANAL_ANTERIOR=1\n")
+        (self.raiz / "web-activa").touch()
+        (self.raiz / "web-entorno").write_text("ANTERIOR=1\n")
         (self.units / "cody.service").write_text("unit web previa\n")
         (self.units / "cody-canal.service").write_text("unit canal previa\n")
         self.entorno = {
@@ -66,6 +72,9 @@ class DeploySeguridadTests(SimpleTestCase):
             "STARTED": str(self.raiz / "canal-arrancado"),
             "HOME": str(self.raiz),
             "MIGRATED": str(self.raiz / "migrado"),
+            "WEB_ACTIVA": str(self.raiz / "web-activa"),
+            "WEB_ENTORNO": str(self.raiz / "web-entorno"),
+            "WEB_HISTORIAL": str(self.raiz / "web-historial"),
         }
         self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
         self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
@@ -76,6 +85,26 @@ class DeploySeguridadTests(SimpleTestCase):
         self.stub("stat", 'echo cody')
         self.stub("systemctl", '''echo "systemctl $*" >> "$LOG"
 if [[ "$1" == show ]]; then echo "$DEST/backend"; fi
+if [[ "$2" == cody.service ]]; then
+  case "$1" in
+    stop) rm -f "$WEB_ACTIVA" ;;
+    start|restart)
+      if [[ "$1" == restart && -n "${WEB_FALLA:-}" ]]; then
+        rm -f "$WEB_ACTIVA"
+        touch "$WEB_ACTIVA.fallo"
+        if [[ "$WEB_FALLA" != inactiva ]]; then exit 1; fi
+        exit 0
+      fi
+      if [[ "$1" == start && "${WEB_FALLA:-}" == persistente &&
+            -e "$WEB_ACTIVA.fallo" ]]; then exit 1; fi
+      if [[ "$1" == restart || ! -e "$WEB_ACTIVA" ]]; then
+        cp "$DEST/backend/.env" "$WEB_ENTORNO"
+        cat "$DEST/backend/.env" >> "$WEB_HISTORIAL"
+        touch "$WEB_ACTIVA"
+      fi ;;
+    is-active) [[ -e "$WEB_ACTIVA" ]] || exit 1 ;;
+  esac
+fi
 if [[ "$1 $2" == "restart cody-canal.service" ]]; then touch "$STARTED"; fi
 if [[ "$1" == is-active || "$1" == is-enabled ]]; then
   nombre="${@: -1}"
@@ -133,7 +162,9 @@ esac''')
             '    *) exit 99 ;; esac ;;\n'
             '  collectstatic) exit "${STATIC_ERROR:-0}" ;;\n'
             '  estado_canal) [[ "$*" == *"--desde 2026-01-01T00:00:00Z"* ]] '
-            '|| exit 2; exit "${LATIDO_ANTERIOR:-0}" ;;\n'
+            '|| exit 2; [[ -z "${FALLA_PROCESO:-}" || '
+            '"$*" != *"--proceso $FALLA_PROCESO"* ]] '
+            '|| exit 1; exit "${LATIDO_ANTERIOR:-0}" ;;\n'
             'esac\n'
         )
         self.python.chmod(0o755)
@@ -233,6 +264,81 @@ esac''')
                     self.assertFalse(list((self.raiz / "respaldos").rglob("*.partial")))
                 self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
 
+    def test_threads_con_stt_apagado_y_entorno_intacto(self) -> None:
+        base = self.entrada.read_text() + "STT_HABILITADO=0\n"
+        for valor in ("", "abc", "2 # comentario"):
+            with self.subTest(valor=valor):
+                self.log.unlink(missing_ok=True)
+                contenido = base + f"STT_CPU_THREADS={valor}\n"
+                self.entrada.write_text(contenido)
+                resultado = self.remoto()
+                self.assertNotEqual(resultado.returncode, 0)
+                acciones = self.log.read_text()
+                for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+                    self.assertNotIn(accion, acciones)
+                self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+                self.assertEqual(self.entrada.read_text(), contenido)
+        for linea in ("", "STT_CPU_THREADS=2\n"):
+            with self.subTest(linea=linea):
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
+                self.entrada.write_text(base + linea)
+                resultado = self.remoto()
+                self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+
+    def test_stt_flag_invalido_no_detiene_servicios(self) -> None:
+        with self.entrada.open("a") as archivo:
+            archivo.write("STT_HABILITADO=2\n")
+        self.assertNotEqual(self.remoto().returncode, 0)
+        self.assertNotIn("systemctl stop", self.log.read_text())
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_rol_web_invalido_no_detiene_servicios(self) -> None:
+        with self.entrada.open("a") as archivo:
+            archivo.write("CODY_ROL=canal\n")
+        self.assertNotEqual(self.remoto().returncode, 0)
+        self.assertNotIn("systemctl stop", self.log.read_text())
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_waha_puerto_anterior_no_detiene_servicios(self) -> None:
+        with self.entrada.open("a") as archivo:
+            archivo.write("WAHA_BASE_URL=http://127.0.0.1:3000\n")
+        self.assertNotEqual(self.remoto().returncode, 0)
+        self.assertNotIn("systemctl stop", self.log.read_text())
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_env_worker_symlink_rechazado(self) -> None:
+        hermano = self.raiz / "hermano"
+        hermano.write_text("intacto")
+        for rol in ("cobros", "stt"):
+            with self.subTest(rol=rol):
+                enlace = self.destino / f"backend/.env.{rol}"
+                enlace.symlink_to(hermano)
+                self.assertNotEqual(self.preflight().returncode, 0)
+                self.assertNotEqual(self.remoto().returncode, 0)
+                self.assertEqual(hermano.read_text(), "intacto")
+                enlace.unlink()
+
+    def test_fallo_de_latido_por_proceso_restaura_servicios(self) -> None:
+        contenido = self.entrada.read_text()
+        for proceso in ("procesar_canal", "procesar_cobros"):
+            with self.subTest(proceso=proceso):
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
+                self.entrada.write_text(contenido)
+                resultado = self.remoto(FALLA_PROCESO=proceso)
+                self.assertNotEqual(resultado.returncode, 0)
+                self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+                self.assertEqual(self.canal.read_text(), "CANAL_ANTERIOR=1\n")
+
+    def test_stt_sin_modelo_no_detiene_servicios(self) -> None:
+        with self.entrada.open("a") as archivo:
+            archivo.write("STT_HABILITADO=1\n")
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        acciones = self.log.read_text()
+        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
     def test_postgres_no_sano_no_se_repara(self) -> None:
         resultado = self.remoto(PG_HEALTH="unhealthy")
         self.assertNotEqual(resultado.returncode, 0)
@@ -264,6 +370,7 @@ esac''')
         self.assertIn("--desde 2026-01-01T00:00:00Z", acciones)
         for nombre, ejecutable in (
             ("cody", "gunicorn"), ("cody-canal", "python manage.py procesar_canal"),
+            ("cody-cobros", "python manage.py procesar_cobros"),
         ):
             unit = (self.units / f"{nombre}.service").read_text()
             self.assertNotIn("@", unit)
@@ -279,6 +386,122 @@ esac''')
         ):
             self.assertNotIn(secreto, contenido)
         self.assertEqual(self.canal.stat().st_mode & 0o777, 0o600)
+        cobros = (self.destino / "backend/.env.cobros").read_text()
+        stt = (self.destino / "backend/.env.stt").read_text()
+        self.assertIn("PEY_API_KEY=ficticia", cobros)
+        self.assertNotIn("WAHA_API_KEY", cobros)
+        self.assertNotIn("PEY_WEBHOOK_SECRET", cobros)
+        self.assertIn("WAHA_API_KEY=ficticia", stt)
+        self.assertNotIn("PEY_API_KEY", stt)
+        for rol in ("canal", "cobros", "stt"):
+            entorno = self.destino / f"backend/.env.{rol}"
+            self.assertEqual(entorno.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn("CODY_ROL=", entorno.read_text())
+        unit = (self.units / "cody-stt.service").read_text()
+        self.assertIn(
+            f"ExecStart={self.stt}/venv/bin/python manage.py procesar_audio", unit
+        )
+        self.assertIn(f"ReadWritePaths={self.destino} {self.stt}", unit)
+        self.assertIn("systemctl disable --now cody-stt.service", acciones)
+        for proceso in ("procesar_canal", "procesar_cobros"):
+            self.assertIn(f"--proceso {proceso}", acciones)
+
+
+    def test_stt_precargado_antes_del_corte_y_latido(self) -> None:
+        (self.stt / "venv/bin").mkdir(parents=True)
+        (self.stt / "modelos").mkdir()
+        python = self.stt / "venv/bin/python"
+        python.write_text(
+            "#!/bin/bash\n"
+            f"echo stt-preflight >> '{self.log}'\n"
+            '[[ "$HF_HUB_OFFLINE" == 1 && "$CODY_ROL" == stt ]]\n'
+        )
+        python.chmod(0o755)
+        self.stub("ffmpeg", "exit 0")
+        self.stub("ffprobe", "exit 0")
+        with self.entrada.open("a") as archivo:
+            archivo.write("STT_HABILITADO=1\nSTT_CPU_THREADS=2\n")
+        resultado = self.remoto()
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        acciones = self.log.read_text()
+        self.assertLess(
+            acciones.index("stt-preflight"), acciones.index("pg_dump")
+        )
+        self.assertIn("systemctl enable --now cody-stt.service", acciones)
+        self.assertIn("--proceso procesar_audio", acciones)
+
+    def test_modelo_offline_invalido_no_respalda_ni_migra(self) -> None:
+        (self.stt / "venv/bin").mkdir(parents=True)
+        (self.stt / "modelos").mkdir()
+        python = self.stt / "venv/bin/python"
+        python.write_text("#!/bin/sh\nexit 1\n")
+        python.chmod(0o755)
+        self.stub("ffmpeg", "exit 0")
+        self.stub("ffprobe", "exit 0")
+        with self.entrada.open("a") as archivo:
+            archivo.write("STT_HABILITADO=1\nSTT_CPU_THREADS=2\n")
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"modelo STT no disponibles", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_recuperacion_reinicia_web_con_entorno_anterior(self) -> None:
+        resultado = self.remoto(FALLA_PROCESO="procesar_cobros")
+        self.assertNotEqual(resultado.returncode, 0)
+        historial = (self.raiz / "web-historial").read_text()
+        self.assertIn("WAHA_API_KEY=ficticia", historial)
+        self.assertEqual((self.raiz / "web-entorno").read_text(), "ANTERIOR=1\n")
+        self.assertTrue((self.raiz / "web-activa").exists())
+
+    def test_reintenta_arranque_web_si_falla_reinicio_de_recuperacion(self) -> None:
+        resultado = self.remoto(
+            FALLA_PROCESO="procesar_cobros", WEB_FALLA="transitoria"
+        )
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"procesar_cobros", resultado.stderr)
+        acciones = self.log.read_text()
+        reinicio = acciones.index("systemctl restart cody.service")
+        self.assertIn("systemctl start cody.service", acciones[reinicio:])
+        self.assertEqual((self.raiz / "web-entorno").read_text(), "ANTERIOR=1\n")
+        self.assertTrue((self.raiz / "web-activa").exists())
+        self.assertNotIn("recuperación web fallida".encode(), resultado.stderr)
+
+    def test_fallo_persistente_web_se_reporta_y_recupera_workers(self) -> None:
+        (self.units / "cody-cobros.service").write_text("unit cobros previa\n")
+        (self.destino / "backend/.env.cobros").write_text("cobros=anterior\n")
+        resultado = self.remoto(
+            FALLA_PROCESO="procesar_cobros", WEB_FALLA="persistente"
+        )
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn("recuperación web fallida".encode(), resultado.stderr)
+        self.assertFalse((self.raiz / "web-activa").exists())
+        acciones = self.log.read_text()
+        self.assertIn("systemctl start cody-canal.service", acciones)
+        self.assertIn("systemctl start cody-cobros.service", acciones)
+        self.assertEqual((self.destino / "backend/.env.cobros").read_text(),
+                         "cobros=anterior\n")
+
+    def test_reinicio_exitoso_con_web_inactiva_se_reporta(self) -> None:
+        resultado = self.remoto(FALLA_PROCESO="procesar_cobros", WEB_FALLA="inactiva")
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn("recuperación web fallida".encode(), resultado.stderr)
+        self.assertIn("systemctl start cody-canal.service", self.log.read_text())
+
+    def test_fallo_restablece_cobros_y_stt_previos(self) -> None:
+        for rol in ("cobros", "stt"):
+            (self.units / f"cody-{rol}.service").write_text(f"unit {rol} previa\n")
+            (self.destino / f"backend/.env.{rol}").write_text(f"{rol}=anterior\n")
+        resultado = self.remoto(LATIDO_ANTERIOR="1")
+        self.assertNotEqual(resultado.returncode, 0)
+        for rol in ("cobros", "stt"):
+            self.assertEqual((self.units / f"cody-{rol}.service").read_text(),
+                             f"unit {rol} previa\n")
+            self.assertEqual((self.destino / f"backend/.env.{rol}").read_text(),
+                             f"{rol}=anterior\n")
+            self.assertIn(f"systemctl start cody-{rol}.service", self.log.read_text())
 
     def test_retencion_conserva_diez_y_archivo_ajeno(self) -> None:
         carpeta = self.raiz / "respaldos/codi"

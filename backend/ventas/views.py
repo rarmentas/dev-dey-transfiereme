@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 
 from rest_framework.permissions import IsAuthenticated
@@ -10,7 +11,8 @@ from rest_framework.views import APIView
 
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
-from config.modo import demo_activo, respuesta_bloqueada_en_demo
+from config.modo import modo_de_comercio, respuesta_bloqueada_en_demo
+from movimientos.exceptions import DemoBloqueado
 from pey.tipos import ErrorPey, ParametroInvalido
 from ventas.canal import VentaPendiente
 from ventas.serializers import (
@@ -82,21 +84,27 @@ class CrearVentaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if demo_activo():
-            return respuesta_bloqueada_en_demo()
-        try:
-            datos = _leer_cuerpo(request)
-        except _CuerpoInvalido as exc:
-            return Response({"detail": str(exc)}, status=400)
-
         try:
             rechazar_comercio_en_query(request.GET)
-            comercio = preparar_operacion_cobro(request, datos)
+            comercio = preparar_operacion_cobro(request, {})
         except ComercioEnCuerpoError as exc:
             return _respuesta_ambito(exc, 400)
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
 
+        if modo_de_comercio(comercio).demo:
+            return respuesta_bloqueada_en_demo()
+        try:
+            datos = _leer_cuerpo(request)
+            preparar_operacion_cobro(request, datos)
+        except _CuerpoInvalido as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
+
+        clave = request.headers.get("Idempotency-Key", "")
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", clave):
+            return Response({"codigo": "IDEMPOTENCY_KEY_REQUERIDA"}, status=400)
         serializer = CrearVentaSerializer(data=datos)
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
@@ -108,6 +116,7 @@ class CrearVentaView(APIView):
                 monto=limpio["monto"],
                 concepto=limpio["concepto"],
                 referencia=limpio["referencia"],
+                clave=clave,
             )
         except Exception as exc:
             respuesta = _respuesta_fallo(exc, comercio)
@@ -124,21 +133,27 @@ class CrearNotificacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if demo_activo():
-            return respuesta_bloqueada_en_demo()
-        try:
-            datos = _leer_cuerpo(request)
-        except _CuerpoInvalido as exc:
-            return Response({"detail": str(exc)}, status=400)
-
         try:
             rechazar_comercio_en_query(request.GET)
-            comercio = preparar_operacion_cobro(request, datos)
+            comercio = preparar_operacion_cobro(request, {})
         except ComercioEnCuerpoError as exc:
             return _respuesta_ambito(exc, 400)
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
 
+        if modo_de_comercio(comercio).demo:
+            return respuesta_bloqueada_en_demo()
+        try:
+            datos = _leer_cuerpo(request)
+            preparar_operacion_cobro(request, datos)
+        except _CuerpoInvalido as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
+
+        clave = request.headers.get("Idempotency-Key", "")
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", clave):
+            return Response({"codigo": "IDEMPOTENCY_KEY_REQUERIDA"}, status=400)
         serializer = CrearNotificacionSerializer(data=datos)
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
@@ -151,6 +166,7 @@ class CrearNotificacionView(APIView):
                 telefono=limpio["telefono"],
                 concepto=limpio["concepto"],
                 referencia=limpio["referencia"],
+                clave=clave,
             )
         except Exception as exc:
             respuesta = _respuesta_fallo(exc, comercio, notificacion=True)
@@ -170,10 +186,35 @@ def _respuesta_fallo(
     *,
     notificacion: bool = False,
 ) -> Response | None:
+    from pedidos.servicios.legado import (
+        ClaveReutilizada, CobroEnCurso, CobroInciertoEnvio,
+    )
+
+    if isinstance(exc, DemoBloqueado):
+        return respuesta_bloqueada_en_demo()
+    if isinstance(exc, CobroInciertoEnvio):
+        return Response({
+            "codigo": "COBRO_INCIERTO", "puede_haberse_creado": True,
+            "intento_id": str(exc.intento.pk), "request_id": exc.intento.request_id,
+            "tipo": exc.intento.error,
+            "detail": _MENSAJE_PUEDE_HABER_LLEGADO if notificacion else _MENSAJE_PEY,
+        }, status=502)
+    if isinstance(exc, ClaveReutilizada):
+        return Response({"codigo": "CLAVE_REUTILIZADA"}, status=409)
+    if isinstance(exc, CobroEnCurso):
+        codigo = (
+            "COBRO_INCIERTO" if exc.intento.estado == "incierto" else "COBRO_EN_CURSO"
+        )
+        return Response({
+            "codigo": codigo, "intento_id": str(exc.intento.pk),
+            "estado": exc.intento.estado,
+        }, status=409)
     if isinstance(exc, ValidacionVenta):
         return Response({exc.campo: [str(exc)]}, status=400)
     if isinstance(exc, CuentaNoActive):
-        return Response({"detail": _MENSAJE_CUENTA}, status=409)
+        return Response(
+            {"detail": _MENSAJE_CUENTA, "codigo": "CUENTA_NO_ACTIVE"}, status=409
+        )
     if isinstance(exc, VentaPendiente):
         return Response(_venta_pendiente(exc), status=409)
     if isinstance(exc, ParametroInvalido):

@@ -25,11 +25,15 @@ EMAIL_USE_TLS=False
 DEFAULT_FROM_EMAIL=transfiereme@asware.com.mx
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 
-DEMO_MODE=false
 NUCLEO_ADAPTADOR=real
-POLITICA_COBRO_VERSION=normal-1
+# ULID opcional del destino demo; lo usan web, canal y cobros.
+DEMO_PEY_BANK_ACCOUNT_ID=
 PEDIDOS_COBRO_HABILITADO=false
 WAHA_INSTANCIA=waha
 WAHA_BASE_URL=http://127.0.0.1:3004
 WAHA_API_KEY=
 WAHA_WEBHOOK_SECRET=
+
+STT_HABILITADO=0
+STT_MODELO=small
+STT_CPU_THREADS=2

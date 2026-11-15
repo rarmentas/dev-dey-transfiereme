@@ -61,4 +61,4 @@ class CobroCerradoTests(CasoReal):
             aceptacion_id=aceptado.aceptacion.id,
             canal="qr_venta",
         )
-        self.assertEqual(resultado.error.code, CodigoError.ACEPTACION_REQUERIDA)
+        self.assertEqual(resultado.error.code, CodigoError.MODO_CAMBIO)

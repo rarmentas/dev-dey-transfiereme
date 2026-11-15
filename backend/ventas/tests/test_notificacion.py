@@ -9,11 +9,14 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.db import connections
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from pedidos.tests.soporte_cobro import ClienteLegacy
+from pedidos.models import IntentoCobro
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.produccion import AdaptadorProduccion
@@ -76,13 +79,14 @@ def _textos(obj) -> list[str]:
     return valores
 
 
-class NotificacionVentaTests(TestCase):
+class NotificacionVentaTests(TransactionTestCase):
     def setUp(self) -> None:
-        self.client = APIClient()
+        self.client = ClienteLegacy.crear()
         self.comercio = Comercio.objects.create(
             nombre="Comercio A",
             semilla_active_dev=True,
         )
+        crear_cuenta(self.comercio)
         self.usuario = User.objects.create_user(username="vendedor_pn", password="pass")
         Membresia.objects.create(usuario=self.usuario, comercio=self.comercio)
 
@@ -90,7 +94,9 @@ class NotificacionVentaTests(TestCase):
         self.client.force_login(self.usuario)
 
     def _post(self, puerto, cuerpo=None):
-        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+        ):
             return self.client.post(
                 _RUTA,
                 cuerpo
@@ -104,7 +110,9 @@ class NotificacionVentaTests(TestCase):
         montos = ("0", "-1", "1000000.01", "0.005")
         for monto in montos:
             with self.subTest(monto=monto):
-                with patch("ventas.servicio.obtener_puerto", return_value=doble):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+                ):
                     respuesta = self.client.post(
                         _RUTA,
                         {"monto": monto, "telefono": _TELEFONO},
@@ -114,6 +122,7 @@ class NotificacionVentaTests(TestCase):
                 self.assertIn("monto", respuesta.json())
                 with self.assertRaises(MontoInvalido):
                     crear_venta_notificacion(
+                        clave="prueba",
                         comercio=self.comercio,
                         monto=Decimal(monto),
                         telefono=_TELEFONO,
@@ -123,7 +132,9 @@ class NotificacionVentaTests(TestCase):
                     )
         for telefono in ("551234567", "55123456789", "551234567A", "551 234567"):
             with self.subTest(telefono=telefono):
-                with patch("ventas.servicio.obtener_puerto", return_value=doble):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+                ):
                     respuesta = self.client.post(
                         _RUTA,
                         {"monto": "10.00", "telefono": telefono},
@@ -133,6 +144,7 @@ class NotificacionVentaTests(TestCase):
                 self.assertIn("telefono", respuesta.json())
                 with self.assertRaises(TelefonoInvalido):
                     crear_venta_notificacion(
+                        clave="prueba",
                         comercio=self.comercio,
                         monto=Decimal("10.00"),
                         telefono=telefono,
@@ -161,6 +173,7 @@ class NotificacionVentaTests(TestCase):
                 "amount": 25,
                 "concept": "Aviso",
                 "transactionId": cobro.pey_transaction_id,
+                "bankAccountId": cobro.pey_bank_account_id,
             },
             separators=(",", ":"),
         )
@@ -190,7 +203,9 @@ class NotificacionVentaTests(TestCase):
     def test_un_canal_vivo_entre_qr_y_notificacion(self) -> None:
         self._entrar()
         qr = _Espia()
-        with patch("ventas.servicio.obtener_puerto", return_value=qr):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=qr
+        ):
             alta_qr = self.client.post(
                 _RUTA_QR,
                 {"monto": "0.01", "concepto": "QR"},
@@ -216,7 +231,9 @@ class NotificacionVentaTests(TestCase):
         )
 
         bloqueo = _Espia()
-        with patch("ventas.servicio.obtener_puerto", return_value=bloqueo):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=bloqueo
+        ):
             otra_qr = self.client.post(
                 _RUTA_QR,
                 {"monto": "0.01"},
@@ -229,7 +246,9 @@ class NotificacionVentaTests(TestCase):
         cobro_pn = Cobro.objects.get(pk=alta_pn.json()["cobro_id"])
         cobro_pn.vence_en = timezone.now() - timedelta(seconds=5)
         cobro_pn.save(update_fields=["vence_en"])
-        with patch("ventas.servicio.obtener_puerto", return_value=bloqueo):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=bloqueo
+        ):
             qr_final = self.client.post(
                 _RUTA_QR,
                 {"monto": "0.01", "concepto": "Después"},
@@ -242,18 +261,13 @@ class NotificacionVentaTests(TestCase):
         self._entrar()
         espia = _Espia()
         antes = timezone.now()
-        with self.assertLogs("ventas.servicio", level="INFO") as logs:
-            with patch("ventas.servicio.obtener_puerto", return_value=espia):
-                respuesta = self.client.post(
-                    _RUTA,
-                    {
-                        "monto": "0.01",
-                        "telefono": _TELEFONO,
-                        "concepto": "Aviso",
-                        "referencia": "7",
-                    },
-                    format="json",
-                )
+        with patch("pedidos.servicios.despacho.obtener_puerto", return_value=espia):
+            respuesta = self.client.post(
+                _RUTA,
+                {"monto": "0.01", "telefono": _TELEFONO,
+                 "concepto": "Aviso", "referencia": "7"},
+                format="json",
+            )
         despues = timezone.now()
         self.assertEqual(respuesta.status_code, 201)
         cuerpo = respuesta.json()
@@ -262,9 +276,7 @@ class NotificacionVentaTests(TestCase):
         self.assertEqual(cuerpo["estado"], "pendiente")
         self.assertEqual(cuerpo["origen"], "origen_desarrollo")
         self.assertNotIn(_TELEFONO, json.dumps(cuerpo))
-        texto = " ".join(logs.output)
-        self.assertNotIn(_TELEFONO, texto)
-        self.assertIn("telefono_final=5678", texto)
+        self.assertEqual(IntentoCobro.objects.get().telefono_bancario, "")
 
         cobro = Cobro.objects.get(pk=cuerpo["cobro_id"])
         movimiento = Movimiento.objects.get(pk=cuerpo["movimiento_id"])
@@ -304,14 +316,19 @@ class NotificacionVentaTests(TestCase):
         self.assertEqual(Cobro.objects.count(), 0)
         self.assertEqual(Movimiento.objects.count(), 0)
 
-        inactivo = Comercio.objects.create(nombre="Sin cuenta", semilla_active_dev=False)
+        inactivo = Comercio.objects.create(
+            nombre="Sin cuenta", semilla_active_dev=False
+        )
         usuario = User.objects.create_user(username="sin_cuenta", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=inactivo)
         self.client.force_login(usuario)
         sin_llamada = _Espia()
         cuenta = self._post(sin_llamada)
         self.assertEqual(cuenta.status_code, 409)
-        self.assertEqual(cuenta.json(), {"detail": "La cuenta no está ACTIVE."})
+        self.assertEqual(
+            cuenta.json(),
+            {"detail": "La cuenta no está ACTIVE.", "codigo": "CUENTA_NO_ACTIVE"},
+        )
         self.assertEqual(sin_llamada.notificaciones, [])
 
         self.client.force_login(self.usuario)
@@ -354,44 +371,36 @@ class NotificacionVentaTests(TestCase):
                 self.assertEqual(cuerpo["puede_haberse_creado"], puede)
                 self.assertEqual(cuerpo["detail"], detalle)
                 self.assertEqual(cuerpo["tipo"], "NO_DISPONIBLE")
+                if puede:
+                    self.assertTrue(cuerpo["intento_id"])
+                    intento = IntentoCobro.objects.order_by("-creado_en").first()
+                    self.assertEqual(intento.estado, "incierto")
                 self.assertEqual(cuerpo["request_id"], "req-puede")
                 self.assertNotIn(_TELEFONO, json.dumps(cuerpo))
         self.assertEqual(Cobro.objects.count(), 0)
 
-    def test_fallo_de_bd_loguea_transaction_id_sin_el_telefono(self) -> None:
+    def test_fallo_de_bd_conserva_envio_sin_crear_movimiento(self) -> None:
         self._entrar()
         espia = _Espia()
-        with self.assertLogs("ventas", level="ERROR") as logs:
-            with patch("ventas.servicio.obtener_puerto", return_value=espia):
-                with patch(
-                    "ventas.servicio.Movimiento.objects.create",
-                    side_effect=RuntimeError("bd"),
-                ):
-                    with self.assertRaises(RuntimeError):
-                        self.client.post(
-                            _RUTA,
-                            {
-                                "monto": "0.01",
-                                "telefono": _TELEFONO,
-                                "concepto": "Aviso",
-                            },
-                            format="json",
-                        )
+        with patch("pedidos.servicios.despacho.obtener_puerto", return_value=espia):
+            with patch(
+                "ventas.servicio.Movimiento.objects.create",
+                side_effect=RuntimeError("bd"),
+            ):
+                with self.assertRaises(RuntimeError):
+                    self.client.post(
+                        _RUTA, {"monto": "0.01", "telefono": _TELEFONO}, format="json"
+                    )
         self.assertIsNotNone(espia.creada)
-        texto = " ".join(logs.output)
-        self.assertIn(espia.creada.transaction_id, texto)
-        self.assertIn("telefono_final=5678", texto)
-        self.assertNotIn(_TELEFONO, texto)
-        self.assertEqual(Cobro.objects.count(), 0)
-        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertEqual(IntentoCobro.objects.get().estado, "enviando")
+        self.assertFalse(Cobro.objects.exists())
+        self.assertFalse(Movimiento.objects.exists())
 
     @override_settings(PEY_API_KEY="llave-de-prueba")
     def test_adaptador_produccion_envia_el_cuerpo_pn(self) -> None:
-        self.comercio.pey_codi_status = self.comercio.PeyCodiStatus.ACTIVE
-        self.comercio.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-        self.comercio.save(
-            update_fields=["pey_codi_status", "pey_bank_account_id"]
-        )
+        cuenta = self.comercio.cuenta_por_defecto
+        cuenta.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        cuenta.save(update_fields=["pey_bank_account_id"])
         self._entrar()
         llamadas: list[tuple] = []
 
@@ -404,7 +413,9 @@ class NotificacionVentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+            with patch(
+                "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+            ):
                 respuesta = self.client.post(
                     _RUTA,
                     {
@@ -471,6 +482,7 @@ class _PuertoCruzado:
 class ConcurrenciaQrYNotificacionTests(TransactionTestCase):
     def test_qr_y_notificacion_simultaneos_dejan_un_solo_cobro(self) -> None:
         comercio = Comercio.objects.create(nombre="Cruzado", semilla_active_dev=True)
+        crear_cuenta(comercio)
         usuario = User.objects.create_user(username="cruzado", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
         ambos = threading.Event()
@@ -481,8 +493,8 @@ class ConcurrenciaQrYNotificacionTests(TransactionTestCase):
         candado = threading.Lock()
         candado_llegada = threading.Lock()
         llegados = [0]
-        cliente_qr = APIClient()
-        cliente_pn = APIClient()
+        cliente_qr = ClienteLegacy.crear()
+        cliente_pn = ClienteLegacy.crear()
         cliente_qr.force_login(usuario)
         cliente_pn.force_login(usuario)
 
@@ -502,7 +514,11 @@ class ConcurrenciaQrYNotificacionTests(TransactionTestCase):
             finally:
                 connections.close_all()
 
-        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+        with patch(
+
+            "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+
+        ):
             hilos = [
                 threading.Thread(
                     target=alta,

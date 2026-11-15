@@ -13,8 +13,9 @@ from ambito.exceptions import (
     SinAmbitoError,
 )
 from ambito.scope import preparar_operacion_cobro
-from config.modo import demo_activo, respuesta_bloqueada_en_demo
+from config.modo import modo_de_comercio, respuesta_bloqueada_en_demo
 from movimientos.alta_qr_general import alta_qr_general
+from movimientos.exceptions import DemoBloqueado, QrGeneralNoDisponible
 from pey.tipos import ErrorPey, ParametroInvalido
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,6 @@ class AltaQrGeneralView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if demo_activo():
-            return respuesta_bloqueada_en_demo()
         datos = request.data if isinstance(request.data, dict) else {}
         try:
             comercio = preparar_operacion_cobro(request, datos)
@@ -42,8 +41,15 @@ class AltaQrGeneralView(APIView):
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
 
+        if modo_de_comercio(comercio).demo:
+            return respuesta_bloqueada_en_demo()
+
         try:
             resultado = alta_qr_general(comercio)
+        except DemoBloqueado:
+            return respuesta_bloqueada_en_demo()
+        except QrGeneralNoDisponible:
+            return Response({"codigo": "QR_GENERAL_NO_DISPONIBLE"}, status=409)
         except CuentaNoActiveError as exc:
             return Response(
                 {

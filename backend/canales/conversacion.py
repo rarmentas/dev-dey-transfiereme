@@ -1,9 +1,11 @@
 """Conversación guiada mediante el puerto del núcleo."""
 
+import re
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 
 from canales import mensajes
@@ -33,7 +35,16 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
     pedido_id = conversacion.pedido_id_actual
     ignorado = False
     datos = {"contrato_version": CONTRATO_VERSION}
-    if mensaje.tipo != "texto":
+    if mensaje.tipo == "audio" and not hasattr(mensaje, "trabajoaudio"):
+        if settings.STT_HABILITADO:
+            salida = mensajes.AUDIO_FALLIDO
+        else:
+            salida, ignorado = mensajes.SOLO_TEXTO, True
+    elif mensaje.tipo == "audio" and mensaje.trabajoaudio.estado != "listo":
+        salida = mensajes.AUDIO_FALLIDO
+    elif mensaje.tipo == "audio" and comando == "ACEPTAR":
+        salida = mensajes.ACEPTAR_POR_TEXTO
+    elif mensaje.tipo not in ("texto", "audio"):
         salida, ignorado = mensajes.SOLO_TEXTO, True
     elif comando == "AYUDA":
         salida = mensajes.AYUDA
@@ -82,6 +93,10 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 )
                 if not cobro.ok and cobro.error.retryable:
                     respuesta = cobro
+                elif not cobro.ok and cobro.error.code.value in {
+                    "CUENTA_NO_ACTIVE", "DEMO_DESTINO_NO_PERMITIDO"
+                }:
+                    salida = mensajes.COBRO_NO_DISPONIBLE
                 elif (
                     not cobro.ok and cobro.error.code.value != "PROVEEDOR_NO_DISPONIBLE"
                 ):
@@ -90,11 +105,25 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                     estado = cobro.data["pedido"].pago_estado.value
                     salida = {
                         "en_espera": mensajes.ESPERA,
+                        "reservado": mensajes.PENDIENTE,
+                        "enviando": mensajes.PENDIENTE,
                         "pendiente": mensajes.PENDIENTE,
                         "incierto": mensajes.INCIERTO,
+                        "descartado": mensajes.OBSOLETA,
                     }.get(estado, mensajes.ACEPTADO)
                 else:
                     salida = mensajes.ACEPTADO
+    elif pedido_id and re.search(r"\b(?:ya\s+)?pagu[eé]\b", texto, re.IGNORECASE):
+        respuesta = nucleo.consultar_pedido(ctx, **datos, pedido_id=str(pedido_id))
+        if respuesta.ok:
+            pedido = respuesta.data["pedido"]
+            estado = pedido.pago_estado.value
+            if estado == "pagado":
+                salida = mensajes.PAGADO.format(pedido_numero=pedido.numero)
+            elif estado == "incierto":
+                salida = mensajes.INCIERTO
+            else:
+                salida = mensajes.AUN_SIN_PAGO
     elif comando == "CORREGIR" or comando.startswith("CORREGIR:"):
         contenido = texto[len("CORREGIR") :].lstrip(": ").strip()
         if not any(c.isalnum() for c in contenido):
@@ -157,21 +186,30 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
         conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
     ).exists():
         salida = mensajes.TOKEN_INVALIDO
-    elif pedido_id:
-        salida = mensajes.ABIERTO
     elif texto:
-        respuesta = nucleo.registrar_solicitud(
-            ctx,
-            **datos,
-            command_key=f"registrar:{mensaje.id}",
-            mensaje_id=str(mensaje.id),
-            message_key=message_key(
-                mensaje.instancia_id, mensaje.sesion_id, mensaje.id_mensaje_proveedor
-            ),
-            secuencia_conversacion=mensaje.secuencia,
-            renglones=parsear_renglones(texto, str(mensaje.id)),
-        )
-        salida = mensajes.RECIBIDO
+        if pedido_id:
+            consulta = nucleo.consultar_pedido(ctx, **datos, pedido_id=str(pedido_id))
+            if not consulta.ok:
+                respuesta = consulta
+            elif consulta.data["pedido"].abierto:
+                salida = mensajes.ABIERTO
+            else:
+                pedido_id = None
+        if not pedido_id and respuesta is None:
+            respuesta = nucleo.registrar_solicitud(
+                ctx,
+                **datos,
+                command_key=f"registrar:{mensaje.id}",
+                mensaje_id=str(mensaje.id),
+                message_key=message_key(
+                    mensaje.instancia_id,
+                    mensaje.sesion_id,
+                    mensaje.id_mensaje_proveedor,
+                ),
+                secuencia_conversacion=mensaje.secuencia,
+                renglones=parsear_renglones(texto, str(mensaje.id)),
+            )
+            salida = mensajes.RECIBIDO
     if respuesta and not respuesta.ok:
         if respuesta.error.retryable:
             with transaction.atomic():

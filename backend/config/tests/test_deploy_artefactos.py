@@ -5,7 +5,10 @@ import tempfile
 from pathlib import Path
 
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.core.exceptions import ImproperlyConfigured
+from django.test import SimpleTestCase, override_settings
+
+from config.modo import validar_configuracion
 
 RAIZ = Path(settings.BASE_DIR).parent
 SCRIPTS = (
@@ -32,13 +35,7 @@ class DeployArtefactosTests(SimpleTestCase):
         for valor in ("procesar_canal", "Restart=always", ".env.canal"):
             self.assertIn(valor, unit)
         self.assertNotIn("PEY", unit)
-        remoto = (RAIZ / SCRIPTS[1]).read_text()
-        filtro = remoto.split("# Solo las variables", 1)[1].split("chmod 600", 1)[0]
-        for clave in ("PEY_API_KEY", "PEY_WEBHOOK_SECRET", "WAHA_WEBHOOK_SECRET"):
-            self.assertNotIn(clave, filtro)
-        for clave in ("WAHA_INSTANCIA", "WAHA_BASE_URL", "WAHA_API_KEY"):
-            self.assertIn(clave, filtro)
-        self.assertIn('chmod 600 "$canal_env"', remoto)
+        self.assertIn("CODY_ROL=canal", unit)
 
     def test_compose_solo_postgres(self) -> None:
         compose = (RAIZ / "deploy/compose.yaml").read_text()
@@ -55,9 +52,7 @@ class DeployArtefactosTests(SimpleTestCase):
                       "StrictHostKeyChecking=yes", "known_hosts.prod",
                       "--exclude '/backend/.env.canal'"):
             self.assertIn(valor, deploy)
-        self.assertNotIn("deploy-guard", deploy)
         self.assertNotIn("coproc", deploy)
-        self.assertFalse((RAIZ / "scripts/ci/deploy-guard.sh").exists())
         remoto = (RAIZ / SCRIPTS[1]).read_text()
         orden = ("pg_dump", "migrate --plan", "migrate --noinput",
                  "migrate --check --noinput", "collectstatic --noinput", "stopped=1")
@@ -94,7 +89,8 @@ class DeployArtefactosTests(SimpleTestCase):
         valores = dict.fromkeys(required, "ficticio")
         valores.update(WAHA_INSTANCIA="waha", WAHA_API_KEY="ficticia",
                        WAHA_WEBHOOK_SECRET="ficticio",
-                       WAHA_BASE_URL="http://127.0.0.1:3004")
+                       WAHA_BASE_URL="http://127.0.0.1:3004",
+                       NUCLEO_ADAPTADOR="real", PEDIDOS_COBRO_HABILITADO="false")
         with tempfile.TemporaryDirectory() as directorio:
             carpeta = Path(directorio)
             entrada = carpeta / "entrada"
@@ -127,9 +123,34 @@ class DeployArtefactosTests(SimpleTestCase):
             self.assertNotEqual(
                 ejecutar({**valores, "DEPLOY_HOST": "ficticio"}).returncode, 0
             )
+            for valor in ("", "abc", "2 # comentario"):
+                with self.subTest(threads=valor):
+                    datos = {**valores, "STT_HABILITADO": "0", "STT_CPU_THREADS": valor}
+                    self.assertNotEqual(ejecutar(datos).returncode, 0)
+            for valor in ("2", "1_0"):
+                self.assertEqual(ejecutar({**valores, "STT_HABILITADO": "0",
+                                           "STT_CPU_THREADS": valor}).returncode, 0)
+            datos = {**valores, "PEDIDOS_COBRO_HABILITADO": "true"}
+            self.assertEqual(ejecutar(datos).returncode, 0)
             vieja = {**entorno, "PROD_SSH_PRIVATE_KEY": entorno[
                 "PROD_SSH_PRIVATE_KEY_V2"]}
             vieja.pop("PROD_SSH_PRIVATE_KEY_V2")
             resultado = ejecutar(valores, vieja)
             self.assertNotEqual(resultado.returncode, 0)
             self.assertIn(b"PROD_SSH_PRIVATE_KEY_V2", resultado.stderr)
+
+    @override_settings(DEBUG=False, NUCLEO_ADAPTADOR="real", PEY_ADAPTADOR="produccion",
+                       PEDIDOS_COBRO_HABILITADO=True, PEY_API_KEY="clave")
+    def test_configuracion_por_rol(self) -> None:
+        for rol in ("web", "cobros"):
+            with self.subTest(rol=rol), override_settings(CODY_ROL=rol):
+                validar_configuracion()
+                with override_settings(PEY_API_KEY=""):
+                    with self.assertRaises(ImproperlyConfigured):
+                        validar_configuracion()
+        for rol in ("canal", "stt"):
+            with self.subTest(rol=rol), override_settings(CODY_ROL=rol):
+                with self.assertRaises(ImproperlyConfigured):
+                    validar_configuracion()
+                with override_settings(PEY_API_KEY=""):
+                    validar_configuracion()

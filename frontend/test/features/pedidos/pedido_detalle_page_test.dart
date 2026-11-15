@@ -16,6 +16,7 @@ class RepoPrueba extends PedidoRepository {
   bool cotizado = false;
   bool aceptado = false;
   int lecturas = 0;
+  String pagoEstado = 'sin_cobro';
   int version = 1;
   Completer<void>? espera;
   final cuerpos = <Map<String, dynamic>>[];
@@ -23,9 +24,13 @@ class RepoPrueba extends PedidoRepository {
   Future<Pedido> obtener(String id) async {
     lecturas++;
     if (error?.codigo == 'PEDIDO_NO_ACCESIBLE') throw error!;
-    return Pedido.fromJson(
-      pedidoJson(cotizado: cotizado, aceptado: aceptado, version: version),
+    final json = pedidoJson(
+      cotizado: cotizado,
+      aceptado: aceptado,
+      version: version,
     );
+    json['pago_estado'] = pagoEstado;
+    return Pedido.fromJson(json);
   }
 
   @override
@@ -72,6 +77,172 @@ PedidoException fallo(
   Map<String, dynamic> errores = const {},
 }) => PedidoException(codigo, 409, codigo, errores: errores);
 void main() {
+  testWidgets('I6 polling en espera conserva borrador y lo guarda', (t) async {
+    final r = RepoPrueba()..pagoEstado = 'en_espera';
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [pedidoRepositoryProvider.overrideWithValue(r)],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    await t.ensureVisible(find.widgetWithText(TextFormField, 'Cantidad'));
+    await t.enterText(find.widgetWithText(TextFormField, 'Cantidad'), '3');
+    await t.pump(const Duration(seconds: 2));
+    await t.pump();
+    expect(r.lecturas, 2);
+    expect(
+      t
+          .widget<EditableText>(
+            find.descendant(
+              of: find.widgetWithText(TextFormField, 'Cantidad'),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      '3',
+    );
+    await t.ensureVisible(find.text('Guardar renglones'));
+    await t.tap(find.text('Guardar renglones'));
+    await t.pump();
+    expect((r.cuerpos.single['renglones'] as List).single['cantidad'], '3');
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('I6 version remota cambiada conserva borrador y exige recargar', (
+    t,
+  ) async {
+    final r = RepoPrueba()..pagoEstado = 'en_espera';
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [pedidoRepositoryProvider.overrideWithValue(r)],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    await t.ensureVisible(find.widgetWithText(TextFormField, 'Cantidad'));
+    await t.enterText(find.widgetWithText(TextFormField, 'Cantidad'), '3');
+    r.version = 2;
+    await t.pump(const Duration(seconds: 2));
+    await t.pump();
+    expect(
+      t
+          .widget<EditableText>(
+            find.descendant(
+              of: find.widgetWithText(TextFormField, 'Cantidad'),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      '3',
+    );
+    await t.ensureVisible(find.text('Guardar renglones'));
+    expect(
+      t
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Guardar renglones'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await t.scrollUntilVisible(
+      find.text('Recargar pedido'),
+      -250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Recargar pedido'), findsOneWidget);
+    expect(r.cuerpos, isEmpty);
+    await t.tap(find.text('Recargar pedido'));
+    await t.pump();
+    await t.pump();
+    expect(r.lecturas, 3);
+    await t.ensureVisible(find.widgetWithText(TextFormField, 'Cantidad'));
+    expect(
+      t
+          .widget<EditableText>(
+            find.descendant(
+              of: find.widgetWithText(TextFormField, 'Cantidad'),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      '1',
+    );
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('I6 conflicto al guardar no borra cambios del borrador', (
+    t,
+  ) async {
+    final r = RepoPrueba()
+      ..pagoEstado = 'en_espera'
+      ..error = fallo('VERSION_OBSOLETA');
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [pedidoRepositoryProvider.overrideWithValue(r)],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    await t.ensureVisible(find.widgetWithText(TextFormField, 'Cantidad'));
+    await t.enterText(find.widgetWithText(TextFormField, 'Cantidad'), '4');
+    await t.ensureVisible(find.text('Guardar renglones'));
+    await t.tap(find.text('Guardar renglones'));
+    await t.pump();
+    expect(r.lecturas, 1);
+    expect(
+      t
+          .widget<EditableText>(
+            find.descendant(
+              of: find.widgetWithText(TextFormField, 'Cantidad'),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      '4',
+    );
+    expect(
+      t
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Guardar renglones'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('polling solo con estados vivos y se cancela', (t) async {
+    final repo = RepoPrueba()..pagoEstado = 'pendiente';
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [pedidoRepositoryProvider.overrideWithValue(repo)],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pump();
+    expect(repo.lecturas, 1);
+    await t.pump(const Duration(seconds: 2));
+    await t.pump();
+    expect(repo.lecturas, 2);
+    repo.pagoEstado = 'pagado';
+    await t.pump(const Duration(seconds: 2));
+    await t.pump();
+    expect(repo.lecturas, 3);
+    await t.pump(const Duration(seconds: 4));
+    expect(repo.lecturas, 3);
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 4));
+    expect(repo.lecturas, 3);
+  });
+
   testWidgets('B3 muestra cantidad y unidad solicitadas en el detalle', (
     t,
   ) async {
@@ -195,6 +366,11 @@ void main() {
     await abrir(t, r);
     await tocar(t, 'Guardar renglones');
     expect(find.text('Guardar renglones'), findsNothing);
+    await t.scrollUntilVisible(
+      find.text('PEDIDO_CONGELADO'),
+      -250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('PEDIDO_CONGELADO'), findsOneWidget);
   });
   for (final codigo in ['SERVICIO_NO_DISPONIBLE', 'RED']) {

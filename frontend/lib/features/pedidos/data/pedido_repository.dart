@@ -40,6 +40,13 @@ class PedidoRepository {
         await _solicitar('POST', '$ruta$id/cotizaciones/', cuerpo),
       );
 
+  Future<Pedido> cobro(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(await _solicitar('POST', '$ruta$id/cobro/', cuerpo));
+  Future<Pedido> listo(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(await _solicitar('POST', '$ruta$id/listo/', cuerpo));
+  Future<Pedido> entregado(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(await _solicitar('POST', '$ruta$id/entregado/', cuerpo));
+
   Future<Map<String, dynamic>> _solicitar(
     String metodo,
     String path, [
@@ -76,27 +83,32 @@ class PedidoRepository {
     }
     final codigo =
         mapa['codigo'] as String? ??
-        (status == 401 ||
-                (status == 403 && mapa['detail'] == 'Debe iniciar sesión.')
+        (status == 401
             ? 'SESION_TERMINADA'
             : status != null && status >= 500
             ? 'SERVICIO_NO_DISPONIBLE'
             : 'ERROR');
-    final mensaje = status != null && status >= 500
-        ? 'El servidor no está disponible. Intenta de nuevo.'
-        : switch (codigo) {
-            'SESION_TERMINADA' => 'Tu sesión terminó. Vuelve a entrar.',
-            'PERMISO_DENEGADO' => 'No tienes permiso para este comercio.',
-            'PEDIDO_NO_ACCESIBLE' => 'Este pedido ya no está disponible.',
-            'VERSION_OBSOLETA' => 'El pedido cambió. Cargamos la versión más reciente; revisa y guarda de nuevo.',
-            'RENGLON_PENDIENTE' => 'Faltan renglones por resolver.',
-            'PEDIDO_CONGELADO' => 'Este pedido ya no se puede editar.',
-            'CLAVE_REUTILIZADA' => 'No pudimos guardar. Intenta de nuevo.',
-            'PAYLOAD_INVALIDO' => 'Revisa los datos de los renglones.',
-            'SERVICIO_NO_DISPONIBLE' =>
-              'El servidor no está disponible. Intenta de nuevo.',
-            _ => 'No pudimos completar la solicitud. Intenta de nuevo.',
-          };
+    final mensaje = switch (codigo) {
+      'SESION_TERMINADA' => 'Tu sesión terminó. Vuelve a entrar.',
+      'PERMISO_DENEGADO' => 'No tienes permiso para este comercio.',
+      'PEDIDO_NO_ACCESIBLE' => 'Este pedido ya no está disponible.',
+      'VERSION_OBSOLETA' => 'El pedido cambió. Cargamos la versión más reciente; revisa y guarda de nuevo.',
+      'RENGLON_PENDIENTE' => 'Faltan renglones por resolver.',
+      'PEDIDO_CONGELADO' => 'Este pedido ya no se puede editar.',
+      'CLAVE_REUTILIZADA' => 'No pudimos guardar. Intenta de nuevo.',
+      'PAYLOAD_INVALIDO' => 'Revisa los datos de los renglones.',
+      'PROVEEDOR_NO_DISPONIBLE' => 'El cobro no está habilitado todavía.',
+      'CUENTA_NO_ACTIVE' => 'La cuenta no está activa para cobrar.',
+      'DEMO_DESTINO_NO_PERMITIDO' => 'El destino no está permitido en demo.',
+      'MODO_CAMBIO' => 'Cambió el modo de cobro. Revisa el pedido.',
+      'ACEPTACION_REQUERIDA' => 'Se requiere una aceptación vigente.',
+      'INTENCION_DISTINTA' => 'Ya existe un cobro con otra intención.',
+      'PAGO_NO_CONFIRMADO' => 'El pago aún no está confirmado.',
+      'PREPARACION_INVALIDA' => 'Primero márcalo listo.',
+      'SERVICIO_NO_DISPONIBLE' =>
+        'El servidor no está disponible. Intenta de nuevo.',
+      _ => 'No pudimos completar la solicitud. Intenta de nuevo.',
+    };
     throw PedidoException(
       codigo,
       status,

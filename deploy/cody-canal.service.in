@@ -6,6 +6,7 @@ After=network.target docker.service @UNIT_BASE@.service
 Type=simple
 User=@DEPLOY_USER@
 WorkingDirectory=@DEPLOY_PATH@/backend
+Environment=CODY_ROL=canal
 EnvironmentFile=@DEPLOY_PATH@/backend/.env.canal
 ExecStart=@DEPLOY_PATH@/backend/.venv/bin/python manage.py procesar_canal
 Restart=always

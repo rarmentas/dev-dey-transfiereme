@@ -43,6 +43,12 @@ required=(
   WEBHOOK_BASE_URL
   PEY_API_KEY
   PEY_WEBHOOK_SECRET
+  NUCLEO_ADAPTADOR
+  PEDIDOS_COBRO_HABILITADO
+  WAHA_INSTANCIA
+  WAHA_BASE_URL
+  WAHA_API_KEY
+  WAHA_WEBHOOK_SECRET
 )
 for key in "${required[@]}"; do
   if ! grep -Eq "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[^[:space:]#]+" "$file_path"; then
@@ -50,6 +56,69 @@ for key in "${required[@]}"; do
     exit 1
   fi
 done
+
+env_val() {
+  local line
+  line="$(grep -E "^[[:space:]]*$1[[:space:]]*=" "$file_path" | tail -1 || true)"
+  line="${line#*=}"
+  line="${line%%#*}"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  printf '%s' "$line"
+}
+
+for key in "${required[@]}"; do
+  if [[ -z "$(env_val "$key")" ]]; then
+    echo "Falta ${key} en ${file_var}." >&2
+    exit 1
+  fi
+done
+
+if [[ "$(env_val NUCLEO_ADAPTADOR)" != "real" ]]; then
+  echo "NUCLEO_ADAPTADOR debe ser real." >&2
+  exit 1
+fi
+if [[ "$(env_val PEDIDOS_COBRO_HABILITADO)" != "false" && "$(env_val PEDIDOS_COBRO_HABILITADO)" != "true" ]]; then
+  echo "PEDIDOS_COBRO_HABILITADO debe ser true o false." >&2
+  exit 1
+fi
+if [[ "$scope" == prod && "$(env_val WAHA_BASE_URL)" != http://127.0.0.1:3004 ]]; then
+  echo "WAHA_BASE_URL de producción debe ser http://127.0.0.1:3004." >&2
+  exit 1
+fi
+rol_web="$(env_val CODY_ROL)"
+if grep -Eq '^[[:space:]]*CODY_ROL[[:space:]]*=' "$file_path" &&
+  [[ "$rol_web" != web ]]; then
+  echo "CODY_ROL del entorno común debe ser web o estar ausente." >&2
+  exit 1
+fi
+stt_habilitado="$(env_val STT_HABILITADO)"
+if grep -Eq '^[[:space:]]*STT_HABILITADO[[:space:]]*=' "$file_path" &&
+  [[ "$stt_habilitado" != "0" && "$stt_habilitado" != "1" ]]; then
+  echo "STT_HABILITADO debe ser 0 o 1." >&2
+  exit 1
+fi
+if linea_threads="$(grep -E '^[[:space:]]*STT_CPU_THREADS[[:space:]]*=' "$file_path" | tail -1)"; then
+  stt_threads="${linea_threads#*=}"
+  stt_threads="${stt_threads#"${stt_threads%%[![:space:]]*}"}"
+  stt_threads="${stt_threads%"${stt_threads##*[![:space:]]}"}"
+  digitos_threads="${stt_threads//_/}"
+  if [[ ! "$stt_threads" =~ ^[+-]?[0-9]+(_?[0-9]+)*$ || ${#digitos_threads} -gt 640 ]]; then
+    echo "STT_CPU_THREADS debe ser un entero válido." >&2
+    exit 1
+  fi
+fi
+for key in DEMO_MODE POLITICA_COBRO_VERSION; do
+  if grep -Eq "^[[:space:]]*${key}[[:space:]]*=" "$file_path"; then
+    echo "${key} ignorada; el demo es por comercio (designar_comercio_demo)." >&2
+  fi
+done
+demo_destino="$(env_val DEMO_PEY_BANK_ACCOUNT_ID)"
+if [[ -n "$demo_destino" && ! "$demo_destino" =~ ^[0-9A-HJKMNP-TV-Z]{26}$ ]]; then
+  echo "DEMO_PEY_BANK_ACCOUNT_ID debe ser un ULID válido." >&2
+  exit 1
+fi
+
 
 require_ci() {
   local ci_var="$1"

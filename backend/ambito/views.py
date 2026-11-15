@@ -1,15 +1,12 @@
 """Vistas de cuenta del comercio (ámbito por sesión)."""
 
-from django.db import transaction
-from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ambito.clabe import clabe_es_valida
-from ambito.cuenta_sync import sincronizar_codi_status
+from ambito.cuenta import cuenta_por_defecto
+from ambito.cuenta_pey_servicio import enmascarar_clabe
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
-from ambito.models import Comercio
 from ambito.scope import (
     preparar_operacion_cobro,
     rechazar_comercio_en_query,
@@ -43,43 +40,13 @@ class GuardarClabeView(APIView):
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
 
-        clabe = (comercio.clabe or "").strip()
-        return Response({"clabe": clabe})
+        if not getattr(request, "es_dueno", False):
+            return Response({"codigo": "NO_ES_DUENO"}, status=403)
+        cuenta = cuenta_por_defecto(comercio)
+        return Response({"clabe": enmascarar_clabe(cuenta.clabe) if cuenta else ""})
 
     def post(self, request):
-        datos = request.data if isinstance(request.data, dict) else {}
-        try:
-            comercio = preparar_operacion_cobro(request, datos)
-        except ComercioEnCuerpoError as exc:
-            return _respuesta_ambito(exc, 400)
-        except SinAmbitoError as exc:
-            return _respuesta_ambito(exc, 403)
-
-        clabe_raw = datos.get("clabe")
-        if not isinstance(clabe_raw, str):
-            clabe_raw = ""
-        clabe = clabe_raw.strip()
-        if not clabe_es_valida(clabe):
-            return Response({"detail": _MENSAJE_CLABE_INVALIDA}, status=400)
-
-        anterior = (comercio.clabe or "").strip()
-        with transaction.atomic():
-            comercio.clabe = clabe
-            campos = ["clabe"]
-            if clabe != anterior:
-                comercio.pey_bank_account_id = ""
-                comercio.pey_codi_status = Comercio.PeyCodiStatus.PENDING
-                comercio.pey_codi_status_actualizado_en = timezone.now()
-                campos.extend(
-                    [
-                        "pey_bank_account_id",
-                        "pey_codi_status",
-                        "pey_codi_status_actualizado_en",
-                    ]
-                )
-            comercio.save(update_fields=campos)
-        sincronizar_codi_status(comercio)
-        return Response({"clabe": comercio.clabe})
+        return Response({"codigo": "USAR_CUENTAS"}, status=409)
 
 
 class ActualizarComercioView(APIView):

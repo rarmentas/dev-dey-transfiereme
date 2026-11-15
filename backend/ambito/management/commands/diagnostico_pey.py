@@ -1,54 +1,30 @@
-"""Lee el gate de pey. Nunca imprime la llave ni el secreto."""
+"""Diagnóstico de cuentas sin exponer datos sensibles."""
 
-import os
+from django.core.management.base import BaseCommand
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
-
-from ambito.cuenta_sync import sincronizar_codi_status_con_detalle
-from ambito.management.commands.registrar_cuenta_pey import (
-    _comercio_de_correo,
-    enmascarar_clabe,
-)
+from ambito.cuenta import cuenta_por_defecto
+from ambito.cuenta_pey_servicio import enmascarar_clabe, sufijo_ulid
+from ambito.management.commands.registrar_cuenta_pey import _comercio_de_correo
+from ambito.operaciones_cuenta import ErrorOperacion, sincronizar
 from pey.seleccion import modo_adaptador
 
 
 class Command(BaseCommand):
-    help = "Muestra el modo de pey y el codiStatus, sin imprimir secretos."
-
     def add_arguments(self, parser):
         parser.add_argument("--correo", required=True)
 
     def handle(self, *args, **options):
-        try:
-            modo = modo_adaptador()
-        except Exception as exc:
-            raise CommandError(str(exc)) from exc
         comercio = _comercio_de_correo(options["correo"])
-        base = (
-            getattr(settings, "WEBHOOK_BASE_URL", "")
-            or os.environ.get("WEBHOOK_BASE_URL", "")
-        ).rstrip("/")
-        webhook = f"{base}/api/webhooks/pey/" if base else "(WEBHOOK_BASE_URL no configurada)"
-        identificador = (comercio.pey_bank_account_id or "").strip()
-        lineas = [
-            f"modo: {modo}",
-            f"PEY_API_KEY: {_si_no(settings.PEY_API_KEY)}",
-            f"PEY_WEBHOOK_SECRET: {_si_no(settings.PEY_WEBHOOK_SECRET)}",
-            f"webhook: {webhook}",
-            f"clabe: {enmascarar_clabe(comercio.clabe)}",
-            f"pey_bank_account_id: {identificador or '(vacío)'}",
-        ]
-        if modo == "produccion" and identificador:
-            comercio, error = sincronizar_codi_status_con_detalle(comercio)
-            if error is not None:
-                lineas.append(f"error: tipo={error.tipo} request_id={error.request_id}")
-            else:
-                lineas.append(f"codiStatus: {comercio.pey_codi_status}")
-        lineas.append(f"pey_codi_status: {comercio.pey_codi_status}")
-        lineas.append(f"pey_bank_account_id: {comercio.pey_bank_account_id or '(vacío)'}")
-        self.stdout.write("\n".join(lineas))
-
-
-def _si_no(valor: str) -> str:
-    return "sí" if (valor or "").strip() else "no"
+        cuenta = cuenta_por_defecto(comercio)
+        if cuenta and modo_adaptador() == "produccion":
+            try:
+                sincronizar(cuenta)
+            except ErrorOperacion:
+                pass
+        for cuenta in comercio.cuentas.all():
+            self.stdout.write(
+                f"{enmascarar_clabe(cuenta.clabe)} "
+                f"id={sufijo_ulid(cuenta.pey_bank_account_id)} "
+                f"estado={cuenta.codi_status} registro={cuenta.registro_estado} "
+                f"error={cuenta.ultimo_error}"
+            )

@@ -14,9 +14,11 @@ def repeticion(comercio, operacion, clave, huella):
         return None
     if anterior.hash_payload != huella:
         raise ErrorNucleo(CodigoError.CLAVE_REUTILIZADA)
-    return RespuestaV1(
-        True, replayed=True, data={"pedido": pedido_desde_json(anterior.resultado)}
-    )
+    pedido = pedido_desde_json(anterior.resultado)
+    data = {"pedido": pedido}
+    if operacion == "solicitar_cobro" and pedido.pago_estado.value == "en_espera":
+        data["espera"] = "COBRO_OCUPADO"
+    return RespuestaV1(True, replayed=True, data=data)
 
 
 def guardar(comercio, operacion, clave, huella, pedido, replayed=False):

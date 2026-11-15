@@ -9,11 +9,12 @@ from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
+from canales import audio
 from canales.avisos import procesar_avisos
 from canales.conversacion import contexto, procesar_mensaje
 from canales.models import ConversacionCanal, LatidoCanal, MensajeEntrante, SalidaCanal
 from canales.salidas import enviar, recuperar_abandonadas
-from config.modo import demo_activo, politica_cobro_version
+from config.modo import modo_de_comercio
 from pedidos.contratos.v1 import CONTRATO_VERSION
 from pedidos.fabrica import obtener_lector, obtener_nucleo
 
@@ -37,6 +38,8 @@ def reclamar(excluir=()):
                 .order_by("secuencia")
                 .first()
             )
+            if mensaje and audio.esperando(mensaje, ahora):
+                continue
             if (
                 mensaje
                 and mensaje.pk not in excluir
@@ -65,6 +68,7 @@ def ciclo():
         nucleo = obtener_nucleo()
         if nucleo.ES_SIMULACION:
             _nucleo_stub = nucleo
+    audio.expirar_trabajos()
     recuperar_abandonadas()
     vistos = set()
     while True:
@@ -105,8 +109,8 @@ def ciclo():
             if (
                 not cot
                 or cot.id != salida.payload["cotizacion_id"]
-                or cot.demo_mode != demo_activo()
-                or cot.politica_cobro_version != politica_cobro_version()
+                or (cot.demo_mode, cot.politica_cobro_version)
+                != modo_de_comercio(salida.conversacion.sesion.comercio_id)
             ):
                 SalidaCanal.objects.filter(pk=salida.pk, estado="preparada").update(
                     estado="fallida", error="Cotización obsoleta"

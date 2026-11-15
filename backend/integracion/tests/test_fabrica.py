@@ -3,13 +3,11 @@ from unittest import mock
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.models import Comercio
+from ambito.tests.soporte import crear_cuenta
 from integracion.pey.adaptador_desarrollo import AdaptadorDesarrolloPeyCuenta
 from integracion.pey.adaptador_produccion import AdaptadorProduccionPeyCuenta
 from integracion.pey.fabrica import obtener_adaptador_pey
-
-_CLABE_VALIDA = "012180015826225713"
 
 
 class ObtenerAdaptadorPeyTests(SimpleTestCase):
@@ -64,12 +62,12 @@ class SincronizarNoPersisteActiveConTypoTests(TestCase):
     def test_typo_no_deja_el_comercio_active(self, urlopen_mock) -> None:
         comercio = Comercio.objects.create(
             nombre="Semilla con typo",
-            clabe=_CLABE_VALIDA,
             semilla_active_dev=True,
         )
+        cuenta = crear_cuenta(comercio, estado="pending", predeterminada=False)
         with self.assertRaises(ImproperlyConfigured):
-            sincronizar_codi_status(comercio)
-        comercio.refresh_from_db()
-        self.assertNotEqual(comercio.pey_codi_status, Comercio.PeyCodiStatus.ACTIVE)
-        self.assertIsNone(comercio.pey_codi_status_actualizado_en)
+            obtener_adaptador_pey()
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.codi_status, "pending")
+        self.assertIsNone(cuenta.sincronizada_en)
         urlopen_mock.assert_not_called()

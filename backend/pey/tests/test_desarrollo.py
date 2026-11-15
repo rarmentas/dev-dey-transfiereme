@@ -4,10 +4,10 @@ import inspect
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from ambito.models import Comercio
-
+from ambito.tests.soporte import crear_cuenta
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.produccion import AdaptadorProduccion
 from pey.tipos import ErrorPey, ParametroInvalido
@@ -17,8 +17,10 @@ def _revienta(*args, **kwargs):
     raise AssertionError("no debe haber red")
 
 
-class DesarrolloSinRedTests(SimpleTestCase):
+class DesarrolloSinRedTests(TestCase):
     def test_crea_qr_pn_y_cuenta_active_sin_salir_a_la_red(self) -> None:
+        comercio = Comercio.objects.create(nombre="Demo")
+        crear_cuenta(comercio)
         with (
             patch("socket.socket.connect", _revienta),
             patch("urllib.request.urlopen", _revienta),
@@ -30,7 +32,6 @@ class DesarrolloSinRedTests(SimpleTestCase):
                 telefono="5512345678",
                 concepto="Tacos",
             )
-            comercio = Comercio(nombre="Demo", semilla_active_dev=True)
             self.assertTrue(adaptador.cuenta_active(comercio))
 
         self.assertTrue(qr.id.startswith("dev-qr-"))
@@ -86,19 +87,22 @@ class DesarrolloSinRedTests(SimpleTestCase):
         )
 
 
-class CuentaActiveTests(SimpleTestCase):
-    def test_produccion_ignora_la_semilla_y_desarrollo_la_usa(self) -> None:
+class CuentaActiveTests(TestCase):
+    def test_ambos_adaptadores_exigen_cuenta_activa(self) -> None:
         def transporte(*args, **kwargs):
             raise AssertionError("cuenta_active no usa el transporte")
 
-        con_semilla = Comercio(nombre="Con semilla", semilla_active_dev=True)
-        sin_semilla = Comercio(nombre="Sin semilla", semilla_active_dev=False)
+        con_semilla = Comercio.objects.create(
+            nombre="Con semilla", semilla_active_dev=True
+        )
+        sin_semilla = Comercio.objects.create(nombre="Sin semilla")
+        crear_cuenta(sin_semilla)
 
         self.assertFalse(
             AdaptadorProduccion(transporte=transporte).cuenta_active(con_semilla)
         )
-        self.assertTrue(AdaptadorDesarrollo().cuenta_active(con_semilla))
-        self.assertFalse(AdaptadorDesarrollo().cuenta_active(sin_semilla))
+        self.assertTrue(AdaptadorDesarrollo().cuenta_active(sin_semilla))
+        self.assertFalse(AdaptadorDesarrollo().cuenta_active(con_semilla))
 
         import pey.produccion as produccion
 
@@ -148,7 +152,7 @@ class CuerpoAvisoQrPagadoTests(SimpleTestCase):
             )
 
 
-class FallarConTests(SimpleTestCase):
+class FallarConTests(TestCase):
     def test_el_error_sale_despues_de_validar(self) -> None:
         error = ErrorPey("INVALID_STATE", "simulada", "req-dev")
         adaptador = AdaptadorDesarrollo(fallar_con=error)
@@ -166,5 +170,6 @@ class FallarConTests(SimpleTestCase):
             adaptador.crear_notificacion(monto=Decimal("10"), telefono="5512345678")
         self.assertIs(aviso.exception, error)
 
-        comercio = Comercio(nombre="Demo", semilla_active_dev=True)
+        comercio = Comercio.objects.create(nombre="Demo")
+        crear_cuenta(comercio)
         self.assertTrue(adaptador.cuenta_active(comercio))

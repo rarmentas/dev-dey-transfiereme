@@ -4,8 +4,8 @@ import secrets
 import uuid
 from decimal import Decimal
 
+from ambito.cuenta import cuenta_esta_active
 from ambito.models import Comercio
-
 from pey.tipos import ErrorPey, NotificacionCreada, ParametroInvalido, QrCreado
 from pey.validacion import validar_monto_pago, validar_notificacion, validar_qr
 
@@ -93,7 +93,7 @@ class AdaptadorDesarrollo:
         }
 
     def cuenta_active(self, comercio: Comercio) -> bool:
-        return bool(comercio.semilla_active_dev)
+        return cuenta_esta_active(comercio)
 
     def _exigir_exito(self) -> None:
         if self._fallar_con is not None:

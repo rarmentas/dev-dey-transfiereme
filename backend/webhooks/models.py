@@ -10,6 +10,8 @@ class AvisoRecibido(models.Model):
         SIN_COBRO = "sin_cobro", "Sin cobro"
         TRANSICION_INVALIDA = "transicion_invalida", "Transición inválida"
         MONTO_DISTINTO = "monto_distinto", "Monto distinto"
+        PENDIENTE_CORRELACION = "pendiente_correlacion", "Pendiente de correlación"
+        DESTINO_DISTINTO = "destino_distinto", "Destino distinto"
         TIPO_DESCONOCIDO = "tipo_desconocido", "Tipo desconocido"
 
     webhook_id = models.CharField(
@@ -39,6 +41,18 @@ class AvisoRecibido(models.Model):
         related_name="avisos_recibidos",
         verbose_name="movimiento",
     )
+    payload_hash = models.CharField(max_length=64, blank=True)
+    monto = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    codi_qr_id = models.CharField(max_length=64, blank=True)
+    bank_account_id = models.CharField(max_length=26, blank=True)
+    fecha_pago = models.DateTimeField(null=True, blank=True)
+    verificado_en = models.DateTimeField(null=True, blank=True)
+    origen = models.CharField(max_length=32, blank=True)
+    correlacion = models.CharField(max_length=20, default="no_aplica", choices=[
+        ("no_aplica", "No aplica"), ("pendiente", "Pendiente"),
+        ("correlacionado", "Correlacionado"), ("rechazado", "Rechazado"),
+    ])
+    razon = models.CharField(max_length=60, blank=True)
     recibido_en = models.DateTimeField(auto_now_add=True, verbose_name="recibido en")
 
     class Meta:

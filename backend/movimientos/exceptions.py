@@ -19,3 +19,15 @@ class MontoDistinto(Exception):
 
 class AvisoDuplicado(Exception):
     """El movimiento ya está pagado con este transaction_id."""
+
+
+class DemoBloqueado(Exception):
+    """La emisión legacy no está permitida en modo demo."""
+
+
+class QrGeneralNoDisponible(Exception):
+    """El QR histórico no se puede mover a otra cuenta."""
+
+
+class DestinoDistinto(Exception):
+    """El aviso no corresponde al destino histórico del cobro."""

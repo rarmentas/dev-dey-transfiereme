@@ -289,34 +289,17 @@ class PrecedenciaContratoTests(SimpleTestCase):
 
 
 class DecoradorFixturesTests(SimpleTestCase):
-    def test_siete_escenarios_mr2_hacen_skip_explicito_en_real(self):
-        import unittest
-
+    def test_fixtures_de_cobro_y_audio_corren_en_real(self):
         from pedidos.tests.fixtures_v1 import FixturesContratoV1
 
-        class NucleoReal:
-            ES_SIMULACION = False
-
-        class PruebaReal(FixturesContratoV1, unittest.TestCase):
-            nucleo = NucleoReal()
-
-        metodos = [
-            nombre
-            for nombre in dir(PruebaReal)
-            if nombre.startswith(
-                (
-                    "test_f07_",
-                    "test_f08_",
-                    "test_f09_",
-                    "test_f10_",
-                    "test_f11_",
-                    "test_f13_",
-                    "test_f14_",
-                )
+        nombres = ("f07", "f08", "f09", "f10", "f11", "f13", "f14")
+        metodos = {
+            nombre: next(
+                getattr(FixturesContratoV1, metodo)
+                for metodo in dir(FixturesContratoV1)
+                if metodo.startswith(f"test_{nombre}_")
             )
-        ]
-        resultado = unittest.TestResult()
-        unittest.TestSuite(PruebaReal(nombre) for nombre in metodos).run(resultado)
-        self.assertEqual(resultado.testsRun, 7)
-        self.assertEqual(len(resultado.skipped), 7)
-        self.assertTrue(all("MR-2" in motivo for _, motivo in resultado.skipped))
+            for nombre in nombres
+        }
+        for nombre in nombres:
+            self.assertFalse(hasattr(metodos[nombre], "__wrapped__"), nombre)
