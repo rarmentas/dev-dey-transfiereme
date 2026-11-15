@@ -105,8 +105,10 @@ ssh_base=(-i "$key_file" -p "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -
 remote="${ssh_user}@${ssh_host}"
 
 echo "Desplegando en ${remote}:${ssh_port} ${remote_path}"
-# La conexión conserva flock hasta terminar rsync, scp y el reinicio.
-guard_command="$(printf 'bash -c %q -- lock %q %q' "$(cat scripts/ci/deploy-guard.sh)" "$scope" "$remote_path")"
+# El guard cubre los intervalos con flock compartido; el receptor de rsync, el
+# escritor del env y deploy-remoto.sh sostienen su propio flock compartido.
+guard_script="$(cat scripts/ci/deploy-guard.sh)"
+guard_command="$(printf 'bash -c %q -- lock %q %q' "$guard_script" "$scope" "$remote_path")"
 coproc GUARD { ssh "${ssh_base[@]}" "$remote" "$guard_command"; }
 guard_pid=$GUARD_PID
 guard_out=${GUARD[0]}
@@ -120,7 +122,10 @@ fi
 # La sesión del candado debe seguir viva durante toda la operación.
 kill -0 "$guard_pid"
 rsync_rsh="$(printf 'ssh -i %q -p %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=%q' "$key_file" "$ssh_port" "$known_hosts")"
-rsync -az --delete -e "$rsync_rsh" \
+guard_con() {
+  printf 'bash -c %q -- %q %q %q %q' "$guard_script" "$1" "$scope" "$remote_path" "$token"
+}
+rsync -az --delete -e "$rsync_rsh" --rsync-path "$(guard_con rsync)" \
   --exclude '.git/' \
   --exclude '.plan/' \
   --exclude '.tooling/' \
@@ -152,9 +157,7 @@ rsync -az --delete -e "$rsync_rsh" \
   ./ "${remote}:${remote_path}/"
 
 kill -0 "$guard_pid"
-scp -i "$key_file" -P "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o "UserKnownHostsFile=${known_hosts}" \
-  "$app_env" \
-  "${remote}:${remote_path}/backend/.env.incoming"
+ssh "${ssh_base[@]}" "$remote" "$(guard_con env)" <"$app_env"
 
 kill -0 "$guard_pid"
 ssh "${ssh_base[@]}" "$remote" \

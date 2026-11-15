@@ -11,17 +11,22 @@ SCRIPTS = (
     "scripts/ci/deploy.sh",
     "scripts/ci/deploy-remoto.sh",
     "scripts/ci-install-env.sh",
+    "scripts/ci/deploy-guard.sh",
 )
 
 
 class DeployArtefactosTests(SimpleTestCase):
     def test_sintaxis_de_scripts(self) -> None:
-        resultado = subprocess.run(
-            ["bash", "-n", *(str(RAIZ / ruta) for ruta in SCRIPTS)],
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        for ruta in SCRIPTS:
+            with self.subTest(ruta=ruta):
+                resultado = subprocess.run(
+                    ["bash", "-n", str(RAIZ / ruta)],
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(
+                    resultado.returncode, 0, resultado.stderr.decode()
+                )
 
     def test_unit_canal_y_aislamiento(self) -> None:
         unit = (RAIZ / "deploy/cody-canal.service.in").read_text()

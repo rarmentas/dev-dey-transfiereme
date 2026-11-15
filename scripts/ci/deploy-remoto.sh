@@ -17,13 +17,17 @@ token="${8:-}"
 }
 bash "$(dirname "$0")/deploy-guard.sh" check "$scope" "$dest"
 lock=/opt/codi/.deploy.lock
-[[ "$token" =~ ^[a-f0-9-]{36}$ && -f "$lock" && ! -L "$lock" &&
-   ! -e /opt/codi/.maintenance && "$(cat "$lock")" == "$token" ]] || {
+[[ "$token" =~ ^[a-f0-9-]{36}$ && -f "$lock" && ! -L "$lock" ]] || {
   echo "Falta la protección del deploy." >&2; exit 1;
 }
 if flock -n "$lock" true; then
   echo "El candado de deploy no está activo." >&2; exit 1
 fi
+# Sostiene el candado compartido toda la ejecución y valida el token bajo él.
+exec 9>>"$lock"
+flock -n -s 9 && [[ ! -e /opt/codi/.maintenance && "$(cat "$lock")" == "$token" ]] || {
+  echo "Falta la protección del deploy." >&2; exit 1;
+}
 [[ "$service_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 1
 if [[ ! "$health_port" =~ ^[0-9]+$ ]]; then
   echo "Puerto de comprobación inválido." >&2
@@ -107,6 +111,8 @@ grep -Fxq "RuntimeDirectory=cody" "$unit_dir/cody.service"
 grep -Fq -- "--pid /run/cody/gunicorn.pid" "$unit_dir/cody.service"
 grep -Fxq "EnvironmentFile=$dest/backend/.env.canal" "$unit_dir/cody-canal.service"
 grep -Fxq "ExecStart=$dest/backend/.venv/bin/python manage.py procesar_canal" "$unit_dir/cody-canal.service"
+"${dest}/backend/.venv/bin/pip" install -r "${dest}/backend/requirements-canal.txt"
+
 for unit in "${unit_base}-canal" "$unit_base"; do
   if as_root systemctl is-active --quiet "$unit"; then
     as_root systemctl stop "$unit"
@@ -114,8 +120,6 @@ for unit in "${unit_base}-canal" "$unit_base"; do
 done
 install -m 600 "$incoming" "$target"
 rm -f "$incoming"
-
-"${dest}/backend/.venv/bin/pip" install -r "${dest}/backend/requirements-canal.txt"
 
 eval "$("${dest}/backend/.venv/bin/python" -c '
 import shlex
