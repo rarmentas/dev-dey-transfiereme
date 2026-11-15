@@ -59,8 +59,10 @@ class DeployArtefactosTests(SimpleTestCase):
         self.assertNotIn("coproc", deploy)
         self.assertFalse((RAIZ / "scripts/ci/deploy-guard.sh").exists())
         remoto = (RAIZ / SCRIPTS[1]).read_text()
-        self.assertLess(remoto.index("migrate --check --noinput"),
-                        remoto.index("stopped=1"))
+        orden = ("pg_dump", "migrate --plan", "migrate --noinput",
+                 "migrate --check --noinput", "collectstatic --noinput", "stopped=1")
+        posiciones = [remoto.index(paso) for paso in orden]
+        self.assertEqual(posiciones, sorted(posiciones))
         self.assertLess(remoto.index("inicio_canal="),
                         remoto.index("systemctl restart cody-canal.service"))
         self.assertIn('--max-edad 30 --desde "$inicio_canal"', remoto)

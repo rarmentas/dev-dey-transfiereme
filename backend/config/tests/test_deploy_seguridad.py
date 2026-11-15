@@ -46,7 +46,9 @@ class DeploySeguridadTests(SimpleTestCase):
         self.activo = self.destino / "backend/.env"
         self.canal = self.destino / "backend/.env.canal"
         self.entrada.write_text(
-            "POSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
+            "POSTGRES_USER=cody\nPOSTGRES_DB=cody_test\n"
+            "POSTGRES_PASSWORD=clave-ficticia-secreta\n"
+            "POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
             "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
             "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
             "WAHA_WEBHOOK_SECRET=ficticio\nEMAIL_HOST_PASSWORD=ficticia\n"
@@ -62,6 +64,8 @@ class DeploySeguridadTests(SimpleTestCase):
             "DEST": str(self.destino),
             "UNITS": str(self.units),
             "STARTED": str(self.raiz / "canal-arrancado"),
+            "HOME": str(self.raiz),
+            "MIGRATED": str(self.raiz / "migrado"),
         }
         self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
         self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
@@ -82,6 +86,26 @@ fi
 exit 0''')
         self.stub("docker", '''echo "docker $*" >> "$LOG"
 case "$*" in
+  *pg_dump*)
+    if [[ "${EXPECT_NO_PASSWORD:-0}" == 1 ]]; then
+      [[ "$*" == "exec codi-postgres pg_dump -U cody -Fc cody_test" &&
+         ! -v PGPASSWORD ]] || exit 2
+    else
+      [[ "$*" == "exec -e PGPASSWORD codi-postgres pg_dump -U cody -Fc cody_test" &&
+         "${PGPASSWORD:-}" == clave-ficticia-secreta ]] || exit 2
+    fi
+    if [[ "${DUMP_INTERRUPT:-0}" == 1 ]]; then
+      printf PGDMP
+      kill -TERM "$PPID"
+      exit 1
+    fi
+    [[ "${DUMP_ERROR:-0}" == 0 ]] || exit 1
+    [[ "${DUMP_EMPTY:-0}" == 1 ]] || printf 'PGDMP contenido ficticio'
+    ;;
+  "exec -i codi-postgres pg_restore --list")
+    contenido="$(cat)"
+    [[ "$contenido" == 'PGDMP contenido ficticio' ]] || exit 2
+    exit "${RESTORE_ERROR:-0}" ;;
   *State.Health.Status*) echo "${PG_HEALTH:-healthy}" ;;
   *State.Running*) echo true ;;
   *com.docker.compose.project*) echo codi ;;
@@ -100,8 +124,13 @@ esac''')
             'echo "manage $*" >> "$LOG"\n'
             'case "$2" in\n'
             '  check) exit "${CHECK_ERROR:-0}" ;;\n'
-            '  migrate) [[ "$3" == --check ]] || exit 99; '
-            'exit "${MIGRATIONS_PENDING:-0}" ;;\n'
+            '  migrate) case "$3" in\n'
+            '    --plan) echo "pedidos.0001_inicial"; exit "${PLAN_ERROR:-0}" ;;\n'
+            '    --noinput) [[ "${MIGRATE_ERROR:-0}" == 0 ]] || exit 1; '
+            'touch "$MIGRATED" ;;\n'
+            '    --check) [[ -f "$MIGRATED" && "${MIGRATIONS_PENDING:-0}" == 0 ]] '
+            '|| exit 1 ;;\n'
+            '    *) exit 99 ;; esac ;;\n'
             '  collectstatic) exit "${STATIC_ERROR:-0}" ;;\n'
             '  estado_canal) [[ "$*" == *"--desde 2026-01-01T00:00:00Z"* ]] '
             '|| exit 2; exit "${LATIDO_ANTERIOR:-0}" ;;\n'
@@ -183,15 +212,25 @@ esac''')
     def test_preparacion_fallida_no_para_ni_reemplaza_env(self) -> None:
         contenido = self.entrada.read_text()
         for variable in (
-            "PIP_ERROR", "MIGRATIONS_PENDING", "CHECK_ERROR", "STATIC_ERROR",
-            "VERIFY_ERROR",
+            "PIP_ERROR", "DUMP_ERROR", "DUMP_EMPTY", "RESTORE_ERROR",
+            "PLAN_ERROR", "MIGRATE_ERROR", "MIGRATIONS_PENDING", "CHECK_ERROR",
+            "STATIC_ERROR", "VERIFY_ERROR",
         ):
             with self.subTest(variable=variable):
                 self.log.unlink(missing_ok=True)
+                (self.raiz / "migrado").unlink(missing_ok=True)
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
                 self.entrada.write_text(contenido)
                 resultado = self.remoto(**{variable: "1"})
                 self.assertNotEqual(resultado.returncode, 0)
-                self.assertNotIn("systemctl stop", self.log.read_text())
+                acciones = self.log.read_text()
+                for accion in ("systemctl stop", "systemctl restart", "systemctl start",
+                               "install -m 644"):
+                    self.assertNotIn(accion, acciones)
+                if variable in ("DUMP_ERROR", "DUMP_EMPTY", "RESTORE_ERROR"):
+                    self.assertNotIn("manage manage.py migrate", acciones)
+                    self.assertIn(b"Respaldo fallido", resultado.stderr)
+                    self.assertFalse(list((self.raiz / "respaldos").rglob("*.partial")))
                 self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
 
     def test_postgres_no_sano_no_se_repara(self) -> None:
@@ -210,16 +249,19 @@ esac''')
         primer_stop = acciones.index("systemctl stop")
         self.assertLess(acciones.index("pip install"), primer_stop)
         self.assertIn("requirements-canal.txt", acciones)
-        for comando in ("check", "migrate --check --noinput", "collectstatic"):
-            self.assertLess(acciones.index("manage manage.py " + comando), primer_stop)
+        orden = ["manage manage.py check", "pg_dump", "manage manage.py migrate --plan",
+                 "manage manage.py migrate --noinput",
+                 "manage manage.py migrate --check --noinput",
+                 "manage manage.py collectstatic", "systemctl stop"]
+        posiciones = [acciones.index(paso) for paso in orden]
+        self.assertEqual(posiciones, sorted(posiciones))
+        respaldos = list((self.raiz / "respaldos/codi").glob("*.dump"))
+        self.assertEqual(len(respaldos), 1)
+        self.assertEqual(respaldos[0].read_bytes(), b"PGDMP contenido ficticio")
+        self.assertNotIn(b"clave-ficticia-secreta", resultado.stdout + resultado.stderr)
         self.assertLess(acciones.index("systemctl start cody.service"),
                         acciones.index("systemctl restart cody-canal.service"))
         self.assertIn("--desde 2026-01-01T00:00:00Z", acciones)
-        self.assertTrue(all("--check" in linea for linea in acciones.splitlines()
-                            if "manage.py migrate" in linea))
-        self.assertTrue(all("docker inspect" in linea
-                            for linea in acciones.splitlines()
-                            if linea.startswith("docker")))
         for nombre, ejecutable in (
             ("cody", "gunicorn"), ("cody-canal", "python manage.py procesar_canal"),
         ):
@@ -238,6 +280,104 @@ esac''')
             self.assertNotIn(secreto, contenido)
         self.assertEqual(self.canal.stat().st_mode & 0o777, 0o600)
 
+    def test_retencion_conserva_diez_y_archivo_ajeno(self) -> None:
+        carpeta = self.raiz / "respaldos/codi"
+        carpeta.mkdir(parents=True)
+        for numero in range(12):
+            (carpeta / f"codi-pre-deploy-20200101-{numero:06d}.dump").write_bytes(b"x")
+        ajeno = carpeta / "otro.dump"
+        ajeno.write_bytes(b"intacto")
+        notas = carpeta / "codi-pre-deploy-000-notas.dump"
+        notas.write_bytes(b"notas")
+        enlace = carpeta / "codi-pre-deploy-19990101-000000.dump"
+        enlace.symlink_to(ajeno)
+        resultado = self.remoto()
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        nuevo = next(p for p in carpeta.glob("*.dump")
+                     if p.read_bytes() == b"PGDMP contenido ficticio")
+        esperados = {f"codi-pre-deploy-20200101-{numero:06d}.dump"
+                     for numero in range(3, 12)} | {nuevo.name}
+        conservados = {p.name for p in carpeta.glob("codi-pre-deploy-*.dump")
+                       if p.is_file() and not p.is_symlink()
+                       and p.name != "codi-pre-deploy-000-notas.dump"}
+        self.assertEqual(conservados, esperados)
+        self.assertEqual(ajeno.read_bytes(), b"intacto")
+        self.assertEqual(notas.read_bytes(), b"notas")
+        self.assertTrue(enlace.is_symlink())
+
+    def test_respaldo_fallido_no_borra_respaldo_anterior(self) -> None:
+        carpeta = self.raiz / "respaldos/codi"
+        carpeta.mkdir(parents=True)
+        previo = carpeta / "codi-pre-deploy-20200101-000000.dump"
+        previo.write_bytes(b"anterior")
+        resultado = self.remoto(RESTORE_ERROR="1")
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertEqual(previo.read_bytes(), b"anterior")
+        self.assertEqual(list(carpeta.glob("*.dump")), [previo])
+
+    def test_respaldo_sin_password_no_pasa_pgpassword(self) -> None:
+        self.entrada.write_text(self.entrada.read_text() + "POSTGRES_PASSWORD=\n")
+        resultado = self.remoto(PGPASSWORD="no-heredar", EXPECT_NO_PASSWORD="1")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        self.assertIn("docker exec codi-postgres pg_dump", self.log.read_text())
+        self.assertNotIn(b"no-heredar", resultado.stdout + resultado.stderr)
+
+    def test_host_remoto_aborta_sin_mostrar_valor(self) -> None:
+        self.entrada.write_text(
+            self.entrada.read_text() + "POSTGRES_HOST=servidor-ajeno\n"
+        )
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertNotIn(b"servidor-ajeno", resultado.stdout + resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop",
+                       "systemctl restart", "systemctl start", "install -m 644"):
+            self.assertNotIn(accion, acciones)
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_interrupcion_dump_limpia_parcial(self) -> None:
+        resultado = self.remoto(DUMP_INTERRUPT="1")
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertFalse(list((self.raiz / "respaldos").rglob("*.partial")))
+        self.assertNotIn("manage manage.py migrate", self.log.read_text())
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_stub_rechaza_comandos_dump_incorrectos(self) -> None:
+        script = self.destino / "scripts/ci/deploy-remoto.sh"
+        original = script.read_text()
+        cambios = (
+            ('-Fc "$POSTGRES_DB"', '"$POSTGRES_DB"'),
+            ('-U "$POSTGRES_USER"', '-U otro_usuario'),
+            ('-Fc "$POSTGRES_DB"', '-Fc otra_base'),
+            ('-Fc "$POSTGRES_DB"', '-Fc "$POSTGRES_DB" "$POSTGRES_PASSWORD"'),
+        )
+        entrada = self.entrada.read_text()
+        for antes, despues in cambios:
+            with self.subTest(cambio=despues):
+                script.write_text(original.replace(antes, despues))
+                self.entrada.write_text(entrada)
+                self.log.unlink(missing_ok=True)
+                resultado = self.remoto()
+                self.assertNotEqual(resultado.returncode, 0)
+                self.assertNotIn("manage manage.py migrate", self.log.read_text())
+                self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_usuario_y_base_invalidos_abortan(self) -> None:
+        original = self.entrada.read_text()
+        for clave in ("POSTGRES_USER", "POSTGRES_DB"):
+            for valor in ("", "invalido;comando"):
+                with self.subTest(clave=clave, valor=valor):
+                    self.entrada.write_text(original + f"{clave}={valor}\n")
+                    self.log.unlink(missing_ok=True)
+                    resultado = self.remoto()
+                    self.assertNotEqual(resultado.returncode, 0)
+                    acciones = self.log.read_text()
+                    for accion in ("pg_dump", "manage manage.py migrate",
+                                   "systemctl stop", "systemctl restart",
+                                   "systemctl start", "install -m 644"):
+                        self.assertNotIn(accion, acciones)
+                    self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
     def test_latido_viejo_o_unit_inactiva_restaura_ambos(self) -> None:
         contenido = self.entrada.read_text()
         for variable in ("LATIDO_ANTERIOR", "CANAL_INACTIVO", "HEALTH_CODE"):
@@ -245,6 +385,7 @@ esac''')
                 self.entrada.write_text(contenido)
                 self.log.unlink(missing_ok=True)
                 (self.raiz / "canal-arrancado").unlink(missing_ok=True)
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
                 resultado = self.remoto(**{variable: "503" if variable ==
                                            "HEALTH_CODE" else "1"})
                 self.assertNotEqual(resultado.returncode, 0)
