@@ -7,10 +7,10 @@ from django.db import IntegrityError, transaction
 
 from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.exceptions import CuentaNoActiveError
-from ambito.models import Comercio
+from ambito.models import Comercio, CuentaCobro
 from movimientos.cobro_qr import preparar_alta_qr_general
 from config.modo import modo_de_comercio
-from ambito.candados import bloquear_comercio
+from ambito.candados import bloquear_comercio, bloquear_cuenta
 from movimientos.exceptions import DemoBloqueado, QrGeneralNoDisponible
 from movimientos.models import Cobro, Movimiento
 from pey.produccion import AdaptadorProduccion
@@ -33,8 +33,9 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
     if comercio.cuentas.count() > 1:
         raise QrGeneralNoDisponible()
     puerto = obtener_puerto()
+    origen = cuenta_por_defecto(comercio)
     # En producción se exige la cuenta antes de reutilizar un QR viejo.
-    cuenta = _cuenta_de_produccion(puerto, comercio)
+    cuenta = _cuenta_de_produccion(puerto, origen)
     ident = cuenta.get("bank_account_id", "")
 
     existente = _qr_general_de_comercio(comercio)
@@ -49,6 +50,17 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
             comercio = bloquear_comercio(comercio)
             if modo_de_comercio(comercio).demo:
                 raise DemoBloqueado()
+            if (
+                origen is None
+                or comercio.cuenta_por_defecto_id != origen.pk
+                or comercio.cuentas.count() > 1
+            ):
+                raise QrGeneralNoDisponible()
+            actual = bloquear_cuenta(origen)
+            if not cuenta_apta(actual) or (
+                ident and actual.pey_bank_account_id != ident
+            ):
+                raise CuentaNoActiveError()
             cobro = Cobro.objects.create(
                 comercio=comercio,
                 canal=Movimiento.Canal.QR_GENERAL,
@@ -58,7 +70,7 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
                 pey_qr_id=qr.id,
                 qr_string=qr.qr_string,
                 pey_bank_account_id=ident,
-                cuenta=cuenta_por_defecto(comercio),
+                cuenta=origen,
             )
             return ResultadoAltaQrGeneral(cobro=cobro, creado=True)
     except IntegrityError:
@@ -70,10 +82,11 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
         return ResultadoAltaQrGeneral(cobro=existente, creado=False)
 
 
-def _cuenta_de_produccion(puerto: object, comercio: Comercio) -> dict[str, str]:
+def _cuenta_de_produccion(
+    puerto: object, cuenta: CuentaCobro | None
+) -> dict[str, str]:
     if not isinstance(puerto, AdaptadorProduccion):
         return {}
-    cuenta = cuenta_por_defecto(comercio)
     ident = cuenta.pey_bank_account_id if cuenta else ""
     if not cuenta_apta(cuenta):
         raise CuentaNoActiveError()

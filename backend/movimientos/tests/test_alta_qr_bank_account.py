@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
+from ambito.cuentas_servicio import elegir_default
 from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from ambito.tests.soporte import crear_cuenta
@@ -44,6 +45,44 @@ class AltaQrGeneralCuentaTests(TestCase):
         self.assertEqual(len(llamadas), 1)
         self.assertIn(b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"', llamadas[0])
         self.assertEqual(resultado.cobro.pey_bank_account_id, _CUENTA)
+        self.assertEqual(resultado.cobro.cuenta.pey_bank_account_id, _CUENTA)
+
+    def _alta_con_cambio(self, ident, cambio, error) -> list[bytes]:
+        comercio = self._comercio(ident)
+        llamadas: list[bytes] = []
+
+        def transporte(metodo, url, headers, cuerpo, timeout):
+            llamadas.append(cuerpo)
+            cambio(comercio)
+            return 201, b'{"id":"qr-general","qrString":"codi-general"}'
+
+        puerto = AdaptadorProduccion(transporte=transporte)
+        with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with self.assertRaises(error):
+                alta_qr_general(comercio)
+        self.assertFalse(Cobro.objects.filter(comercio=comercio).exists())
+        return llamadas
+
+    def test_cambio_de_cuentas_durante_el_alta_no_publica_qr(self) -> None:
+        def agregar(comercio):
+            crear_cuenta(comercio, predeterminada=False)
+
+        def agregar_y_elegir(comercio):
+            nueva = crear_cuenta(comercio, predeterminada=False)
+            elegir_default(comercio, nueva, nueva.version)
+
+        def desactivar(comercio):
+            comercio.cuentas.update(codi_status="pending")
+
+        for ident, cambio, error in (
+            ("01ARZ3NDEKTSV4RRFFQ69G5FA1", agregar, QrGeneralNoDisponible),
+            ("01ARZ3NDEKTSV4RRFFQ69G5FA2", agregar_y_elegir, QrGeneralNoDisponible),
+            ("01ARZ3NDEKTSV4RRFFQ69G5FA3", desactivar, CuentaNoActiveError),
+        ):
+            with self.subTest(cambio=cambio.__name__):
+                llamadas = self._alta_con_cambio(ident, cambio, error)
+                self.assertEqual(len(llamadas), 1)
+                self.assertIn(ident.encode(), llamadas[0])
 
     def test_produccion_sin_id_rechaza_sin_llamar(self) -> None:
         llamadas: list[bytes] = []
