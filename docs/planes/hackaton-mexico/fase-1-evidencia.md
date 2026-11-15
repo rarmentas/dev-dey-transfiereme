@@ -23,6 +23,12 @@ abajo son conservadores y se actualizan solo con evidencia verificable.
    correlacionado y aplicado acredita el pago; una captura o un mensaje no bastan.
    El tendero marca después listo y entregado.
 
+Un comercio con historial o QR general puede designarse demo. Su QR general existente
+sigue acreditando dinero real a su cuenta real, mientras la API de QR general queda
+bloqueada para el demo. El modo demo solo cambia el cobro de pedidos: MXN 0.01 a
+`DEMO_PEY_BANK_ACCOUNT_ID`, que no debe ser una cuenta registrada de ningún comercio,
+incluido el propio.
+
 ## Guion: texto y voz
 
 Ejecutar ambos recorridos consecutivamente; al menos uno requiere pago real verificado.
