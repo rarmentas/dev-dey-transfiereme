@@ -71,11 +71,19 @@ def _preparar_renglones(estado, dto, mensaje):
         operacion = fila.get("operacion", "reemplazar")
         if operacion in {"incrementar", "reducir"} and coincidencias:
             anterior = next(r for r in dto.renglones if r.renglon_id == coincidencias[0].renglon_id)
+            identidad_anterior = anterior.renglon_id
+            previo = filas_por_id.get(identidad_anterior)
             if (anterior.resolucion.value != "incluido" or fila["resolucion"] != "incluido"
                     or anterior.descripcion != fila["descripcion"] or anterior.unidad != fila["unidad"]):
                 return None, {}, "No puedo ajustar esa cantidad; indique el producto y su cantidad final."
+            if previo and (previo["resolucion"] != "incluido" or
+                           any(previo[campo] != fila[campo] for campo in
+                               ("producto_id", "descripcion", "unidad", "precio_centavos"))):
+                return None, {}, "Hay ajustes incompatibles para ese producto; indique la cantidad final."
             try:
-                actual = Decimal(str(anterior.cantidad))
+                cantidad_previa = (cambios[identidad_anterior].cantidad_solicitada
+                                   if previo else anterior.cantidad)
+                actual = Decimal(str(cantidad_previa))
                 diferencia = Decimal(str(fila["cantidad"]))
             except (InvalidOperation, ValueError, TypeError):
                 return None, {}, "Indique cuántas unidades desea cambiar."

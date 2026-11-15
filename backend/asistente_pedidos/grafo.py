@@ -186,6 +186,7 @@ def _extraer(s, modelo):
         if not nombre or (not posiciones and not respuesta_pendiente):
             continue
         cantidad = item.get("cantidad")
+        cantidad_extraida = cantidad is not None
         unidad = item.get("unidad")
         if cantidad is not None and (not isinstance(cantidad, str) or len(cantidad) > 16):
             cantidad = None
@@ -201,7 +202,7 @@ def _extraer(s, modelo):
             continue
         if accion == "quitar" and cantidad is None:
             zona = _segmento_producto(s["texto"], nombre, s["productos"], posicion=posicion)
-            if _NUMERO.search(zona):
+            if cantidad_extraida or _NUMERO.search(zona):
                 cantidad_dudosa_al_quitar = True
                 continue
             eliminaciones.append(nombre)

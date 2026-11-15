@@ -90,6 +90,23 @@ class ExtraccionSeguraTests(SimpleTestCase):
         self.assertEqual(resultado["intencion"], "aclaracion_requerida")
         self.assertEqual(resultado["eliminaciones"], [])
 
+    def test_cantidad_extraida_sin_respaldo_previo_no_borra(self):
+        for texto, cantidad in (("Quita refrescos, solo uno", "1"),
+                                ("quita once refrescos", "11")):
+            with self.subTest(texto=texto):
+                resultado = self.extraer(texto, [
+                    {"nombre": "refrescos", "cantidad": cantidad, "unidad": None,
+                     "accion": "quitar"}])
+                self.assertEqual(resultado["intencion"], "aclaracion_requerida")
+                self.assertEqual(resultado["eliminaciones"], [])
+
+    def test_dos_operaciones_del_mismo_producto_conservan_el_orden(self):
+        resultado = self.extraer("agrega dos refrescos y quita un refresco", [
+            {"nombre": "refrescos", "cantidad": "2", "unidad": None, "accion": "agregar"},
+            {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"}])
+        self.assertEqual([(i["operacion"], i["cantidad"]) for i in resultado["items"]],
+                         [("incrementar", "2"), ("reducir", "1")])
+
 
 class AgentePedidosTests(TestCase):
     def setUp(self):
@@ -311,6 +328,38 @@ class AgentePedidosTests(TestCase):
         self.assertEqual(renglon.cantidad, Decimal("2"))
         self.assertEqual(Pedido.objects.get().renglones.count(), 2)
         self.assertIn("$86.00", salida)
+
+    def test_reduccion_con_cantidad_no_verificada_no_modifica_pedido(self):
+        self.enviar("tres refrescos", ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "refrescos", "cantidad": "3", "unidad": None}]}))
+        pedido = Pedido.objects.get()
+        version = pedido.version
+        for texto, cantidad in (("Quita refrescos, solo uno", "1"),
+                                ("quita once refrescos", "11")):
+            with self.subTest(texto=texto):
+                _, salida = self.enviar(texto, ModeloFalso({"intencion": "correccion", "items": [
+                    {"nombre": "refrescos", "cantidad": cantidad, "unidad": None,
+                     "accion": "quitar"}]}))
+                pedido.refresh_from_db()
+                self.assertIn("cantidad exacta", salida)
+                self.assertEqual(pedido.version, version)
+                self.assertEqual(pedido.renglones.get().cantidad, Decimal("3"))
+
+    def test_ajustes_sucesivos_del_mismo_producto_se_combinan(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refrescos", "cantidad": "2", "unidad": None, "accion": "agregar"},
+                {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"}]},
+        )
+        self.enviar("tres refrescos", modelo)
+        renglon = Pedido.objects.get().renglones.get()
+        _, salida = self.enviar("agrega dos refrescos y quita un refresco", modelo)
+        renglon.refresh_from_db()
+        self.assertEqual(renglon.cantidad, Decimal("4"))
+        self.assertEqual(Pedido.objects.get().renglones.count(), 1)
+        self.assertIn("$72.00", salida)
 
     def test_negacion_no_borra_y_correccion_posterior_actualiza(self):
         modelo = ModeloFalso(
