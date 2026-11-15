@@ -50,7 +50,7 @@ def reclamar(excluir=()):
             ):
                 token = uuid.uuid4()
                 conversacion.lease_token = token
-                conversacion.lease_hasta = ahora + timedelta(seconds=60)
+                conversacion.lease_hasta = ahora + timedelta(seconds=120)
                 conversacion.save(update_fields=["lease_token", "lease_hasta"])
                 return conversacion.pk, token, mensaje.pk
     return None
@@ -79,9 +79,9 @@ def ciclo():
         vistos.add(mensaje_id)
         try:
             mensaje = MensajeEntrante.objects.select_related(
-                "conversacion__sesion"
+                "conversacion__sesion__comercio"
             ).get(pk=mensaje_id)
-            procesar_mensaje(mensaje, nucleo, lector, timezone.now())
+            procesar_mensaje(mensaje, nucleo, lector, timezone.now(), lease_token=token)
         finally:
             ConversacionCanal.objects.filter(
                 pk=conversacion_id, lease_token=token

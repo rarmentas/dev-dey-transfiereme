@@ -86,6 +86,7 @@ class MensajeEntrante(models.Model):
     proximo_intento_en = models.DateTimeField(null=True)
     error = models.CharField(max_length=200, blank=True)
     procesado_en = models.DateTimeField(null=True)
+    agente_resultado = models.JSONField(default=dict, blank=True)
 
     class Meta:
         verbose_name = "mensaje entrante"

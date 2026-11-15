@@ -55,6 +55,11 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
       title: const Text('Pedidos'),
       actions: [
         IconButton(
+          onPressed: () => context.push('/pedidos/catalogo'),
+          icon: const Icon(Icons.storefront),
+          tooltip: 'Lista de precios',
+        ),
+        IconButton(
           onPressed: cargando ? null : cargar,
           icon: const Icon(Icons.refresh),
           tooltip: 'Actualizar',
@@ -81,7 +86,11 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
             child: ListTile(
               title: Text('Pedido #${pedido.numero} · ${pedido.cliente}'),
               subtitle: Text(
-                '${pedido.estado} · Pago: ${etiquetaPago(pedido.pagoEstado)} · Preparación: ${etiquetaPreparacion(pedido.preparacion)} · ${pedido.pendientes} pendientes${pedido.total == null ? '' : ' · ${formatearCentavos(pedido.total!)}'}',
+                '${pedido.estado} · Pago: ${etiquetaPago(pedido.pagoEstado)} · Preparación: ${etiquetaPreparacion(pedido.preparacion)} · ${pedido.pendientes} pendientes${pedido.total != null
+                    ? ' · Total: ${formatearCentavos(pedido.total!)}'
+                    : pedido.propuesta != null
+                    ? ' · Propuesta: ${formatearCentavos(pedido.propuesta!)}'
+                    : ' · Pendiente de cotizar'}',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {

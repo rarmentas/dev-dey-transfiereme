@@ -1,6 +1,9 @@
 from django.urls import path
 
 from pedidos.views import (
+    AgenteConfiguracionView,
+    CatalogoView,
+    ProductoView,
     CotizacionesPedidoView,
     CobroPedidoView,
     DetallePedidoView,
@@ -11,6 +14,9 @@ from pedidos.views import (
 )
 
 urlpatterns = [
+    path("catalogo/", CatalogoView.as_view(), name="pedidos-catalogo"),
+    path("catalogo/<int:producto_id>/", ProductoView.as_view(), name="pedidos-producto"),
+    path("agente/", AgenteConfiguracionView.as_view(), name="pedidos-agente"),
     path("", ListaPedidosView.as_view(), name="pedidos-lista"),
     path("<str:pedido_id>/cobro/", CobroPedidoView.as_view(), name="pedidos-cobro"),
     path("<str:pedido_id>/listo/", ListoPedidoView.as_view(), name="pedidos-listo"),

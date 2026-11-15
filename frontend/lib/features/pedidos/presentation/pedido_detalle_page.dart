@@ -323,7 +323,13 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
           if (actual == null && !noAccesible && !permisoDenegado && !ocupado)
             OutlinedButton(onPressed: cargar, child: const Text('Reintentar')),
           if (actual != null && !noAccesible && !permisoDenegado) ...[
-            Text('Cliente: ${actual.cliente} · ${actual.estado}'),
+            Text(
+              'Cliente: ${actual.cliente} · ${actual.estado}${actual.cotizacion != null
+                  ? ''
+                  : actual.propuesta == null
+                  ? ' · Pendiente de cotizar'
+                  : ' · Propuesta: ${formatearCentavos(actual.propuesta!)}'}',
+            ),
             PagoCard(
               pedido: actual,
               incierto: cobroIncierto,

@@ -1,6 +1,7 @@
 """API autenticada de revisión de pedidos."""
 
 from uuid import UUID
+from django.db import IntegrityError, transaction
 
 from django.db import InterfaceError, OperationalError
 from rest_framework.permissions import IsAuthenticated
@@ -16,7 +17,7 @@ from pedidos.contratos.v1 import CodigoError
 from pedidos.contratos.validacion import ErrorContrato
 from pedidos.errores import ErrorNucleo
 from pedidos.http import error, exito
-from pedidos.models import Pedido
+from pedidos.models import Pedido, ProductoCatalogo
 from pedidos.serializers import validar_cuerpo
 from pedidos.servicios.entrega import operar as operar_entrega
 from pedidos.servicios.presentacion import pedido_dto
@@ -55,7 +56,21 @@ def _con_entrega(pedido, dto):
         "entregado_en": pedido.entregado_en if entregado else None,
         "entregado_por": pedido.entregado_por_id if entregado else None,
     }
+    datos["total_propuesto_centavos"] = _total_propuesto(dto)
     return datos
+
+
+def _total_propuesto(dto):
+    if not dto.renglones or any(r.resolucion.value == "pendiente" for r in dto.renglones):
+        return None
+    subtotales = [r.subtotal_centavos for r in dto.renglones if r.resolucion.value == "incluido"]
+    if not subtotales:
+        return None
+    from pedidos.contratos.calculo import total_centavos
+    try:
+        return total_centavos(subtotales)
+    except ErrorContrato:
+        return None
 
 
 def capturar(funcion):
@@ -105,6 +120,7 @@ class ListaPedidosView(APIView):
                     "total_comercial_centavos": cot.total_comercial_centavos
                     if cot
                     else None,
+                    "total_propuesto_centavos": _total_propuesto(dto) if not cot else None,
                     "importe_efectivo_centavos": cot.importe_efectivo_centavos
                     if cot
                     else None,
@@ -139,7 +155,8 @@ class RenglonesPedidoView(APIView):
         resultado = operar(
             comercio, pedido.id, "revisar_renglones", datos, request.user
         )
-        return exito(resultado.data["pedido"], replayed=resultado.replayed)
+        pedido.refresh_from_db()
+        return exito(_con_entrega(pedido, resultado.data["pedido"]), replayed=resultado.replayed)
 
 
 class CotizacionesPedidoView(APIView):
@@ -153,8 +170,9 @@ class CotizacionesPedidoView(APIView):
         resultado = operar(
             comercio, pedido.id, "publicar_cotizacion", datos, request.user
         )
+        pedido.refresh_from_db()
         return exito(
-            resultado.data["pedido"],
+            _con_entrega(pedido, resultado.data["pedido"]),
             status=200 if resultado.replayed else 201,
             replayed=resultado.replayed,
         )
@@ -239,3 +257,84 @@ class CobroPedidoView(APIView):
             resultado.data["pedido"], status=200 if resultado.replayed else 201,
             replayed=resultado.replayed,
         )
+
+
+def _producto_json(p):
+    return {"id": p.pk, "nombre": p.nombre, "alias": p.alias, "unidad": p.unidad,
+            "precio_centavos": p.precio_centavos, "disponible": p.disponible}
+
+
+def _validar_producto(datos):
+    if not isinstance(datos, dict) or any(k not in {"nombre", "alias", "unidad", "precio_centavos", "disponible"} for k in datos):
+        raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+    nombre, unidad, alias = datos.get("nombre"), datos.get("unidad"), datos.get("alias", [])
+    precio = datos.get("precio_centavos")
+    if (not isinstance(nombre, str) or not 0 < len(nombre.strip()) <= 200 or
+        not isinstance(unidad, str) or not 0 < len(unidad.strip()) <= 30 or
+        not isinstance(alias, list) or len(alias) > 20 or
+        any(not isinstance(a, str) or not 0 < len(a.strip()) <= 200 for a in alias) or
+        (precio is not None and (type(precio) is not int or not 0 < precio <= 9007199254740991)) or
+        type(datos.get("disponible", True)) is not bool):
+        raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+    from asistente_pedidos.catalogo import normalizar
+    nombres = [normalizar(nombre), *[normalizar(a) for a in alias]]
+    if len(set(nombres)) != len(nombres):
+        raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+    return {"nombre": nombre.strip(), "unidad": unidad.strip(), "alias": [a.strip() for a in alias],
+            "precio_centavos": precio, "disponible": datos.get("disponible", True)}
+
+
+class CatalogoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def get(self, request):
+        comercio = _comercio(request)
+        return exito({"productos": [_producto_json(p) for p in ProductoCatalogo.objects.filter(comercio=comercio).order_by("nombre")],
+                      "agente_habilitado": comercio.agente_pedidos_habilitado, "es_dueno": request.es_dueno})
+
+    @capturar
+    def post(self, request):
+        comercio = _comercio(request, True)
+        datos = _validar_producto(request.data)
+        try:
+            with transaction.atomic():
+                p = ProductoCatalogo.objects.create(comercio=comercio, **datos)
+        except IntegrityError:
+            raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO, "Producto duplicado") from None
+        return exito(_producto_json(p), status=201)
+
+
+class ProductoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def put(self, request, producto_id):
+        comercio = _comercio(request, True)
+        datos = _validar_producto(request.data)
+        try:
+            with transaction.atomic():
+                p = ProductoCatalogo.objects.select_for_update().get(pk=producto_id, comercio=comercio)
+                for campo, valor in datos.items():
+                    setattr(p, campo, valor)
+                p.save()
+        except ProductoCatalogo.DoesNotExist:
+            raise ErrorNucleo(CodigoError.PEDIDO_NO_ACCESIBLE) from None
+        except IntegrityError:
+            raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO, "Producto duplicado") from None
+        return exito(_producto_json(p))
+
+
+class AgenteConfiguracionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def put(self, request):
+        comercio = _comercio(request, True)
+        if not request.es_dueno:
+            raise ErrorNucleo(CodigoError.PERMISO_DENEGADO)
+        if not isinstance(request.data, dict) or set(request.data) != {"habilitado"} or type(request.data["habilitado"]) is not bool:
+            raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+        comercio.agente_pedidos_habilitado = request.data["habilitado"]
+        comercio.save(update_fields=["agente_pedidos_habilitado"])
+        return exito({"agente_habilitado": comercio.agente_pedidos_habilitado})

@@ -194,6 +194,9 @@ WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "").strip() or "waha"
 CANAL_TRANSPORTE = "canales.waha.AdaptadorWaha"
 
 STT_HABILITADO = os.environ.get("STT_HABILITADO", "0") == "1"
+AGENTE_PEDIDOS_API_KEY = os.environ.get("AGENTE_PEDIDOS_API_KEY", "")
+AGENTE_PEDIDOS_MODELO = os.environ.get("AGENTE_PEDIDOS_MODELO", "gpt-4.1-mini")
+AGENTE_PEDIDOS_TIMEOUT_S = min(45, max(1, int(os.environ.get("AGENTE_PEDIDOS_TIMEOUT_S", "25"))))
 STT_MODELO = os.environ.get("STT_MODELO", "small")
 STT_CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "2"))
 STT_PRESUPUESTO_S = 45

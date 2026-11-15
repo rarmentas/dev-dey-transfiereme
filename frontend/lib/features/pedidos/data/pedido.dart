@@ -12,6 +12,7 @@ class PedidoResumen {
       cliente = json['cliente_etiqueta'] as String? ?? '',
       pendientes = json['renglones_pendientes'] as int,
       total = json['total_comercial_centavos'] as int?,
+      propuesta = json['total_propuesto_centavos'] as int?,
       pagoEstado = json['pago_estado'] as String? ?? 'sin_cobro',
       preparacion = json['preparacion'] as String? ?? 'pendiente';
   final String id;
@@ -21,6 +22,7 @@ class PedidoResumen {
   final String pagoEstado, preparacion;
   final int pendientes;
   final int? total;
+  final int? propuesta;
 }
 
 class Pedido {
@@ -49,7 +51,8 @@ class Pedido {
           : null,
       entrega = json['entrega'] is Map
           ? Map<String, dynamic>.from(json['entrega'] as Map)
-          : {};
+          : {},
+      propuesta = json['total_propuesto_centavos'] as int?;
   final String id;
   final int numero;
   final int version;
@@ -62,6 +65,7 @@ class Pedido {
   final String pagoEstado, preparacion;
   final Map<String, dynamic>? intento;
   final Map<String, dynamic> entrega;
+  final int? propuesta;
 }
 
 class Cotizacion {

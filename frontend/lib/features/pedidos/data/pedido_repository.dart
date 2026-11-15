@@ -24,6 +24,19 @@ class PedidoRepository {
   final Dio _dio;
   static const ruta = '/api/pedidos/';
 
+  Future<Map<String, dynamic>> catalogo() async =>
+      _solicitar('GET', '${ruta}catalogo/');
+  Future<Map<String, dynamic>> guardarProducto(
+    int? id,
+    Map<String, dynamic> cuerpo,
+  ) async => _solicitar(
+    id == null ? 'POST' : 'PUT',
+    id == null ? '${ruta}catalogo/' : '${ruta}catalogo/$id/',
+    cuerpo,
+  );
+  Future<Map<String, dynamic>> configurarAgente(bool habilitado) async =>
+      _solicitar('PUT', '${ruta}agente/', {'habilitado': habilitado});
+
   Future<List<PedidoResumen>> listar() async {
     final data = await _solicitar('GET', ruta);
     return (data['pedidos'] as List)
