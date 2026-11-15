@@ -117,6 +117,55 @@ class CanalTests(TestCase):
         salida.refresh_from_db()
         self.assertEqual(salida.estado, "incierta")
 
+    def test_respuesta_agente_muestra_escribiendo_antes_del_envio(self):
+        salida = SalidaCanal.objects.create(
+            conversacion=self.chat, causa="agente", destinatario=self.chat.chat_id,
+            tipo="respuesta", payload={"texto": "Pedido recibido", "escribiendo": True},
+        )
+        eventos = []
+
+        class Transporte:
+            def iniciar_escritura(self, sesion, chat):
+                eventos.append(("typing", sesion, chat))
+
+            def detener_escritura(self, sesion, chat):
+                eventos.append(("paused", sesion, chat))
+
+            def enviar_texto(self, sesion, chat, texto):
+                eventos.append(("texto", sesion, chat, texto))
+                return "ack"
+
+        with patch("canales.salidas.random.uniform", return_value=4.5), \
+             patch("canales.salidas.time.sleep", side_effect=lambda segundos: eventos.append(("espera", segundos))):
+            enviar(salida.pk, Transporte())
+        self.assertEqual(eventos, [
+            ("typing", "s", "a@c.us"), ("espera", 4.5),
+            ("texto", "s", "a@c.us", "Pedido recibido"), ("paused", "s", "a@c.us"),
+        ])
+        salida.refresh_from_db()
+        self.assertEqual(salida.estado, "enviada")
+
+    def test_fallo_de_presencia_no_impide_respuesta(self):
+        salida = SalidaCanal.objects.create(
+            conversacion=self.chat, causa="agente-2", destinatario=self.chat.chat_id,
+            tipo="respuesta", payload={"texto": "Hola", "escribiendo": True},
+        )
+
+        class Transporte:
+            def iniciar_escritura(self, *_):
+                raise OSError("sin presencia")
+
+            def detener_escritura(self, *_):
+                raise OSError("sin presencia")
+
+            def enviar_texto(self, *_):
+                return "ack"
+
+        with patch("canales.salidas.time.sleep"):
+            enviar(salida.pk, Transporte())
+        salida.refresh_from_db()
+        self.assertEqual(salida.estado, "enviada")
+
     def test_firma_algoritmo_y_cuerpo_grande_fallan_cerrado(self):
         cuerpo = b"{}"
         firma = hmac.new(b"prueba", cuerpo, hashlib.sha512).hexdigest()

@@ -325,5 +325,5 @@ def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
         if nucleo.ES_SIMULACION:
             salida = "[SIMULACIÓN] " + salida
         ConversacionCanal.objects.filter(pk=conv.pk).update(pedido_id_actual=pedido_id)
-        preparar(conv, f"mensaje:{mensaje.pk}", "respuesta", {"texto": salida})
+        preparar(conv, f"mensaje:{mensaje.pk}", "respuesta", {"texto": salida, "escribiendo": True})
         MensajeEntrante.objects.filter(pk=mensaje.pk).update(estado="procesado", procesado_en=ahora, error="")
