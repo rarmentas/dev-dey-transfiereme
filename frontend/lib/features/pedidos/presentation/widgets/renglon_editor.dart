@@ -171,5 +171,8 @@ int? precioCentavos(String valor) {
   final centavos =
       int.parse(partes[0]) * 100 +
       int.parse((partes.length > 1 ? partes[1] : '').padRight(2, '0'));
-  return centavos > 0 && centavos <= 9223372036854775807 ? centavos : null;
+  return centavos > 0 && centavos <= _maxCentavosSeguroWeb ? centavos : null;
 }
+
+/// Mayor entero exacto en JavaScript (2^53 - 1); la app compila a web.
+const int _maxCentavosSeguroWeb = 9007199254740991;
