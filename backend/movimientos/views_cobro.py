@@ -13,6 +13,7 @@ from ambito.exceptions import (
     SinAmbitoError,
 )
 from ambito.scope import preparar_operacion_cobro
+from config.modo import demo_activo, respuesta_bloqueada_en_demo
 from movimientos.alta_qr_general import alta_qr_general
 from pey.tipos import ErrorPey, ParametroInvalido
 
@@ -31,6 +32,8 @@ class AltaQrGeneralView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        if demo_activo():
+            return respuesta_bloqueada_en_demo()
         datos = request.data if isinstance(request.data, dict) else {}
         try:
             comercio = preparar_operacion_cobro(request, datos)

@@ -43,3 +43,16 @@ def validar_configuracion() -> None:
             or not settings.DEMO_PEY_BANK_ACCOUNT_ID.strip()
         ):
             raise ImproperlyConfigured("Configuración de demostración inválida")
+
+
+def respuesta_bloqueada_en_demo():
+    """Bloquea las rutas de emisión legacy durante la demostración."""
+    from rest_framework.response import Response
+
+    return Response(
+        {
+            "codigo": "RUTA_BLOQUEADA_EN_DEMO",
+            "detail": "Esta acción no está disponible en modo demostración.",
+        },
+        status=403,
+    )

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
+from config.modo import demo_activo, respuesta_bloqueada_en_demo
 from pey.tipos import ErrorPey, ParametroInvalido
 from ventas.canal import VentaPendiente
 from ventas.serializers import (
@@ -81,6 +82,8 @@ class CrearVentaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        if demo_activo():
+            return respuesta_bloqueada_en_demo()
         try:
             datos = _leer_cuerpo(request)
         except _CuerpoInvalido as exc:
@@ -121,6 +124,8 @@ class CrearNotificacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        if demo_activo():
+            return respuesta_bloqueada_en_demo()
         try:
             datos = _leer_cuerpo(request)
         except _CuerpoInvalido as exc:
