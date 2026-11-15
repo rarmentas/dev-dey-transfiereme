@@ -154,6 +154,14 @@ Variables nuevas, solo nombres: `STT_HABILITADO`, `STT_MODELO`, `STT_CPU_THREADS
 `CODY_ROL`, `HF_HOME`, `HF_HUB_OFFLINE`, `WHATSAPP_DOWNLOAD_MEDIA`,
 `WHATSAPP_FILES_LIFETIME`, `WAHA_BASE_URL` (contenedor WAHA).
 
+Para voz, operación configura `WHATSAPP_DOWNLOAD_MEDIA=true` y
+`WHATSAPP_FILES_LIFETIME=86400` en el WAHA independiente, según la imagen
+fijada. Las URLs anunciadas para `/api/files/` deben usar el origen exacto
+`http://127.0.0.1:3004`, alcanzable desde el host e igual a `WAHA_BASE_URL` de
+Django. La URL de archivos y la API son conceptos distintos. Confirmar el
+contrato con la imagen; el bind de media depende de edición/motor y no se
+presupone persistencia. Con STT apagado se puede cortar rutas, no declarar voz lista.
+
 Si falla audio o su capacidad amenaza el pago, deshabilitar STT, ofrecer texto y marcar
 AC1-02 como no cumplido. Si WAHA falla, registrar el corte y no atribuirle un mensaje
 real. Si cuenta, cobro o webhook no están verificados, mantener cerrado el cobro o

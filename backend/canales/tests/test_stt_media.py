@@ -44,6 +44,13 @@ class MediaTests(SimpleTestCase):
             with self.subTest(url=url):
                 self.assertFalse(media.origen_permitido(url))
 
+    @override_settings(WAHA_BASE_URL="http://127.0.0.1:3004")
+    def test_origen_local_rechaza_puerto_anterior(self):
+        self.assertTrue(media.origen_permitido("http://127.0.0.1:3004/api/files/a"))
+        for url in ("http://127.0.0.1:3000/api/files/a",
+                    "http://localhost:3004/api/files/a"):
+            self.assertFalse(media.origen_permitido(url))
+
     @override_settings(WHATSAPP_AUDIO_MAX_BYTES=5)
     def test_limites_vacio_y_redirect(self):
         with tempfile.TemporaryDirectory() as carpeta:
