@@ -59,6 +59,8 @@ class DeploySeguridadTests(SimpleTestCase):
         )
         self.activo.write_text("ANTERIOR=1\n")
         self.canal.write_text("CANAL_ANTERIOR=1\n")
+        (self.raiz / "web-activa").touch()
+        (self.raiz / "web-entorno").write_text("ANTERIOR=1\n")
         (self.units / "cody.service").write_text("unit web previa\n")
         (self.units / "cody-canal.service").write_text("unit canal previa\n")
         self.entorno = {
@@ -70,6 +72,9 @@ class DeploySeguridadTests(SimpleTestCase):
             "STARTED": str(self.raiz / "canal-arrancado"),
             "HOME": str(self.raiz),
             "MIGRATED": str(self.raiz / "migrado"),
+            "WEB_ACTIVA": str(self.raiz / "web-activa"),
+            "WEB_ENTORNO": str(self.raiz / "web-entorno"),
+            "WEB_HISTORIAL": str(self.raiz / "web-historial"),
         }
         self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
         self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
@@ -80,6 +85,26 @@ class DeploySeguridadTests(SimpleTestCase):
         self.stub("stat", 'echo cody')
         self.stub("systemctl", '''echo "systemctl $*" >> "$LOG"
 if [[ "$1" == show ]]; then echo "$DEST/backend"; fi
+if [[ "$2" == cody.service ]]; then
+  case "$1" in
+    stop) rm -f "$WEB_ACTIVA" ;;
+    start|restart)
+      if [[ "$1" == restart && -n "${WEB_FALLA:-}" ]]; then
+        rm -f "$WEB_ACTIVA"
+        touch "$WEB_ACTIVA.fallo"
+        if [[ "$WEB_FALLA" != inactiva ]]; then exit 1; fi
+        exit 0
+      fi
+      if [[ "$1" == start && "${WEB_FALLA:-}" == persistente &&
+            -e "$WEB_ACTIVA.fallo" ]]; then exit 1; fi
+      if [[ "$1" == restart || ! -e "$WEB_ACTIVA" ]]; then
+        cp "$DEST/backend/.env" "$WEB_ENTORNO"
+        cat "$DEST/backend/.env" >> "$WEB_HISTORIAL"
+        touch "$WEB_ACTIVA"
+      fi ;;
+    is-active) [[ -e "$WEB_ACTIVA" ]] || exit 1 ;;
+  esac
+fi
 if [[ "$1 $2" == "restart cody-canal.service" ]]; then touch "$STARTED"; fi
 if [[ "$1" == is-active || "$1" == is-enabled ]]; then
   nombre="${@: -1}"
@@ -248,11 +273,14 @@ esac''')
                 self.entrada.write_text(contenido)
                 resultado = self.remoto()
                 self.assertNotEqual(resultado.returncode, 0)
-                self.assertNotIn("systemctl stop", self.log.read_text())
+                acciones = self.log.read_text()
+                for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+                    self.assertNotIn(accion, acciones)
                 self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
                 self.assertEqual(self.entrada.read_text(), contenido)
         for linea in ("", "STT_CPU_THREADS=2\n"):
             with self.subTest(linea=linea):
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
                 self.entrada.write_text(base + linea)
                 resultado = self.remoto()
                 self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
@@ -294,6 +322,7 @@ esac''')
         contenido = self.entrada.read_text()
         for proceso in ("procesar_canal", "procesar_cobros"):
             with self.subTest(proceso=proceso):
+                shutil.rmtree(self.raiz / "respaldos", ignore_errors=True)
                 self.entrada.write_text(contenido)
                 resultado = self.remoto(FALLA_PROCESO=proceso)
                 self.assertNotEqual(resultado.returncode, 0)
@@ -305,7 +334,9 @@ esac''')
             archivo.write("STT_HABILITADO=1\n")
         resultado = self.remoto()
         self.assertNotEqual(resultado.returncode, 0)
-        self.assertNotIn("systemctl stop", self.log.read_text())
+        acciones = self.log.read_text()
+        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
         self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
 
     def test_postgres_no_sano_no_se_repara(self) -> None:
@@ -394,10 +425,70 @@ esac''')
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
         acciones = self.log.read_text()
         self.assertLess(
-            acciones.index("stt-preflight"), acciones.index("systemctl stop")
+            acciones.index("stt-preflight"), acciones.index("pg_dump")
         )
         self.assertIn("systemctl enable --now cody-stt.service", acciones)
         self.assertIn("--proceso procesar_audio", acciones)
+
+    def test_modelo_offline_invalido_no_respalda_ni_migra(self) -> None:
+        (self.stt / "venv/bin").mkdir(parents=True)
+        (self.stt / "modelos").mkdir()
+        python = self.stt / "venv/bin/python"
+        python.write_text("#!/bin/sh\nexit 1\n")
+        python.chmod(0o755)
+        self.stub("ffmpeg", "exit 0")
+        self.stub("ffprobe", "exit 0")
+        with self.entrada.open("a") as archivo:
+            archivo.write("STT_HABILITADO=1\nSTT_CPU_THREADS=2\n")
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"modelo STT no disponibles", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_recuperacion_reinicia_web_con_entorno_anterior(self) -> None:
+        resultado = self.remoto(FALLA_PROCESO="procesar_cobros")
+        self.assertNotEqual(resultado.returncode, 0)
+        historial = (self.raiz / "web-historial").read_text()
+        self.assertIn("WAHA_API_KEY=ficticia", historial)
+        self.assertEqual((self.raiz / "web-entorno").read_text(), "ANTERIOR=1\n")
+        self.assertTrue((self.raiz / "web-activa").exists())
+
+    def test_reintenta_arranque_web_si_falla_reinicio_de_recuperacion(self) -> None:
+        resultado = self.remoto(
+            FALLA_PROCESO="procesar_cobros", WEB_FALLA="transitoria"
+        )
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"procesar_cobros", resultado.stderr)
+        acciones = self.log.read_text()
+        reinicio = acciones.index("systemctl restart cody.service")
+        self.assertIn("systemctl start cody.service", acciones[reinicio:])
+        self.assertEqual((self.raiz / "web-entorno").read_text(), "ANTERIOR=1\n")
+        self.assertTrue((self.raiz / "web-activa").exists())
+        self.assertNotIn("recuperación web fallida".encode(), resultado.stderr)
+
+    def test_fallo_persistente_web_se_reporta_y_recupera_workers(self) -> None:
+        (self.units / "cody-cobros.service").write_text("unit cobros previa\n")
+        (self.destino / "backend/.env.cobros").write_text("cobros=anterior\n")
+        resultado = self.remoto(
+            FALLA_PROCESO="procesar_cobros", WEB_FALLA="persistente"
+        )
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn("recuperación web fallida".encode(), resultado.stderr)
+        self.assertFalse((self.raiz / "web-activa").exists())
+        acciones = self.log.read_text()
+        self.assertIn("systemctl start cody-canal.service", acciones)
+        self.assertIn("systemctl start cody-cobros.service", acciones)
+        self.assertEqual((self.destino / "backend/.env.cobros").read_text(),
+                         "cobros=anterior\n")
+
+    def test_reinicio_exitoso_con_web_inactiva_se_reporta(self) -> None:
+        resultado = self.remoto(FALLA_PROCESO="procesar_cobros", WEB_FALLA="inactiva")
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn("recuperación web fallida".encode(), resultado.stderr)
+        self.assertIn("systemctl start cody-canal.service", self.log.read_text())
 
     def test_fallo_restablece_cobros_y_stt_previos(self) -> None:
         for rol in ("cobros", "stt"):

@@ -237,17 +237,7 @@ fi
   cd "$dest/backend"
   ./.venv/bin/python manage.py check
 )
-respaldar_base
-(
-  cd "$dest/backend"
-  ./.venv/bin/python manage.py migrate --plan | awk '/^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/'
-  ./.venv/bin/python manage.py migrate --noinput
-  ./.venv/bin/python manage.py migrate --check --noinput
-  ./.venv/bin/python manage.py collectstatic --noinput
-)
-chmod -R u+rwX,go-rwx "$dest/backend/.venv"
-chmod -R u+rwX,go+rX,go-w "$dest/backend/staticfiles"
-
+# Verificar configuración, units y STT antes del respaldo y las migraciones.
 # Preparar units y entornos por rol antes de detener servicios.
 for suffix in "" "-canal" "-cobros" "-stt"; do
   unit_tmp="$backup_dir/cody${suffix}.service"
@@ -336,6 +326,18 @@ PYSTT
   fi
 fi
 
+
+# Respaldar y migrar solo después de validar la configuración entrante.
+respaldar_base
+(
+  cd "$dest/backend"
+  ./.venv/bin/python manage.py migrate --plan | awk '/^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/'
+  ./.venv/bin/python manage.py migrate --noinput
+  ./.venv/bin/python manage.py migrate --check --noinput
+  ./.venv/bin/python manage.py collectstatic --noinput
+)
+chmod -R u+rwX,go-rwx "$dest/backend/.venv"
+chmod -R u+rwX,go+rX,go-w "$dest/backend/staticfiles"
 
 cp -p /etc/systemd/system/cody.service "$backup_dir/cody.service.previous"
 cp -p "$target" "$backup_dir/.env"
