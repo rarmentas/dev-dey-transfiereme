@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from functools import wraps
 
 from pedidos.contratos.fixtures import id_determinista
 from pedidos.contratos.v1 import (
@@ -13,16 +12,6 @@ from pedidos.contratos.v1 import (
     EstadoPreparacion,
     RenglonSolicitadoV1,
 )
-
-
-def solo_stub(prueba):
-    @wraps(prueba)
-    def ejecutar(self):
-        if not self.nucleo.ES_SIMULACION:
-            self.skipTest("MR-2: requiere IntentoCobro/CuentaCobro")
-        return prueba(self)
-
-    return ejecutar
 
 
 class DriverFixtureV1(ABC):

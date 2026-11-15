@@ -186,21 +186,30 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
         conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
     ).exists():
         salida = mensajes.TOKEN_INVALIDO
-    elif pedido_id:
-        salida = mensajes.ABIERTO
     elif texto:
-        respuesta = nucleo.registrar_solicitud(
-            ctx,
-            **datos,
-            command_key=f"registrar:{mensaje.id}",
-            mensaje_id=str(mensaje.id),
-            message_key=message_key(
-                mensaje.instancia_id, mensaje.sesion_id, mensaje.id_mensaje_proveedor
-            ),
-            secuencia_conversacion=mensaje.secuencia,
-            renglones=parsear_renglones(texto, str(mensaje.id)),
-        )
-        salida = mensajes.RECIBIDO
+        if pedido_id:
+            consulta = nucleo.consultar_pedido(ctx, **datos, pedido_id=str(pedido_id))
+            if not consulta.ok:
+                respuesta = consulta
+            elif consulta.data["pedido"].abierto:
+                salida = mensajes.ABIERTO
+            else:
+                pedido_id = None
+        if not pedido_id and respuesta is None:
+            respuesta = nucleo.registrar_solicitud(
+                ctx,
+                **datos,
+                command_key=f"registrar:{mensaje.id}",
+                mensaje_id=str(mensaje.id),
+                message_key=message_key(
+                    mensaje.instancia_id,
+                    mensaje.sesion_id,
+                    mensaje.id_mensaje_proveedor,
+                ),
+                secuencia_conversacion=mensaje.secuencia,
+                renglones=parsear_renglones(texto, str(mensaje.id)),
+            )
+            salida = mensajes.RECIBIDO
     if respuesta and not respuesta.ok:
         if respuesta.error.retryable:
             with transaction.atomic():

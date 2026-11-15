@@ -522,6 +522,33 @@ class IntegracionRealTests(TestCase):
         posterior.refresh_from_db()
         self.assertEqual(posterior.id_proveedor, "dos")
 
+    def test_i5_consulta_fallida_no_limpia_ni_crea_pedido(self):
+        from unittest.mock import Mock
+
+        from django.utils import timezone
+
+        from canales.conversacion import procesar_mensaje
+        from canales.models import ConversacionCanal
+        from pedidos.contratos.v1 import CodigoError, ErrorV1, RespuestaV1
+
+        self.webhook("fallo-1", "leche")
+        ciclo()
+        pedido = Pedido.objects.get()
+        self.webhook("fallo-2", "pan")
+        mensaje = MensajeEntrante.objects.get(id_mensaje_proveedor="fallo-2")
+        nucleo = Mock(ES_SIMULACION=False)
+        nucleo.consultar_pedido.return_value = RespuestaV1(
+            False, error=ErrorV1(
+                CodigoError.SERVICIO_NO_DISPONIBLE, "fallo", retryable=True
+            )
+        )
+        procesar_mensaje(mensaje, nucleo, None, timezone.now())
+        mensaje.refresh_from_db()
+        self.assertEqual(mensaje.estado, "reintentable")
+        self.assertEqual(ConversacionCanal.objects.get().pedido_id_actual, pedido.pk)
+        self.assertEqual(Pedido.objects.count(), 1)
+        nucleo.registrar_solicitud.assert_not_called()
+
     @override_settings(PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false")
     def test_aceptar_real_reservado_informa_pendiente(self):
         from ambito.tests.soporte import crear_cuenta
@@ -590,3 +617,85 @@ class IntegracionPagoRealTests(TransactionTestCase):
         aviso = SalidaCanal.objects.get(tipo="aviso")
         self.assertIn("confirmación del pago", aviso.payload["texto"])
         self.assertNotIn("listo", aviso.payload["texto"].lower())
+
+    @override_settings(
+        PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false", PEY_WEBHOOK_SECRET=SECRETO
+    )
+    def test_i5_nuevo_pedido_en_mismo_chat_despues_de_entrega(self):
+        from unittest.mock import Mock
+
+        from django.contrib.auth import get_user_model
+
+        from ambito.tests.soporte import crear_cuenta
+        from canales import mensajes
+        from canales.models import ConversacionCanal
+        from pedidos.models import IntentoCobro
+        from pedidos.servicios.despacho import enviar_intento
+        from pedidos.servicios.entrega import operar as entregar
+        from pey.tipos import QrCreado
+        from webhooks.tests.support.pey_webhook import post_firmado
+
+        cuenta = crear_cuenta(self.comercio)
+        self.webhook("i5-1", "leche")
+        ciclo()
+        primero = Pedido.objects.get()
+        self.webhook("i5-abierto", "pan")
+        ciclo()
+        self.assertEqual(Pedido.objects.count(), 1)
+        mensaje = MensajeEntrante.objects.get(id_mensaje_proveedor="i5-abierto")
+        self.assertEqual(
+            SalidaCanal.objects.get(causa=f"mensaje:{mensaje.pk}").payload["texto"],
+            mensajes.ABIERTO,
+        )
+        self.cotizar()
+        ciclo()
+        resumen = SalidaCanal.objects.get(tipo="cotizacion_resumen")
+        self.webhook("i5-aceptar", f"ACEPTAR {resumen.payload['token_resumen']}")
+        ciclo()
+        intento = IntentoCobro.objects.get(pedido=primero)
+        puerto = Mock()
+        puerto.crear_qr.return_value = QrCreado("i5-qr", "i5-qr")
+        enviar_intento(intento.pk, puerto)
+        cuerpo = json.dumps(
+            {
+                "type": "codi.qr.payment_received", "amount": 20,
+                "transactionId": "i5-pago", "codiQrId": "i5-qr",
+                "bankAccountId": cuenta.pey_bank_account_id,
+            }, separators=(",", ":"),
+        )
+        self.assertEqual(post_firmado(self.client, cuerpo, "i5-pago").status_code, 200)
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        usuario = get_user_model().objects.create_user(username="i5-tendero")
+        primero.refresh_from_db()
+        listo = entregar(
+            self.comercio, primero.pk,
+            {"command_key": "i5-listo", "expected_version": primero.version}, usuario,
+        )
+        self.assertTrue(listo.ok)
+        entregado = entregar(
+            self.comercio, primero.pk,
+            {
+                "command_key": "i5-entregado",
+                "expected_version": listo.data["pedido"].version,
+            },
+            usuario, entregado=True,
+        )
+        self.assertTrue(entregado.ok)
+        ciclo()
+        avisos_anteriores = set(
+            SalidaCanal.objects.filter(tipo="aviso").values_list("pk", flat=True)
+        )
+        self.assertEqual(len(avisos_anteriores), 3)
+        self.webhook("i5-2", "pan")
+        ciclo()
+        self.assertEqual(Pedido.objects.count(), 2)
+        primero.refresh_from_db()
+        segundo = Pedido.objects.exclude(pk=primero.pk).get()
+        self.assertEqual((primero.estado, primero.abierto), ("cerrado", False))
+        self.assertEqual(segundo.renglones.get().texto_solicitado, "pan")
+        self.assertEqual(ConversacionCanal.objects.get().pedido_id_actual, segundo.pk)
+        self.assertEqual(
+            set(SalidaCanal.objects.filter(tipo="aviso").values_list("pk", flat=True)),
+            avisos_anteriores,
+        )
