@@ -56,26 +56,31 @@ class LectorProcedenciaCanal:
         )
 
     def leer_resumen(self, ctx, cotizacion_id):
+        return self._resumen(ctx, cotizacion_id, pendiente=False)
+
+    def leer_resumen_pendiente(self, ctx, cotizacion_id):
+        return self._resumen(ctx, cotizacion_id, pendiente=True)
+
+    def _resumen(self, ctx, cotizacion_id, pendiente):
         if not self.resolver_comercio(ctx):
             return None
         salida = (
             SalidaCanal.objects.filter(
                 conversacion_id=ctx.conversacion_id,
                 tipo="cotizacion_resumen",
-                estado="enviada",
+                estado="enviando" if pendiente else "enviada",
                 payload__cotizacion_id=str(cotizacion_id),
             )
-            .exclude(id_proveedor="")
-            .order_by("-enviado_en")
+            .order_by("-envio_iniciado_en")
             .first()
         )
-        if not salida:
+        if not salida or (not pendiente and not salida.id_proveedor):
             return None
         p = salida.payload
         return ResumenEnviadoDTO(
             str(salida.id),
             salida.id_proveedor,
-            "enviado",
+            "enviando" if pendiente else "enviado",
             p["cotizacion_id"],
             p["token_resumen"],
             p["cotizacion_revision"],

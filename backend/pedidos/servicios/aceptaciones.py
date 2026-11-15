@@ -40,6 +40,26 @@ def aceptar_cotizacion(self, ctx, **datos):
             raise ErrorNucleo(CodigoError.IMPORTE_NO_COINCIDE)
         msg = self.lector.leer_mensaje(ctx, datos["mensaje_consentimiento_id"])
         resumen = self.lector.leer_resumen(ctx, str(cot.id))
+        if not resumen:
+            leer_pendiente = getattr(self.lector, "leer_resumen_pendiente", None)
+            pendiente = leer_pendiente(ctx, str(cot.id)) if leer_pendiente else None
+            if (
+                pendiente
+                and pendiente.envio_iniciado_en
+                and msg
+                and msg.recibido_en >= pendiente.envio_iniciado_en
+                and msg.tipo == "texto"
+                and " ".join(msg.texto_normalizado.split()).casefold()
+                == f"ACEPTAR {cot.token_resumen}".casefold()
+                and pendiente.destinatario == ctx.cliente_externo_id
+                and pendiente.token_resumen == cot.token_resumen
+                and pendiente.cotizacion_revision == cot.revision
+                and pendiente.total_comercial_centavos == cot.total_comercial_centavos
+                and pendiente.importe_efectivo_centavos == cot.importe_efectivo_centavos
+                and pendiente.demo_mode == cot.demo_mode
+                and pendiente.politica_cobro_version == cot.politica_cobro_version
+            ):
+                raise ErrorNucleo(CodigoError.ACEPTACION_REQUERIDA, retryable=True)
         if (
             not msg
             or msg.mensaje_id != datos["mensaje_consentimiento_id"]

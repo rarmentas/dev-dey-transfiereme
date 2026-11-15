@@ -1,6 +1,8 @@
 """Conversación guiada mediante el puerto del núcleo."""
 
+from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 
@@ -40,16 +42,18 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
             SalidaCanal.objects.filter(
                 conversacion=conversacion,
                 tipo="cotizacion_resumen",
-                estado="enviada",
-                id_proveedor__gt="",
+                estado__in=["enviada", "enviando"],
             )
-            .order_by("-enviado_en")
+            .order_by("-envio_iniciado_en")
             .first()
         )
-        if not pedido_id or not resumen or len(partes) != 2:
+        if not pedido_id or not resumen:
             salida = mensajes.SIN_COTIZACION
-        elif partes[1].casefold() != resumen.payload["token_resumen"].casefold():
-            salida = mensajes.OBSOLETA
+        elif (
+            len(partes) != 2
+            or partes[1].casefold() != resumen.payload["token_resumen"].casefold()
+        ):
+            salida = mensajes.TOKEN_INVALIDO
         else:
             p = resumen.payload
             respuesta = nucleo.aceptar_cotizacion(
@@ -93,7 +97,9 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                     salida = mensajes.ACEPTADO
     elif comando == "CORREGIR" or comando.startswith("CORREGIR:"):
         contenido = texto[len("CORREGIR") :].lstrip(": ").strip()
-        if pedido_id and contenido:
+        if not any(c.isalnum() for c in contenido):
+            salida = mensajes.AYUDA
+        elif pedido_id and contenido:
             consulta = nucleo.consultar_pedido(ctx, **datos, pedido_id=str(pedido_id))
             if consulta.ok:
                 version = (
@@ -104,6 +110,27 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 if not mensaje.error.startswith("version:"):
                     mensaje.error = f"version:{version}"
                     mensaje.save(update_fields=["error"])
+                nuevos = parsear_renglones(contenido, str(mensaje.id))
+                disponibles = list(consulta.data["pedido"].renglones)
+                for indice, nuevo in enumerate(nuevos):
+                    clave = (
+                        " ".join(nuevo.texto_solicitado.casefold().split()),
+                        nuevo.cantidad_solicitada,
+                        (nuevo.unidad_solicitada or "").casefold(),
+                    )
+                    for anterior in disponibles:
+                        cantidad = anterior.cantidad_solicitada
+                        anterior_clave = (
+                            " ".join(anterior.texto_solicitado.casefold().split()),
+                            Decimal(str(cantidad)) if cantidad is not None else None,
+                            (anterior.unidad_solicitada or "").casefold(),
+                        )
+                        if clave == anterior_clave:
+                            nuevos[indice] = replace(
+                                nuevo, renglon_id=anterior.renglon_id
+                            )
+                            disponibles.remove(anterior)
+                            break
                 respuesta = nucleo.corregir_borrador(
                     ctx,
                     **datos,
@@ -117,11 +144,19 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                         mensaje.id_mensaje_proveedor,
                     ),
                     secuencia_conversacion=mensaje.secuencia,
-                    renglones=parsear_renglones(contenido, str(mensaje.id)),
+                    renglones=nuevos,
                 )
                 salida = mensajes.CORREGIDO
             else:
                 respuesta = consulta
+    elif not any(c.isalnum() for c in texto) or texto.casefold() in {
+        "hola", "gracias"
+    }:
+        salida = mensajes.AYUDA
+    elif texto.casefold() in {"sí", "si"} and SalidaCanal.objects.filter(
+        conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
+    ).exists():
+        salida = mensajes.TOKEN_INVALIDO
     elif pedido_id:
         salida = mensajes.ABIERTO
     elif texto:
@@ -147,6 +182,17 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 )
                 mensaje.save(
                     update_fields=["intentos", "estado", "proximo_intento_en", "error"]
+                )
+                aviso = (
+                    mensajes.REINTENTO_AGOTADO
+                    if mensaje.estado == "fallido" else mensajes.REINTENTO_ESPERA
+                )
+                if nucleo.ES_SIMULACION:
+                    aviso = "[SIMULACIÓN] " + aviso
+                causa = "fallo" if mensaje.estado == "fallido" else "espera"
+                preparar(
+                    conversacion, f"{causa}:{mensaje.id}", "respuesta",
+                    {"texto": aviso},
                 )
             return
         codigo = respuesta.error.code.value

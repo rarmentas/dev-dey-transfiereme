@@ -1,0 +1,5 @@
+[
+  {"id": "abc"},
+  {"id": {"_serialized": "abc"}},
+  {"key": {"id": "abc"}}
+]

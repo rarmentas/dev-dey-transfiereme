@@ -190,5 +190,5 @@ else:
 WAHA_BASE_URL = os.environ.get("WAHA_BASE_URL", "http://127.0.0.1:3000")
 WAHA_API_KEY = os.environ.get("WAHA_API_KEY", "")
 WAHA_WEBHOOK_SECRET = os.environ.get("WAHA_WEBHOOK_SECRET", "")
-WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "waha")
+WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "").strip() or "waha"
 CANAL_TRANSPORTE = "canales.waha.AdaptadorWaha"

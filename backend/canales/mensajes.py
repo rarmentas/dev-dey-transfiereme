@@ -15,3 +15,7 @@ ESPERA = "Tu solicitud de cobro está en espera."
 PENDIENTE = "Tu solicitud de cobro está pendiente."
 INCIERTO = "No podemos confirmar el estado del cobro."
 ERROR = "No pudimos procesar tu mensaje. Intenta de nuevo."
+
+TOKEN_INVALIDO = "Para aceptar escribe exactamente ACEPTAR <token del último resumen>."
+REINTENTO_ESPERA = "Estamos en espera del servicio; reintentaremos tu mensaje."
+REINTENTO_AGOTADO = "No pudimos procesar tu mensaje. Intenta de nuevo más tarde."

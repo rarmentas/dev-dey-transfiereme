@@ -36,6 +36,11 @@ class AdaptadorWaha:
             ) as respuesta:
                 datos = json.load(respuesta)
             identidad = datos.get("id") if isinstance(datos, dict) else None
+            if isinstance(identidad, dict):
+                identidad = identidad.get("_serialized")
+            if not identidad and isinstance(datos, dict):
+                clave = datos.get("key")
+                identidad = clave.get("id") if isinstance(clave, dict) else None
             if not isinstance(identidad, str) or not identidad or len(identidad) > 200:
                 raise ErrorEnvio()
             return identidad

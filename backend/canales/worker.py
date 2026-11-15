@@ -84,8 +84,10 @@ def ciclo():
             ).update(lease_token=None, lease_hasta=None)
     procesar_avisos(nucleo, lector)
     transporte = import_string(settings.CANAL_TRANSPORTE)()
-    for salida in SalidaCanal.objects.filter(estado="preparada").select_related(
-        "conversacion__sesion"
+    for salida in (
+        SalidaCanal.objects.filter(estado="preparada")
+        .select_related("conversacion__sesion")
+        .order_by("creado_en", "id")
     ):
         if salida.tipo == "cotizacion_resumen":
             respuesta = nucleo.consultar_pedido(
