@@ -44,6 +44,20 @@ def _pedido(comercio, pedido_id):
     return pedido
 
 
+def _con_entrega(pedido, dto):
+    """DTO con la autoría de preparación coherente con su estado."""
+    datos = dto.a_dict()
+    listo = dto.preparacion.value in ("listo", "entregado")
+    entregado = dto.preparacion.value == "entregado"
+    datos["entrega"] = {
+        "listo_en": pedido.listo_en if listo else None,
+        "listo_por": pedido.listo_por_id if listo else None,
+        "entregado_en": pedido.entregado_en if entregado else None,
+        "entregado_por": pedido.entregado_por_id if entregado else None,
+    }
+    return datos
+
+
 def capturar(funcion):
     def ejecutar(*args, **kwargs):
         try:
@@ -111,14 +125,7 @@ class DetallePedidoView(APIView):
     @capturar
     def get(self, request, pedido_id):
         pedido = _pedido(_comercio(request), pedido_id)
-        datos = pedido_dto(pedido).a_dict()
-        datos["entrega"] = {
-            "listo_en": pedido.listo_en,
-            "listo_por": pedido.listo_por_id,
-            "entregado_en": pedido.entregado_en,
-            "entregado_por": pedido.entregado_por_id,
-        }
-        return exito(datos)
+        return exito(_con_entrega(pedido, pedido_dto(pedido)))
 
 
 class RenglonesPedidoView(APIView):
@@ -163,7 +170,11 @@ class ListoPedidoView(APIView):
         resultado = operar_entrega(
             comercio, pedido.id, validar_cuerpo(request.data), request.user
         )
-        return exito(resultado.data["pedido"], replayed=resultado.replayed)
+        pedido.refresh_from_db()
+        return exito(
+            _con_entrega(pedido, resultado.data["pedido"]),
+            replayed=resultado.replayed,
+        )
 
 
 class EntregadoPedidoView(APIView):
@@ -177,7 +188,11 @@ class EntregadoPedidoView(APIView):
             comercio, pedido.id, validar_cuerpo(request.data), request.user,
             entregado=True,
         )
-        return exito(resultado.data["pedido"], replayed=resultado.replayed)
+        pedido.refresh_from_db()
+        return exito(
+            _con_entrega(pedido, resultado.data["pedido"]),
+            replayed=resultado.replayed,
+        )
 
 
 class CobroPedidoView(APIView):

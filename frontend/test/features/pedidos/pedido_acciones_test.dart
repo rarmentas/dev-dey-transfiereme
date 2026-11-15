@@ -31,10 +31,13 @@ class RepoAcciones extends PedidoRepository {
       'vencimiento': 'mañana',
       if (intentoAceptacion != null) 'aceptacion_id': intentoAceptacion,
     };
+    final listo = preparacion != 'pendiente';
+    final entregado = preparacion == 'entregado';
     json['entrega'] = {
-      'listo_por': 'Ana',
-      'listo_en': '2026-01-01',
-      if (preparacion == 'entregado') 'entregado_por': 'Luis',
+      'listo_por': listo ? 'Ana' : null,
+      'listo_en': listo ? '2026-01-01' : null,
+      'entregado_por': entregado ? 'Luis' : null,
+      'entregado_en': entregado ? '2026-01-02' : null,
     };
     return Pedido.fromJson(json);
   }
@@ -253,6 +256,7 @@ void main() {
   testWidgets('listo y entregado muestran actor y cierran', (t) async {
     final repo = RepoAcciones()..pago = 'pagado';
     await abrir(t, repo);
+    expect(find.textContaining('Ana'), findsNothing);
     await pulsar(t, 'Marcar listo');
     expect(repo.solicitudes.single['ruta'], 'listo');
     expect(find.text('Listo'), findsOneWidget);
@@ -265,7 +269,83 @@ void main() {
       isNot(repo.solicitudes.last['command_key']),
     );
     expect(find.text('Entregado'), findsOneWidget);
+    expect(find.text('Entregado: Luis · 2026-01-02'), findsOneWidget);
     expect(find.text('Marcar entregado'), findsNothing);
+  });
+  testWidgets('listo y entregado muestran autoria del payload HTTP', (t) async {
+    final dio = crearDioPedido();
+    final api = MockPedidoApi(dio);
+    Map<String, dynamic> respuesta(
+      int version,
+      String preparacion,
+      Map<String, dynamic> entrega,
+    ) {
+      final json = pedidoJson(aceptado: true, version: version);
+      json['pago_estado'] = 'pagado';
+      json['preparacion'] = preparacion;
+      json['intento'] = {'intento_id': 'i1', 'aceptacion_id': 'a'};
+      json['entrega'] = entrega;
+      return {'contrato_version': '1.0', 'replayed': false, ...exito(json)};
+    }
+
+    const ruta = '/api/pedidos/abc/';
+    api.responder(
+      'GET',
+      ruta,
+      200,
+      respuesta(1, 'pendiente', {
+        'listo_en': null,
+        'listo_por': null,
+        'entregado_en': null,
+        'entregado_por': null,
+      }),
+    );
+    api.responder(
+      'POST',
+      '${ruta}listo/',
+      200,
+      respuesta(2, 'listo', {
+        'listo_en': '2026-01-01T10:00:00Z',
+        'listo_por': 7,
+        'entregado_en': null,
+        'entregado_por': null,
+      }),
+    );
+    api.responder(
+      'POST',
+      '${ruta}entregado/',
+      200,
+      respuesta(3, 'entregado', {
+        'listo_en': '2026-01-01T10:00:00Z',
+        'listo_por': 7,
+        'entregado_en': '2026-01-01T11:00:00Z',
+        'entregado_por': 9,
+      }),
+    );
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pedidoRepositoryProvider.overrideWithValue(PedidoRepository(dio)),
+        ],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.textContaining('Listo:'), findsNothing);
+    await t.ensureVisible(find.text('Marcar listo'));
+    await t.tap(find.text('Marcar listo'));
+    await t.pumpAndSettle();
+    expect(find.text('Listo: 7 · 2026-01-01T10:00:00Z'), findsOneWidget);
+    await t.ensureVisible(find.text('Marcar entregado'));
+    await t.tap(find.text('Marcar entregado'));
+    await t.pumpAndSettle();
+    expect(find.text('Listo: 7 · 2026-01-01T10:00:00Z'), findsOneWidget);
+    expect(find.text('Entregado: 9 · 2026-01-01T11:00:00Z'), findsOneWidget);
+    expect(api.peticiones.map((p) => '${p.metodo} ${p.path}').toList(), [
+      'GET $ruta',
+      'POST ${ruta}listo/',
+      'POST ${ruta}entregado/',
+    ]);
   });
   testWidgets('doble toque en listo no envia dos veces', (t) async {
     final repo = RepoAcciones()

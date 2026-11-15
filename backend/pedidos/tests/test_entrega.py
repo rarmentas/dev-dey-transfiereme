@@ -41,7 +41,44 @@ class EntregaTests(CasoReal):
         self.assertEqual(self.pedido.preparacion, "pendiente")
         self.assertFalse(self.pedido.listo_en)
 
-    def test_acciones_guardan_actor_fecha_y_evento_unico(self):
+    def test_respuestas_http_de_acciones_incluyen_autoria(self):
+        from ambito.models import Membresia
+        from rest_framework.test import APIClient
+
+        self.pagar()
+        Membresia.objects.create(usuario=self.usuario, comercio=self.pedido.comercio)
+        cliente = APIClient()
+        cliente.force_login(self.usuario)
+        ruta = f"/api/pedidos/{self.pedido.pk}/"
+        listo = cliente.post(ruta + "listo/", self.datos("listo"), format="json")
+        self.assertEqual(listo.status_code, 200, listo.content)
+        datos = listo.json()["data"]
+        self.assertEqual(datos["preparacion"], "listo")
+        self.assertEqual(datos["entrega"]["listo_por"], self.usuario.pk)
+        self.assertTrue(datos["entrega"]["listo_en"])
+        self.assertIsNone(datos["entrega"]["entregado_en"])
+        self.assertIsNone(datos["entrega"]["entregado_por"])
+        entregado = cliente.post(
+            ruta + "entregado/",
+            self.datos("entregar", datos["version"]),
+            format="json",
+        )
+        self.assertEqual(entregado.status_code, 200, entregado.content)
+        entrega = entregado.json()["data"]["entrega"]
+        detalle = cliente.get(ruta).json()["data"]["entrega"]
+        self.assertEqual(entrega, detalle)
+        self.assertEqual(entrega["listo_por"], self.usuario.pk)
+        self.assertEqual(entrega["entregado_por"], self.usuario.pk)
+        self.assertTrue(entrega["entregado_en"])
+        replay = cliente.post(ruta + "listo/", self.datos("listo"), format="json")
+        self.assertTrue(replay.json()["replayed"])
+        self.assertEqual(replay.json()["data"]["preparacion"], "listo")
+        self.assertEqual(
+            replay.json()["data"]["entrega"],
+            {**detalle, "entregado_en": None, "entregado_por": None},
+        )
+
+    def pagar(self):
         cuenta = crear_cuenta(self.pedido.comercio)
         aceptacion = Aceptacion.objects.get(pk=self.dto.aceptacion.id)
         IntentoCobro.objects.create(
@@ -60,6 +97,9 @@ class EntregaTests(CasoReal):
             concepto="venta",
             expiracion_s=600,
         )
+
+    def test_acciones_guardan_actor_fecha_y_evento_unico(self):
+        self.pagar()
         listo = operar(
             self.pedido.comercio, self.pedido.id, self.datos("listo"), self.usuario
         )
