@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 from typing import NamedTuple
 
 from django.conf import settings
@@ -29,11 +28,6 @@ def modo_de_comercio(comercio) -> ModoCobro:
     pk = getattr(comercio, "pk", comercio)
     demo = Comercio.objects.values_list("es_demo", flat=True).get(pk=pk)
     return ModoCobro(demo, politica_de(demo))
-
-
-def destino_demo() -> str | None:
-    valor = settings.DEMO_PEY_BANK_ACCOUNT_ID.strip()
-    return valor if re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", valor) else None
 
 
 def cobro_habilitado() -> bool:
@@ -67,13 +61,11 @@ def validar_configuracion() -> None:
             raise ImproperlyConfigured("Configuración de cobro inválida")
         if rol in ("web", "cobros") and not settings.PEY_API_KEY:
             raise ImproperlyConfigured("PEY_API_KEY es requerida para este rol")
-    for clave in ("DEMO_MODE", "POLITICA_COBRO_VERSION"):
+    for clave in ("DEMO_MODE", "POLITICA_COBRO_VERSION", "DEMO_PEY_BANK_ACCOUNT_ID"):
         if clave in os.environ:
             logger.warning(
                 "%s ignorada; el demo es por comercio (designar_comercio_demo)", clave
             )
-    if settings.DEMO_PEY_BANK_ACCOUNT_ID.strip() and not destino_demo():
-        logger.warning("DEMO_PEY_BANK_ACCOUNT_ID no es un ULID válido")
 
 
 def respuesta_bloqueada_en_demo():

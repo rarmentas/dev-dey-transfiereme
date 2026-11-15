@@ -24,6 +24,7 @@ class DesignarDemoTests(TestCase):
     def setUp(self):
         self.a = Comercio.objects.create(nombre="Tienda reservada")
         self.b = Comercio.objects.create(nombre="B")
+        self.cuenta = crear_cuenta(self.a)
 
     def ejecutar(self, *args):
         salida = StringIO()
@@ -34,7 +35,7 @@ class DesignarDemoTests(TestCase):
         self.ejecutar("--comercio", str(self.a.pk), "--si")
         self.a.refresh_from_db()
         self.assertTrue(self.a.es_demo)
-        self.assertIn(DESTINO[-4:], self.ejecutar("--estado"))
+        self.assertIn(self.cuenta.pey_bank_account_id[-4:], self.ejecutar("--estado"))
         with self.assertRaises(CommandError):
             self.ejecutar("--comercio", str(self.b.pk), "--si")
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -53,8 +54,9 @@ class DesignarDemoTests(TestCase):
         self.assertNotIn(self.a.nombre, logs.output[0])
         self.assertNotIn(DESTINO, logs.output[0])
         estado = self.ejecutar("--estado")
-        self.assertIn(DESTINO[-4:], estado)
+        self.assertIn(self.cuenta.pey_bank_account_id[-4:], estado)
         self.assertNotIn(DESTINO, estado)
+        self.assertNotIn(self.cuenta.pey_bank_account_id, estado)
         self.assertIn(
             "Sin cambios", self.ejecutar("--comercio", str(self.a.pk), "--si")
         )
@@ -92,20 +94,17 @@ class DesignarDemoTests(TestCase):
         self.a.refresh_from_db()
         self.assertTrue(self.a.es_demo)
 
-    def test_rechaza_colision_con_cuenta_propia_o_ajena(self):
+    def test_permite_colision_con_cuenta_propia_o_ajena(self):
         for comercio in (self.a, self.b):
             with self.subTest(comercio=comercio.pk):
                 cuenta = crear_cuenta(comercio)
                 original = cuenta.pey_bank_account_id
                 cuenta.pey_bank_account_id = DESTINO
                 cuenta.save(update_fields=["pey_bank_account_id"])
-                with self.assertRaisesMessage(
-                    CommandError,
-                    "El destino demo coincide con una cuenta registrada.",
-                ):
-                    self.ejecutar("--comercio", str(self.a.pk), "--si")
+                self.ejecutar("--comercio", str(self.a.pk), "--si")
                 self.a.refresh_from_db()
-                self.assertFalse(self.a.es_demo)
+                self.assertTrue(self.a.es_demo)
+                self.ejecutar("--comercio", str(self.a.pk), "--quitar", "--si")
                 cuenta.pey_bank_account_id = original
                 cuenta.save(update_fields=["pey_bank_account_id"])
 
@@ -256,10 +255,10 @@ class DesignarDemoTests(TestCase):
         self.assertTrue(self.a.es_demo)
 
     @override_settings(DEMO_PEY_BANK_ACCOUNT_ID="")
-    def test_sin_destino_advierte_y_lectura_fresca(self):
+    def test_sin_variable_designacion_sin_aviso_y_lectura_fresca(self):
         from config.modo import modo_de_comercio
 
-        self.assertIn(
+        self.assertNotIn(
             "no podrá cobrar", self.ejecutar("--comercio", str(self.a.pk), "--si")
         )
         self.assertFalse(self.a.es_demo)
