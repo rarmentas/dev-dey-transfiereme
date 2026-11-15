@@ -4,8 +4,10 @@ import 'package:cody/core/sesion/sesion_notifier.dart';
 import 'package:cody/core/sesion/sesion_providers.dart';
 import 'package:cody/core/sesion/sesion_repository.dart';
 import 'package:cody/main.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../../support/mock_inicio_api.dart';
 import '../../support/mock_sesion_api.dart';
 
@@ -18,9 +20,7 @@ void main() {
       ProviderScope(
         overrides: [
           dioProvider.overrideWithValue(dio),
-          sesionRepositoryProvider.overrideWith(
-            (ref) => SesionRepository(dio),
-          ),
+          sesionRepositoryProvider.overrideWith((ref) => SesionRepository(dio)),
           registroOlvidoRepositoryProvider.overrideWith(
             (ref) => RegistroOlvidoRepository(dio),
           ),
@@ -44,9 +44,7 @@ void main() {
       ProviderScope(
         overrides: [
           dioProvider.overrideWithValue(dio),
-          sesionRepositoryProvider.overrideWith(
-            (ref) => SesionRepository(dio),
-          ),
+          sesionRepositoryProvider.overrideWith((ref) => SesionRepository(dio)),
           registroOlvidoRepositoryProvider.overrideWith(
             (ref) => RegistroOlvidoRepository(dio),
           ),
@@ -60,6 +58,11 @@ void main() {
     expect(find.text('Hola, Lupe'), findsOneWidget);
     await tester.tap(find.text('Ajustes'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Salir'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Salir'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -73,9 +76,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         dioProvider.overrideWithValue(dio),
-        sesionRepositoryProvider.overrideWith(
-          (ref) => SesionRepository(dio),
-        ),
+        sesionRepositoryProvider.overrideWith((ref) => SesionRepository(dio)),
         registroOlvidoRepositoryProvider.overrideWith(
           (ref) => RegistroOlvidoRepository(dio),
         ),

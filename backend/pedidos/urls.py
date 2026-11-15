@@ -3,6 +3,7 @@ from django.urls import path
 from pedidos.views import (
     CotizacionesPedidoView,
     CobroPedidoView,
+    CancelarPedidoView,
     DetallePedidoView,
     EntregadoPedidoView,
     ListoPedidoView,
@@ -13,6 +14,11 @@ from pedidos.views import (
 urlpatterns = [
     path("", ListaPedidosView.as_view(), name="pedidos-lista"),
     path("<str:pedido_id>/cobro/", CobroPedidoView.as_view(), name="pedidos-cobro"),
+    path(
+        "<str:pedido_id>/cancelar/",
+        CancelarPedidoView.as_view(),
+        name="pedidos-cancelar",
+    ),
     path("<str:pedido_id>/listo/", ListoPedidoView.as_view(), name="pedidos-listo"),
     path(
         "<str:pedido_id>/entregado/",

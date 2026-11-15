@@ -15,8 +15,10 @@ class RepoPrueba extends PedidoRepository {
   PedidoException? error;
   bool cotizado = false;
   bool aceptado = false;
+  bool cancelado = false;
   int lecturas = 0;
   String pagoEstado = 'sin_cobro';
+  bool cobroEnCurso = false;
   int version = 1;
   Completer<void>? espera;
   final cuerpos = <Map<String, dynamic>>[];
@@ -30,6 +32,10 @@ class RepoPrueba extends PedidoRepository {
       version: version,
     );
     json['pago_estado'] = pagoEstado;
+    json['cobro_en_curso'] =
+        cobroEnCurso ||
+        {'enviando', 'pendiente', 'incierto'}.contains(pagoEstado);
+    if (cancelado) json['estado'] = 'cerrado';
     return Pedido.fromJson(json);
   }
 
@@ -47,6 +53,15 @@ class RepoPrueba extends PedidoRepository {
     cuerpos.add(cuerpo);
     if (error != null) throw error!;
     cotizado = true;
+    version++;
+    return obtener(id);
+  }
+
+  @override
+  Future<Pedido> cancelar(String id, Map<String, dynamic> cuerpo) async {
+    cuerpos.add(cuerpo);
+    if (error != null) throw error!;
+    cancelado = true;
     version++;
     return obtener(id);
   }
@@ -77,6 +92,43 @@ PedidoException fallo(
   Map<String, dynamic> errores = const {},
 }) => PedidoException(codigo, 409, codigo, errores: errores);
 void main() {
+  testWidgets('confirma cancelación y envía versión y clave', (t) async {
+    final r = RepoPrueba();
+    await abrir(t, r);
+    await tocar(t, 'Cancelar pedido');
+    expect(find.text('Confirmar cancelación'), findsOneWidget);
+    await t.tap(find.text('Confirmar cancelación'));
+    await t.pumpAndSettle();
+    expect(r.cuerpos.single['expected_version'], 1);
+    expect(r.cuerpos.single['command_key'], isNotEmpty);
+    await t.scrollUntilVisible(
+      find.text('Pedido cancelado. El cliente puede enviar uno nuevo.'),
+      -250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.text('Pedido cancelado. El cliente puede enviar uno nuevo.'),
+      findsOneWidget,
+    );
+    expect(find.text('Cancelar pedido'), findsNothing);
+  });
+
+  testWidgets('no permite cancelar con cobro en curso', (t) async {
+    final r = RepoPrueba()
+      ..pagoEstado = 'en_espera'
+      ..cobroEnCurso = true;
+    await abrir(t, r);
+    await t.scrollUntilVisible(
+      find.text('Cancelar pedido'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final boton = t.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Cancelar pedido'),
+    );
+    expect(boton.onPressed, isNull);
+  });
+
   testWidgets('I6 polling en espera conserva borrador y lo guarda', (t) async {
     final r = RepoPrueba()..pagoEstado = 'en_espera';
     await t.pumpWidget(

@@ -10,7 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/mock_inicio_api.dart';
 import '../../support/mock_sesion_api.dart';
 
-Future<void> _llenarLogin(WidgetTester tester, String correo, String clave) async {
+Future<void> _llenarLogin(
+  WidgetTester tester,
+  String correo,
+  String clave,
+) async {
   await tester.enterText(find.byKey(const Key('campo_correo')), correo);
   await tester.enterText(find.byKey(const Key('campo_contrasena')), clave);
 }
@@ -26,13 +30,9 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         dioProvider.overrideWithValue(dio),
-        sesionRepositoryProvider.overrideWith(
-          (ref) => SesionRepository(dio),
-        ),
+        sesionRepositoryProvider.overrideWith((ref) => SesionRepository(dio)),
       ],
     );
-    addTearDown(container.dispose);
-
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
@@ -55,6 +55,8 @@ void main() {
     expect(container.read(sesionNotifierProvider).autenticado, isTrue);
     expect(find.text('Hola, Lupe'), findsOneWidget);
     expect(find.text('Tortillería La Esperanza'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
   });
 
   testWidgets('credenciales inválidas muestran el detalle del API', (
@@ -67,9 +69,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         dioProvider.overrideWithValue(dio),
-        sesionRepositoryProvider.overrideWith(
-          (ref) => SesionRepository(dio),
-        ),
+        sesionRepositoryProvider.overrideWith((ref) => SesionRepository(dio)),
       ],
     );
     addTearDown(container.dispose);

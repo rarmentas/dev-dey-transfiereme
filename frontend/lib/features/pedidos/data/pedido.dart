@@ -43,6 +43,9 @@ class Pedido {
           ? (json['aceptacion'] as Map)['id'] as String?
           : null,
       pagoEstado = json['pago_estado'] as String? ?? 'sin_cobro',
+      cobroEnCurso =
+          json['cobro_en_curso'] as bool? ??
+          {'enviando', 'pendiente', 'incierto'}.contains(json['pago_estado']),
       preparacion = json['preparacion'] as String? ?? 'pendiente',
       intento = json['intento'] is Map
           ? Map<String, dynamic>.from(json['intento'] as Map)
@@ -60,6 +63,7 @@ class Pedido {
   final bool aceptado;
   final String? aceptacionId;
   final String pagoEstado, preparacion;
+  final bool cobroEnCurso;
   final Map<String, dynamic>? intento;
   final Map<String, dynamic> entrega;
 }

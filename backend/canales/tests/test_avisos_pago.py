@@ -64,6 +64,18 @@ class AvisosPagoTests(TransactionTestCase):
         self.assertEqual(SalidaCanal.objects.count(), 1)
         self.assertEqual(CursorCanal.objects.get().cursor, "siguiente")
 
+    def test_cancelacion_prepara_whatsapp_con_texto_exacto(self):
+        self.evento.tipo = TipoEvento.PEDIDO_CANCELADO
+        self.procesar()
+        salida = SalidaCanal.objects.get()
+        self.assertEqual(salida.destinatario, "cliente")
+        self.assertEqual(
+            salida.payload["texto"],
+            "Tu pedido #42 fue cancelado por el comercio. Puedes enviar uno nuevo.",
+        )
+        self.procesar()
+        self.assertEqual(SalidaCanal.objects.count(), 1)
+
     def test_cursor_e_intencion_son_atomicos(self):
         CursorCanal.objects.create(consumidor="avisos", sesion=self.sesion)
 
