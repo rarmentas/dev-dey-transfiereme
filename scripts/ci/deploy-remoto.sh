@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Completa un deploy normal después del preflight y rsync de deploy.sh.
+# Respalda y migra la base antes de detener servicios tras preflight y rsync.
 set -euo pipefail
 umask 077
 
@@ -61,6 +61,7 @@ backup_dir="$(mktemp -d)"
 unit_tmp="$backup_dir/cody.service"
 committed=0
 stopped=0
+backup_partial=""
 # shellcheck disable=SC2329 # Invocada por trap EXIT.
 cleanup() {
   local result=$?
@@ -93,6 +94,7 @@ cleanup() {
       sudo -n systemctl start cody-canal.service || true
     fi
   fi
+  if [[ -n "$backup_partial" ]]; then rm -f -- "$backup_partial"; fi
   rm -f -- "$incoming" "$unit_tmp"
   rm -rf -- "$backup_dir"
   exit "$result"
@@ -119,6 +121,72 @@ for raw in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
     print(f"export {key}={shlex.quote(value.strip())}")
 ' "$incoming")"
 
+respaldar_base() {
+  local carpeta archivo tmp tamano f
+  local -a respaldos
+  if [[ ! "${POSTGRES_USER:-}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ||
+        ! "${POSTGRES_DB:-}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+    echo 'Respaldo fallido: usuario o base de PostgreSQL inválidos.' >&2
+    return 1
+  fi
+  if [[ "${POSTGRES_HOST:-}" != 127.0.0.1 && "${POSTGRES_HOST:-}" != localhost ]]; then
+    echo 'Respaldo fallido: POSTGRES_HOST debe ser local.' >&2
+    return 1
+  fi
+  if [[ -z "${HOME:-}" ]]; then
+    echo 'Respaldo fallido: HOME no está definido.' >&2
+    return 1
+  fi
+  carpeta="${HOME:?}/respaldos/codi"
+  if ! mkdir -p -- "$carpeta" || ! chmod 700 "$carpeta"; then
+    echo 'Respaldo fallido: no se pudo preparar el directorio.' >&2
+    return 1
+  fi
+  archivo="$carpeta/codi-pre-deploy-$(date +%Y%m%d-%H%M%S).dump"
+  if [[ -e "$archivo" ]] || ! tmp="$(mktemp "${archivo}.XXXXXX.partial")"; then
+    echo 'Respaldo fallido: no se pudo crear un archivo nuevo.' >&2
+    return 1
+  fi
+  backup_partial="$tmp"
+  if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+    if ! PGPASSWORD="$POSTGRES_PASSWORD" docker exec -e PGPASSWORD codi-postgres \
+      pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" >"$tmp" 2>/dev/null; then
+      rm -f -- "$tmp"
+      echo 'Respaldo fallido: pg_dump no terminó correctamente.' >&2
+      return 1
+    fi
+  elif ! env -u PGPASSWORD docker exec codi-postgres pg_dump -U "$POSTGRES_USER" \
+    -Fc "$POSTGRES_DB" >"$tmp" 2>/dev/null; then
+    rm -f -- "$tmp"
+    echo 'Respaldo fallido: pg_dump no terminó correctamente.' >&2
+    return 1
+  fi
+  if ! test -s "$tmp" || ! docker exec -i codi-postgres pg_restore --list <"$tmp" >/dev/null 2>&1 ||
+     ! mv -n -- "$tmp" "$archivo" || [[ -e "$tmp" ]]; then
+    rm -f -- "$tmp"
+    echo 'Respaldo fallido: el archivo está vacío, es inválido o no se pudo guardar.' >&2
+    return 1
+  fi
+  backup_partial=""
+  tamano="$(wc -c < "$archivo")"
+  printf 'Respaldo: %s (%s bytes)\n' "$archivo" "$tamano"
+  # Solo archivos regulares con el nombre temporal exacto, ordenados por nombre.
+  local LC_ALL=C
+  shopt -s nullglob
+  respaldos=()
+  for f in "$carpeta"/codi-pre-deploy-*.dump; do
+    if [[ -f "$f" && ! -L "$f" && "${f##*/}" =~ ^codi-pre-deploy-[0-9]{8}-[0-9]{6}\.dump$ ]]; then
+      respaldos+=("$f")
+    fi
+  done
+  shopt -u nullglob
+  while (( ${#respaldos[@]} > 10 )); do
+    f="${respaldos[0]}"
+    rm -f -- "$f"
+    respaldos=("${respaldos[@]:1}")
+  done
+}
+
 if [[ ! -x "$dest/backend/.venv/bin/python" ]]; then
   "$python_bin" -m venv "$dest/backend/.venv"
 fi
@@ -126,6 +194,12 @@ fi
 (
   cd "$dest/backend"
   ./.venv/bin/python manage.py check
+)
+respaldar_base
+(
+  cd "$dest/backend"
+  ./.venv/bin/python manage.py migrate --plan | awk '/^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/'
+  ./.venv/bin/python manage.py migrate --noinput
   ./.venv/bin/python manage.py migrate --check --noinput
   ./.venv/bin/python manage.py collectstatic --noinput
 )

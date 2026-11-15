@@ -73,7 +73,7 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 
 `DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH. El camino nuevo exige `PROD_DEPLOY_PATH=/opt/codi/prod` exactamente y conserva host `100.120.112.112`, puerto `30022`. La clave pública del host está fijada en `deploy/known_hosts.prod`; un cambio de identidad SSH detiene el job hasta verificarlo y actualizar ese archivo. `PROD_SSH_PRIVATE_KEY_V2` es la llave privada nueva en base64 de una sola línea (`base64 -w 0`); el job la decodifica a un archivo temporal y no la copia al `.env`. La antigua `PROD_SSH_PRIVATE_KEY` queda revocada para que los jobs de commits anteriores no puedan entrar al VPS. El script rechaza el archivo de la app si trae claves de deploy o un bloque `PRIVATE KEY`.
 
-El pipeline se crea en push o lanzamiento manual a `master` o `test`. `deploy:test` está bloqueado y `deploy:prod` requiere lanzamiento manual. El deploy productivo exige que la migración a `/opt/codi/prod` ya haya sido aceptada: valida la ruta, la unit activa y PostgreSQL antes de sincronizar; mantiene un `flock` remoto durante rsync y el reinicio; no crea PostgreSQL ni ejecuta migraciones. Instala dependencias y estáticos antes de detener `cody`, y falla si hay migraciones pendientes. Al reiniciar comprueba `/api/salud/`. `codi-postgres` debe seguir sano en `127.0.0.1:5435`, con datos en `/var/lib/codi/postgres`; el `.env` debe traer `POSTGRES_PORT=5435`. El usuario de deploy necesita acceso Docker y `sudo` sin contraseña para `systemctl` e `install`. `PROD_PYTHON` es opcional (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`; un `GUNICORN_BIND` en `.env` lo sustituye. `DEBUG` debe ser `False`. El bloqueo nuevo no detiene scripts de commits antiguos: durante el corte se revoca su acceso SSH efectivo y se comprueba que no quedan jobs activos antes de crear hijos en `/opt/codi`.
+El pipeline se crea en push o lanzamiento manual a `master` o `test`. `deploy:test` está bloqueado y `deploy:prod` requiere lanzamiento manual. El deploy productivo exige que la migración a `/opt/codi/prod` ya haya sido aceptada: valida la ruta, la unit activa y PostgreSQL antes de sincronizar; mantiene un `flock` remoto durante rsync y el reinicio; no crea PostgreSQL. Instala dependencias, respalda y aplica migraciones y prepara estáticos antes de detener `cody`. Al reiniciar comprueba `/api/salud/`. `codi-postgres` debe seguir sano en `127.0.0.1:5435`, con datos en `/var/lib/codi/postgres`; el entorno debe traer `POSTGRES_HOST=127.0.0.1` o `localhost` y `POSTGRES_PORT=5435`. El usuario de deploy necesita acceso Docker y `sudo` sin contraseña para `systemctl` e `install`. `PROD_PYTHON` es opcional (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`; un `GUNICORN_BIND` en `.env` lo sustituye. `DEBUG` debe ser `False`. El bloqueo nuevo no detiene scripts de commits antiguos: durante el corte se revoca su acceso SSH efectivo y se comprueba que no quedan jobs activos antes de crear hijos en `/opt/codi`.
 
 El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`. `obtener_puerto()` lo rechaza cuando `PEY_API_KEY` tiene valor, para que un `DEBUG` encendido por error no conviva con la llave real.
 
@@ -113,8 +113,16 @@ el deploy. Si falla el arranque, restaura units/env previos, vuelve a arrancar
 web y recupera el estado previo del canal, incluida su primera instalación.
 Esta recuperación no revierte código ni dependencias sincronizadas.
 
-Las migraciones nuevas de pedidos/canales deben aplicarse mediante una
-operación de esquema separada, coordinada y respaldada. El deploy conserva
-`migrate --check --noinput` de master: si hay pendientes, falla antes del stop,
-sin aplicarlas. El mecanismo de exclusión sigue siendo únicamente el de master:
-flock remoto sostenido por SSH y comprobaciones `guardian_alive`.
+En cada deploy normal se crea un respaldo `pg_dump -Fc` en
+`~/respaldos/codi` del usuario de deploy y se conservan los 10 más recientes.
+Después se ejecutan `migrate --plan`, `migrate --noinput` y
+`migrate --check --noinput`, antes de detener servicios. Si falla cualquiera
+de estos pasos, se aborta el deploy sin reiniciar servicios. Las migraciones
+corren mientras la versión anterior sigue sirviendo: deben ser compatibles
+hacia atrás (aditivas); los cambios destructivos requieren un procedimiento
+aparte. Un fallo posterior a migrar puede dejar las migraciones aplicadas con
+los servicios anteriores activos; se debe revisar y reintentar, pues la base no
+se revierte y el respaldo no se restaura automáticamente. Se necesita espacio
+en disco para un respaldo adicional antes de aplicar la retención. El `pg_dump`
+alarga el tiempo que se mantiene el bloqueo del deploy. El mecanismo de exclusión
+sigue siendo el flock remoto sostenido por SSH y `guardian_alive`.

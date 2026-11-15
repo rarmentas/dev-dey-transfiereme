@@ -90,8 +90,10 @@ systemd-analyze verify /tmp/cody-prod.service
 La unit debe referir a `/opt/codi/prod/backend` en `WorkingDirectory`,
 `EnvironmentFile`, `ExecStart` y `ReadWritePaths`. Conservar servicio `cody`,
 `RuntimeDirectory=cody` y puerto efectivo 8000. No arrancar una segunda
-instancia. No ejecutar `migrate`, `pip install` ni `docker compose up` como
-parte de la fase de corte. Instalar las dependencias del venv nuevo durante
+instancia. Solo para el corte inicial del traslado, no ejecutar `migrate`,
+`pip install` ni `docker compose up` como parte de esa fase. El deploy normal
+desde el primer deploy nuevo respalda y migra según
+[variables de entorno](../desarrollo/variables-entorno.md). Instalar las dependencias del venv nuevo durante
 la preparación, con la app antigua todavía activa.
 
 ## Corte y reversión
@@ -119,6 +121,8 @@ la salud de la app anterior. La restauración de datos requiere un procedimiento
 de incidente aparte.
 
 ## Primer deploy nuevo
+
+Este deploy respalda la base y aplica las migraciones antes de detener servicios.
 
 Después de aceptar el corte, fusionar el commit revisado. Crear una clave SSH
 nueva y guardar su privada en la variable protegida y oculta
