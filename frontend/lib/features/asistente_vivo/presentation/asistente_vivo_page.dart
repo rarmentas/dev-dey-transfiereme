@@ -87,11 +87,12 @@ class _AsistenteVivoPageState extends ConsumerState<AsistenteVivoPage> {
           .pedirToken();
       await _bridge.iniciar(token.token, token.modelo);
     } on AsistenteVivoException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _estado = EstadoAsistente.error;
           _mensaje = e.mensaje;
         });
+      }
     }
   }
 
