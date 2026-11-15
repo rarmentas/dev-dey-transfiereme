@@ -13,6 +13,50 @@ def normalizar(valor):
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).split())
 
 
+_PRESENTACION = re.compile(r"^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(kg|g|l|lt|litros?|ml)$")
+_ESCALAS = {"kg": ("peso", 1000), "g": ("peso", 1),
+            "l": ("volumen", 1000), "lt": ("volumen", 1000),
+            "litro": ("volumen", 1000), "litros": ("volumen", 1000),
+            "ml": ("volumen", 1)}
+
+
+def presentacion(producto):
+    """Nombre y tamaño explícitos de un paquete vendido por pieza."""
+    if normalizar(getattr(producto, "unidad", "")) != "pieza":
+        return None
+    coincidencia = _PRESENTACION.fullmatch(normalizar(producto.nombre))
+    if not coincidencia:
+        return None
+    base, cantidad, unidad = coincidencia.groups()
+    familia, factor = _ESCALAS[unidad]
+    return base, Decimal(cantidad.replace(",", ".")) * factor, familia
+
+
+def nombres_pedido(producto):
+    nombres = [producto.nombre, *producto.alias]
+    empaque = presentacion(producto)
+    return [*nombres, empaque[0]] if empaque else nombres
+
+
+def coincidencias_pedido(nombre, productos):
+    pedido = normalizar(nombre)
+    exactas = [p for p in productos if pedido in [normalizar(n) for n in [p.nombre, *p.alias]]]
+    if exactas:
+        return exactas
+    return [p for p in productos if (empaque := presentacion(p)) and empaque[0] == pedido]
+
+
+def piezas_para_cantidad(producto, cantidad, unidad):
+    empaque = presentacion(producto)
+    if not empaque:
+        return None
+    solicitado = _ESCALAS.get(normalizar(unidad))
+    if not solicitado or solicitado[0] != empaque[2] or empaque[1] <= 0:
+        return None
+    piezas = cantidad * solicitado[1] / empaque[1]
+    return piezas if piezas > 0 and piezas == piezas.to_integral_value() else None
+
+
 def coincidencias_consulta(texto, productos):
     """Busca una frase breve por prefijo de nombre o alias, sin tratarla como pedido."""
     def canonico(valor):
@@ -32,7 +76,7 @@ def _unidad(valor):
         "kg": "kg", "kilo": "kg", "kilos": "kg", "kilogramo": "kg", "kilogramos": "kg",
         "pieza": "pieza", "piezas": "pieza", "pza": "pieza", "pzas": "pieza",
         "l": "litro", "lt": "litro", "litro": "litro", "litros": "litro",
-        "g": "g", "gr": "g", "gramo": "g", "gramos": "g",
+        "g": "g", "gr": "g", "gramo": "g", "gramos": "g", "ml": "ml",
     }
     return unidades.get(normalizar(valor), normalizar(valor))
 
@@ -42,7 +86,7 @@ def resolver(items, productos):
     filas, faltantes, subtotales = [], [], []
     for item in items[:100]:
         nombre = normalizar(item["nombre"])
-        candidatos = [p for p in productos if nombre in [normalizar(p.nombre), *[normalizar(a) for a in p.alias]]]
+        candidatos = coincidencias_pedido(nombre, productos)
         fila = {"nombre": item["nombre"], "cantidad": item.get("cantidad"), "unidad": item.get("unidad"),
                 "operacion": item.get("operacion", "reemplazar"),
                 "producto_id": None, "descripcion": "", "precio_centavos": None, "resolucion": "pendiente"}
@@ -57,6 +101,10 @@ def resolver(items, productos):
         else:
             producto = candidatos[0]
             unidad = _unidad(item.get("unidad") or ("pieza" if _unidad(producto.unidad) == "pieza" else ""))
+            if cantidad is not None and unidad != _unidad(producto.unidad):
+                piezas = piezas_para_cantidad(producto, cantidad, _unidad(item.get("unidad")))
+                if piezas is not None:
+                    cantidad, unidad = piezas, producto.unidad
             if unidad != _unidad(producto.unidad):
                 motivo = f"Unidad incompatible para {producto.nombre}: {producto.unidad}"
             elif cantidad is None:

@@ -2,6 +2,7 @@
 
 import json
 from urllib import error, request
+from urllib.parse import quote
 
 from django.conf import settings
 
@@ -17,6 +18,23 @@ class SinRedireccion(request.HTTPRedirectHandler):
 
 
 class AdaptadorWaha:
+    def establecer_presencia(self, sesion_id: str, chat_id: str, presencia: str) -> None:
+        cuerpo = json.dumps({"chatId": chat_id, "presence": presencia}).encode()
+        req = request.Request(
+            settings.WAHA_BASE_URL.rstrip("/") + f"/api/{quote(sesion_id, safe='')}/presence",
+            data=cuerpo,
+            headers={"Content-Type": "application/json", "X-Api-Key": settings.WAHA_API_KEY},
+            method="POST",
+        )
+        with request.build_opener(SinRedireccion()).open(req, timeout=5):
+            pass
+
+    def iniciar_escritura(self, sesion_id: str, chat_id: str) -> None:
+        self.establecer_presencia(sesion_id, chat_id, "typing")
+
+    def detener_escritura(self, sesion_id: str, chat_id: str) -> None:
+        self.establecer_presencia(sesion_id, chat_id, "paused")
+
     def enviar_texto(self, sesion_id: str, chat_id: str, texto: str) -> str:
         cuerpo = json.dumps(
             {"session": sesion_id, "chatId": chat_id, "text": texto}

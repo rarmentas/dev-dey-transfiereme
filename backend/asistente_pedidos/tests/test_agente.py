@@ -16,6 +16,8 @@ from pedidos.models import Pedido, ProductoCatalogo
 from pedidos.nucleo_real import NucleoRealV1
 from pedidos.servicios.tendero import operar
 from asistente_pedidos.grafo import _extraer
+from asistente_pedidos.proveedor import crear_modelo
+from unittest.mock import patch
 
 
 class ModeloFalso:
@@ -51,6 +53,13 @@ class ExtraccionSeguraTests(SimpleTestCase):
             {"nombre": "refrescos", "cantidad": "2", "unidad": None},
         ])
         self.assertIsNone(resultado["items"][1]["cantidad"])
+
+    def test_numero_posterior_de_otro_producto_no_respalda_cantidad(self):
+        resultado = self.extraer("tortilla 2 kg refresco 3", [
+            {"nombre": "tortilla", "cantidad": "3", "unidad": "kg"},
+            {"nombre": "refresco", "cantidad": "3", "unidad": None},
+        ])
+        self.assertIsNone(resultado["items"][0]["cantidad"])
 
     def test_coma_decimal_no_separa_producto(self):
         resultado = self.extraer("Quiero 0,5 kg de tortilla", [
@@ -121,6 +130,37 @@ class ExtraccionSeguraTests(SimpleTestCase):
         self.assertEqual([i["operacion"] for i in resultado["items"]],
                          ["incrementar", "reducir"])
 
+    def test_presentacion_de_catalogo_no_sustituye_nombre_literal(self):
+        self.productos.append(SimpleNamespace(nombre="Frijol negro 1 kg", alias=[], unidad="pieza"))
+        resultado = self.extraer("Quiero 2 kg de frijol negro", [
+            {"nombre": "Frijol negro 1 kg", "cantidad": "2", "unidad": "kg"}])
+        self.assertEqual(resultado["items"][0]["nombre"], "frijol negro")
+        self.assertEqual(resultado["items"][0]["cantidad"], "2")
+
+    def test_numero_del_empaque_no_valida_cantidad_erronea(self):
+        self.productos.append(SimpleNamespace(nombre="Frijol negro 1 kg", alias=[], unidad="pieza"))
+        resultado = self.extraer("Quiero 2 kg de Frijol negro 1 kg", [
+            {"nombre": "Frijol negro 1 kg", "cantidad": "1", "unidad": "kg"}])
+        self.assertIsNone(resultado["items"][0]["cantidad"])
+
+
+class ProveedorTests(SimpleTestCase):
+    @override_settings(AGENTE_PEDIDOS_API_KEY="clave-falsa", AGENTE_PEDIDOS_MODELO="gpt-6-luna")
+    def test_luna_sin_temperatura_y_con_razonamiento_none(self):
+        with patch("langchain_openai.ChatOpenAI") as cliente:
+            crear_modelo()
+        opciones = cliente.call_args.kwargs
+        self.assertEqual(opciones["model"], "gpt-6-luna")
+        self.assertEqual(opciones["reasoning_effort"], "none")
+        self.assertNotIn("temperature", opciones)
+
+    @override_settings(AGENTE_PEDIDOS_API_KEY="clave-falsa", AGENTE_PEDIDOS_MODELO="gpt-4.1-mini")
+    def test_modelo_configurado_conserva_compatibilidad(self):
+        with patch("langchain_openai.ChatOpenAI") as cliente:
+            crear_modelo()
+        self.assertEqual(cliente.call_args.kwargs["temperature"], 0)
+        self.assertNotIn("reasoning_effort", cliente.call_args.kwargs)
+
 
 class AgentePedidosTests(TestCase):
     def setUp(self):
@@ -177,6 +217,65 @@ class AgentePedidosTests(TestCase):
         self.assertEqual(modelo.llamadas, 2)
         self.assertEqual(Pedido.objects.count(), 1)
         self.assertEqual(SalidaCanal.objects.count(), 2)
+
+    def test_dos_kilos_de_frijol_en_paquetes_de_un_kilo(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Frijol negro 1 kg",
+                                        unidad="pieza", precio_centavos=4500)
+        modelo = ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "Frijol negro 1 kg", "cantidad": "2", "unidad": "kg"}]})
+        _, respuesta = self.enviar("Quiero 2 kg de frijol negro", modelo)
+        self.assertIn("$90.00", respuesta)
+        renglon = Pedido.objects.get().renglones.get()
+        self.assertEqual(renglon.descripcion, "Frijol negro 1 kg")
+        self.assertEqual(renglon.cantidad, Decimal("2"))
+        self.assertEqual(renglon.unidad, "pieza")
+        self.assertEqual(renglon.precio_unitario_centavos, 4500)
+        self.assertEqual(modelo.llamadas, 1)
+        self.assertTrue(SalidaCanal.objects.get().payload["escribiendo"])
+
+    def test_compra_simple_de_frijol_se_rescata_si_modelo_omite_item(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Frijol negro 1 kg",
+                                        unidad="pieza", precio_centavos=4500)
+        modelo = ModeloFalso({"intencion": "fuera", "items": []})
+        _, respuesta = self.enviar("Quiero 2 kg de frijol negro", modelo)
+        self.assertIn("$90.00", respuesta)
+        self.assertEqual(modelo.llamadas, 1)
+
+    def test_frijol_con_cantidad_despues_del_nombre(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Frijol negro 1 kg",
+                                        unidad="pieza", precio_centavos=4500)
+        modelo = ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "Frijol negro 2 kg", "cantidad": "2", "unidad": "kg"}]})
+        _, respuesta = self.enviar("Frijol negro 2 kg", modelo)
+        self.assertIn("$90.00", respuesta)
+
+    def test_frijol_sin_paquete_entero_requiere_revision(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Frijol negro 1 kg",
+                                        unidad="pieza", precio_centavos=4500)
+        modelo = ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "frijol negro", "cantidad": "0.5", "unidad": "kg"}]})
+        _, respuesta = self.enviar("Quiero 0.5 kg de frijol negro", modelo)
+        self.assertIn("pendiente", respuesta.lower())
+        self.assertIsNone(Pedido.objects.get().renglones.get().precio_unitario_centavos)
+
+    def test_dos_presentaciones_de_frijol_requieren_aclaracion(self):
+        for nombre, precio in (("Frijol negro 1 kg", 4500), ("Frijol negro 500 g", 2500)):
+            ProductoCatalogo.objects.create(comercio=self.comercio, nombre=nombre,
+                                            unidad="pieza", precio_centavos=precio)
+        modelo = ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "frijol negro", "cantidad": "2", "unidad": "kg"}]})
+        _, respuesta = self.enviar("Quiero 2 kg de frijol negro", modelo)
+        self.assertIn("pendiente", respuesta.lower())
+        self.assertIsNone(Pedido.objects.get().renglones.get().precio_unitario_centavos)
+
+    def test_presentacion_explicita_desambigua_frijol(self):
+        for nombre, precio in (("Frijol negro 1 kg", 4500), ("Frijol negro 500 g", 2500)):
+            ProductoCatalogo.objects.create(comercio=self.comercio, nombre=nombre,
+                                            unidad="pieza", precio_centavos=precio)
+        modelo = ModeloFalso({"intencion": "nuevo", "items": [
+            {"nombre": "Frijol negro 1 kg", "cantidad": "2", "unidad": "kg"}]})
+        _, respuesta = self.enviar("Quiero 2 kg de Frijol negro 1 kg", modelo)
+        self.assertIn("$90.00", respuesta)
 
     def test_fuera_de_alcance_no_invoca_modelo_ni_escribe(self):
         modelo = ModeloFalso()

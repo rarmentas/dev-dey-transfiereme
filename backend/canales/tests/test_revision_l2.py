@@ -53,6 +53,19 @@ class ParseoRevisionTests(SimpleTestCase):
                 with patch("canales.waha.request.build_opener", return_value=opener):
                     self.assertEqual(AdaptadorWaha().enviar_texto("s", "c", "t"), "abc")
 
+    @override_settings(WAHA_BASE_URL="http://localhost:3000", WAHA_API_KEY="prueba")
+    def test_presencia_waha_usa_sesion_y_chat(self):
+        opener = Mock()
+        opener.open.side_effect = [io.BytesIO(b"{}"), io.BytesIO(b"{}")]
+        with patch("canales.waha.request.build_opener", return_value=opener):
+            AdaptadorWaha().iniciar_escritura("mi sesion", "a@c.us")
+            req = opener.open.call_args.args[0]
+            self.assertEqual(req.full_url, "http://localhost:3000/api/mi%20sesion/presence")
+            self.assertEqual(json.loads(req.data), {"chatId": "a@c.us", "presence": "typing"})
+            self.assertEqual(req.headers["X-api-key"], "prueba")
+            AdaptadorWaha().detener_escritura("mi sesion", "a@c.us")
+            self.assertEqual(json.loads(opener.open.call_args.args[0].data)["presence"], "paused")
+
     def test_i3_instancia_vacia_usa_waha(self):
         entorno = {**os.environ, "WAHA_INSTANCIA": ""}
         resultado = subprocess.run(

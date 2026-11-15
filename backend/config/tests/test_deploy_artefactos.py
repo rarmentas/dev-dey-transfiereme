@@ -98,6 +98,20 @@ class DeployArtefactosTests(SimpleTestCase):
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
         self.assertEqual(resultado.stdout.strip(), b"clave-falsa-especifica")
 
+    def test_luna_es_predeterminado_y_dotenv_lo_puede_cambiar(self) -> None:
+        entorno = {**os.environ}
+        entorno.pop("AGENTE_PEDIDOS_MODELO", None)
+        comando = [sys.executable, "-c",
+                   "from config.settings import AGENTE_PEDIDOS_MODELO; print(AGENTE_PEDIDOS_MODELO)"]
+        resultado = subprocess.run(comando, cwd=RAIZ / "backend", env=entorno,
+                                   capture_output=True, check=False)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        self.assertEqual(resultado.stdout.strip(), b"gpt-6-luna")
+        entorno["AGENTE_PEDIDOS_MODELO"] = "gpt-4.1-mini"
+        resultado = subprocess.run(comando, cwd=RAIZ / "backend", env=entorno,
+                                   capture_output=True, check=False)
+        self.assertEqual(resultado.stdout.strip(), b"gpt-4.1-mini")
+
     def test_helper_master_conserva_entorno_y_exige_llave_v2(self) -> None:
         script = (RAIZ / SCRIPTS[2]).read_text()
         required = script.split("required=(", 1)[1].split(")", 1)[0].split()
