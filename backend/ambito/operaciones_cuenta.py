@@ -10,7 +10,12 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
 
-from ambito.candados import bloquear_comercio, bloquear_cuenta
+from ambito.candados import (
+    bloquear_comercio,
+    bloquear_comercio_y_demo,
+    bloquear_cuenta,
+)
+from ambito.cuenta import id_reservado_demo
 from ambito.cuenta_pey_servicio import exigir_modo_produccion, validar_registro_pey
 from ambito.models import CuentaCobro, OperacionCuenta
 from pey.cuentas import consultar_cuenta, registrar_cuenta
@@ -138,10 +143,22 @@ def registrar(
 
 def _aplicar(op, campos, estado, error="", obtenido="", request_id=""):
     with transaction.atomic():
-        CuentaCobro.objects.select_for_update().get(pk=op.cuenta_id)
+        cuenta = CuentaCobro.objects.select_related("comercio").get(pk=op.cuenta_id)
+        bloquear_comercio_y_demo(cuenta.comercio)
+        cuenta = bloquear_cuenta(cuenta)
         actual = OperacionCuenta.objects.select_for_update().get(pk=op.pk)
         if actual.estado != "en_curso":
             return
+        ident = campos.get("pey_bank_account_id", cuenta.pey_bank_account_id)
+        if id_reservado_demo(ident):
+            if "pey_bank_account_id" in campos:
+                raise IntegrityError("ID reservado para el demo")
+            if campos.get("codi_status") == "active":
+                campos = {
+                    **campos,
+                    "codi_status": "pending",
+                    "anomalia": "ID_RESERVADO_DEMO",
+                }
         actualizadas = CuentaCobro.objects.filter(
             pk=actual.cuenta_id, version=actual.version_reclamada
         ).update(**campos, version=F("version") + 1)

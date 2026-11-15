@@ -114,6 +114,15 @@ class DesignarDemoTests(TestCase):
         self.a.refresh_from_db()
         self.assertFalse(self.a.es_demo)
 
+    def test_quitar_no_revisa_colision_del_destino(self):
+        self.ejecutar("--comercio", str(self.a.pk), "--si")
+        cuenta = crear_cuenta(self.b)
+        cuenta.pey_bank_account_id = DESTINO
+        cuenta.save(update_fields=["pey_bank_account_id"])
+        self.ejecutar("--comercio", str(self.a.pk), "--quitar", "--si")
+        self.a.refresh_from_db()
+        self.assertFalse(self.a.es_demo)
+
     def test_quitar_rechaza_intento_vivo(self):
         from pedidos.models import IntentoCobro
 

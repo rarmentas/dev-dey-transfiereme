@@ -59,7 +59,8 @@ class Command(BaseCommand):
                 if Cobro.objects.filter(comercio=comercio, canal="qr_general").exists():
                     raise CommandError("El comercio tiene un QR general.")
                 if (
-                    destino
+                    not quitar
+                    and destino
                     and CuentaCobro.objects.filter(pey_bank_account_id=destino).exists()
                 ):
                     raise CommandError(

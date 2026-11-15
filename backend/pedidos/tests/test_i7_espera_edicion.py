@@ -92,3 +92,37 @@ class EsperaEditableTests(CasoReal):
         self.assertTrue(resultado.ok)
         self.assertEqual(Pedido.objects.get(pk=espera.id).estado, "cotizado")
         self.verificar_eventos(comercio, espera.id)
+
+    def test_aceptacion_nueva_distingue_el_intento_de_otra_aceptacion(self):
+        from pedidos.servicios.presentacion import pedido_dto
+
+        comercio, ctx, espera = self.preparar_espera()
+        self.assertEqual(espera.intento.aceptacion_id, espera.aceptacion.id)
+        cot = operar(
+            comercio,
+            espera.id,
+            "publicar_cotizacion",
+            {"command_key": "republicar", "expected_version": espera.version},
+        ).data["pedido"].cotizacion
+        self.driver.agregar_resumen(ctx, cot)
+        mensaje, _ = self.driver.agregar_mensaje(
+            ctx, "aceptar-2", 3, "ACEPTAR " + cot.token_resumen
+        )
+        aceptado = self.nucleo.aceptar_cotizacion(
+            ctx,
+            contrato_version="1.0",
+            command_key="aceptar-2",
+            pedido_id=espera.id,
+            expected_version=Pedido.objects.get(pk=espera.id).version,
+            cotizacion_id=cot.id,
+            cotizacion_revision=cot.revision,
+            importe_efectivo_mostrado_centavos=cot.importe_efectivo_centavos,
+            politica_cobro_version=cot.politica_cobro_version,
+            mensaje_consentimiento_id=mensaje,
+            token_resumen=cot.token_resumen,
+        )
+        self.assertTrue(aceptado.ok, aceptado.error)
+        datos = pedido_dto(Pedido.objects.get(pk=espera.id)).a_dict()
+        self.assertEqual(datos["pago_estado"], "descartado")
+        self.assertEqual(datos["intento"]["aceptacion_id"], espera.aceptacion.id)
+        self.assertNotEqual(datos["aceptacion"]["id"], espera.aceptacion.id)

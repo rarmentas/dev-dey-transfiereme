@@ -8,7 +8,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
 
-from ambito.candados import bloquear_comercio, bloquear_cuenta
+from ambito.candados import bloquear_comercio_y_demo, bloquear_cuenta
+from ambito.cuenta import id_reservado_demo
 from ambito.models import CuentaCobro
 from pey.cuentas import consultar_cuenta
 from pey.tipos import ErrorPey
@@ -23,6 +24,8 @@ class Command(BaseCommand):
         ident = options["pey_id"]
         if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", ident):
             raise CommandError("ID pey inválido.")
+        if id_reservado_demo(ident):
+            raise CommandError("No se pudo enlazar la cuenta: ID ya asignado.")
         try:
             cuenta = CuentaCobro.objects.get(pk=options["cuenta"])
             if cuenta.registro_estado != "incierto":
@@ -35,10 +38,12 @@ class Command(BaseCommand):
             raise CommandError("La cuenta consultada no coincide.")
         try:
             with transaction.atomic():
-                bloquear_comercio(cuenta.comercio)
+                bloquear_comercio_y_demo(cuenta.comercio)
                 cuenta = bloquear_cuenta(cuenta)
                 if cuenta.version != version or cuenta.registro_estado != "incierto":
                     raise CommandError("La cuenta cambió durante la consulta.")
+                if id_reservado_demo(ident):
+                    raise CommandError("No se pudo enlazar la cuenta: ID ya asignado.")
                 CuentaCobro.objects.filter(pk=cuenta.pk).update(
                     registro_estado="registrado",
                     pey_bank_account_id=ident,

@@ -6,6 +6,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from ambito.models import CuentaCobro
 from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
 from django.db import connection, transaction
 from django.db.models import F
@@ -75,8 +76,8 @@ def enviar_intento(intento_id, puerto=None):
                 or pedido.revision_vigente != cot.revision
             ):
                 descartar(
-                intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
-            )
+                    intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+                )
                 intento.refresh_from_db()
                 return intento
         if intento.demo_mode:
@@ -85,6 +86,9 @@ def enviar_intento(intento_id, puerto=None):
                 or not destino_demo()
                 or intento.pey_bank_account_id != destino_demo()
                 or cuenta is not None
+                or CuentaCobro.objects.filter(
+                    pey_bank_account_id=intento.pey_bank_account_id
+                ).exists()
             ):
                 descartar(
                     intento, "destino_demo_invalido", comercio=comercio, pedido=pedido

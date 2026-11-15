@@ -4,6 +4,7 @@ import re
 
 from ambito.candados import bloquear_comercio, bloquear_cuenta
 from ambito.cuenta import cuenta_apta
+from ambito.models import CuentaCobro
 from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
 from django.db import transaction
 from django.db.models import F
@@ -21,7 +22,11 @@ from pedidos.servicios.intentos import plaza_ocupada
 def _destino(comercio, demo, importe):
     if demo:
         destino = destino_demo()
-        if importe != 1 or not destino:
+        if (
+            importe != 1
+            or not destino
+            or CuentaCobro.objects.filter(pey_bank_account_id=destino).exists()
+        ):
             raise ErrorNucleo(CodigoError.DEMO_DESTINO_NO_PERMITIDO)
         return None, destino
     cuenta = comercio.cuenta_por_defecto
