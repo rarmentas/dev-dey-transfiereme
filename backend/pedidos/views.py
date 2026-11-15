@@ -18,6 +18,7 @@ from pedidos.errores import ErrorNucleo
 from pedidos.http import error, exito
 from pedidos.models import Pedido
 from pedidos.serializers import validar_cuerpo
+from pedidos.servicios.entrega import operar as operar_entrega
 from pedidos.servicios.presentacion import pedido_dto
 from pedidos.servicios.tendero import operar
 
@@ -95,8 +96,8 @@ class ListaPedidosView(APIView):
                     else None,
                     "cotizacion_revision": cot.revision if cot else None,
                     "aceptado": dto.aceptacion is not None,
-                    "pago_estado": "sin_cobro",
-                    "preparacion": "pendiente",
+                    "pago_estado": dto.pago_estado.value,
+                    "preparacion": dto.preparacion.value,
                     "creado_en": pedido.creado_en,
                     "actualizado_en": pedido.actualizado_en,
                 }
@@ -109,7 +110,15 @@ class DetallePedidoView(APIView):
 
     @capturar
     def get(self, request, pedido_id):
-        return exito(pedido_dto(_pedido(_comercio(request), pedido_id)))
+        pedido = _pedido(_comercio(request), pedido_id)
+        datos = pedido_dto(pedido).a_dict()
+        datos["entrega"] = {
+            "listo_en": pedido.listo_en,
+            "listo_por": pedido.listo_por_id,
+            "entregado_en": pedido.entregado_en,
+            "entregado_por": pedido.entregado_por_id,
+        }
+        return exito(datos)
 
 
 class RenglonesPedidoView(APIView):
@@ -140,5 +149,78 @@ class CotizacionesPedidoView(APIView):
         return exito(
             resultado.data["pedido"],
             status=200 if resultado.replayed else 201,
+            replayed=resultado.replayed,
+        )
+
+
+class ListoPedidoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def post(self, request, pedido_id):
+        comercio = _comercio(request, True)
+        pedido = _pedido(comercio, pedido_id)
+        resultado = operar_entrega(
+            comercio, pedido.id, validar_cuerpo(request.data), request.user
+        )
+        return exito(resultado.data["pedido"], replayed=resultado.replayed)
+
+
+class EntregadoPedidoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def post(self, request, pedido_id):
+        comercio = _comercio(request, True)
+        pedido = _pedido(comercio, pedido_id)
+        resultado = operar_entrega(
+            comercio, pedido.id, validar_cuerpo(request.data), request.user,
+            entregado=True,
+        )
+        return exito(resultado.data["pedido"], replayed=resultado.replayed)
+
+
+class CobroPedidoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def post(self, request, pedido_id):
+        from pedidos.contratos.validacion import hash_canonico, validar_comando
+        from pedidos.servicios.cobros import activar_espera, solicitar
+
+        comercio = _comercio(request, True)
+        pedido = _pedido(comercio, pedido_id)
+        if not isinstance(request.data, dict):
+            raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+        cuerpo = dict(request.data)
+        accion = cuerpo.pop("accion", "")
+        if accion == "activar_espera":
+            intento_id = cuerpo.pop("intento_id", "")
+            try:
+                intento_id = UUID(intento_id)
+            except (TypeError, ValueError, AttributeError):
+                raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO) from None
+            datos = validar_cuerpo(cuerpo)
+            resultado = activar_espera(comercio, pedido.pk, intento_id, datos)
+            return exito(resultado.data["pedido"], replayed=resultado.replayed)
+        if accion != "solicitar":
+            raise ErrorNucleo(CodigoError.PAYLOAD_INVALIDO)
+        aceptacion = pedido.cotizaciones.filter(
+            revision=pedido.revision_vigente, aceptacion__isnull=False
+        ).first()
+        if not aceptacion:
+            raise ErrorNucleo(CodigoError.ACEPTACION_REQUERIDA)
+        datos = {
+            **cuerpo,
+            "contrato_version": cuerpo.get("contrato_version", "1.0"),
+            "pedido_id": str(pedido.pk),
+            "aceptacion_id": str(aceptacion.aceptacion.pk),
+            "canal": cuerpo.get("canal", "qr_venta"),
+        }
+        validar_comando("solicitar_cobro", datos)
+        huella = hash_canonico("solicitar_cobro", datos, str(comercio.pk))
+        resultado = solicitar(comercio, pedido, datos, huella)
+        return exito(
+            resultado.data["pedido"], status=200 if resultado.replayed else 201,
             replayed=resultado.replayed,
         )

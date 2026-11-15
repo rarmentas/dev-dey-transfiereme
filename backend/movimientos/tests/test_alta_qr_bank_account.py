@@ -8,6 +8,7 @@ from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from ambito.tests.soporte import crear_cuenta
 from movimientos.alta_qr_general import alta_qr_general
+from movimientos.exceptions import QrGeneralNoDisponible
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.produccion import AdaptadorProduccion
@@ -71,7 +72,7 @@ class AltaQrGeneralCuentaTests(TestCase):
         self.assertTrue(resultado.cobro.qr_string.startswith("cody-dev://qr/"))
         self.assertEqual(resultado.cobro.pey_bank_account_id, "")
 
-    def test_qr_previo_sin_id_se_regenera_con_la_cuenta(self) -> None:
+    def test_qr_previo_sin_id_no_se_redirige(self) -> None:
         comercio = self._comercio(_CUENTA)
         viejo = Cobro.objects.create(
             comercio=comercio,
@@ -82,32 +83,14 @@ class AltaQrGeneralCuentaTests(TestCase):
             qr_string="viejo",
             pey_bank_account_id="",
         )
-        llamadas: list[bytes] = []
-
-        def transporte(metodo, url, headers, cuerpo, timeout):
-            llamadas.append(cuerpo)
-            return 201, b'{"id":"qr-nuevo","qrString":"nuevo"}'
-
-        puerto = AdaptadorProduccion(transporte=transporte)
-        with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch(
-                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
-            ):
-                with self.assertLogs(
-                    "movimientos.alta_qr_general", level="WARNING"
-                ) as logs:
-                    resultado = alta_qr_general(comercio)
+        puerto = AdaptadorProduccion(transporte=lambda *args: self.fail("red"))
+        with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with self.assertRaises(QrGeneralNoDisponible):
+                alta_qr_general(comercio)
         viejo.refresh_from_db()
-        self.assertEqual(resultado.cobro.pk, viejo.pk)
-        self.assertFalse(resultado.creado)
-        self.assertEqual(viejo.pey_qr_id, "qr-nuevo")
-        self.assertEqual(viejo.qr_string, "nuevo")
-        self.assertEqual(viejo.pey_bank_account_id, _CUENTA)
-        self.assertIsNone(viejo.pey_transaction_id)
-        self.assertEqual(len(llamadas), 1)
-        self.assertIn(b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"', llamadas[0])
-        self.assertIn("QR general regenerado", " ".join(logs.output))
-        self.assertIn(str(viejo.pk), " ".join(logs.output))
+        self.assertEqual(viejo.pey_qr_id, "qr-viejo")
+        self.assertEqual(viejo.qr_string, "viejo")
+        self.assertEqual(viejo.pey_bank_account_id, "")
 
     def test_qr_previo_con_la_misma_cuenta_no_llama_a_pey(self) -> None:
         comercio = self._comercio(_CUENTA)

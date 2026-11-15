@@ -1,6 +1,8 @@
 """Puerto HTTP del aviso de pey. No llama a pey."""
 
+import hashlib
 import json
+import re
 import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -8,19 +10,14 @@ from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponseNotFound, JsonResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from ambito.models import CuentaCobro
 from ambito.operaciones_cuenta import encolar_sync
-from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago, aplicar_aviso
-from movimientos.exceptions import (
-    AvisoDuplicado,
-    AvisoInvalido,
-    AvisoSinCobro,
-    MontoDistinto,
-    TransicionInvalida,
-)
+from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago
 from movimientos.models import Movimiento
 from pey.seleccion import modo_adaptador
 from webhooks.models import AvisoRecibido
@@ -52,6 +49,8 @@ class _AvisoEntrante:
     transaction_id: str
     aviso: AvisoPago | None
     cuenta: _AvisoCuenta | None = None
+    bank_account_id: str = ""
+    fecha_pago: object = None
 
 
 def _respuesta(cuerpo: dict, status: int) -> JsonResponse:
@@ -130,16 +129,38 @@ def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
     if transaction_id is None or "amount" not in datos:
         raise _AvisoMalFormado
 
-    codi_qr_id = datos.get("codiQrId") or None
-    if codi_qr_id is not None and not isinstance(codi_qr_id, str):
+    codi_qr_id = datos.get("codiQrId")
+    if codi_qr_id == "":
+        codi_qr_id = None
+    if codi_qr_id is not None and (
+        not isinstance(codi_qr_id, str) or len(codi_qr_id) > 64
+    ):
         raise _AvisoMalFormado
     concepto = datos.get("concept") or ""
     if not isinstance(concepto, str):
         raise _AvisoMalFormado
 
+    bank = datos.get("bankAccountId", "")
+    if not isinstance(bank, str) or (bank and not re.fullmatch(
+        r"[0-9A-HJKMNP-TV-Z]{26}", bank
+    )):
+        raise _AvisoMalFormado
+    fecha = datos.get("datePaid")
+    if fecha is not None:
+        if not isinstance(fecha, str):
+            raise _AvisoMalFormado
+        try:
+            fecha = parse_datetime(fecha)
+        except ValueError as exc:
+            raise _AvisoMalFormado from exc
+        if fecha is None or timezone.is_naive(fecha):
+            raise _AvisoMalFormado
+
     return _AvisoEntrante(
         tipo=tipo,
         transaction_id=transaction_id,
+        bank_account_id=bank,
+        fecha_pago=fecha,
         aviso=AvisoPago(
             tipo=tipo,
             monto=_monto_de_aviso(datos["amount"]),
@@ -148,20 +169,6 @@ def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
             concepto=concepto,
         ),
     )
-
-
-def _es_choque_de_transaction_id(exc: IntegrityError) -> bool:
-    causa = exc.__cause__
-    diag = getattr(causa, "diag", None)
-    nombre = getattr(diag, "constraint_name", None) or ""
-    return "pey_transaction_id" in f"{nombre} {exc}".lower()
-
-
-def _pago_ya_registrado(transaction_id: str) -> bool:
-    return Movimiento.objects.filter(
-        pey_transaction_id=transaction_id,
-        estado=Movimiento.Estado.PAGADO,
-    ).exists()
 
 
 def _registrar(webhook_id: str, tipo: str, resultado: str) -> None:
@@ -249,44 +256,18 @@ def _procesar_aviso_registrado(
             resultado=AvisoRecibido.Resultado.TIPO_DESCONOCIDO,
         )
 
-    aviso = entrada.aviso
-    if _pago_ya_registrado(aviso.transaction_id):
-        return _cerrar(
-            recibido,
-            webhook_id=webhook_id,
-            tipo=aviso.tipo,
-            resultado=AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
+    from pedidos.servicios.pagos import aplicar_pago
+
+    aplicar_pago(recibido)
+    recibido.refresh_from_db()
+    if recibido.resultado in ("pendiente_correlacion", "monto_distinto"):
+        logger.warning(
+            "aviso pey webhook_id=%s type=%s resultado=%s transaction_id=%s",
+            webhook_id, recibido.tipo, recibido.resultado, recibido.transaction_id,
         )
-
-    movimiento = None
-    try:
-        with transaction.atomic():
-            movimiento = aplicar_aviso(aviso, origen=origen)
-    except IntegrityError as exc:
-        if not _es_choque_de_transaction_id(exc):
-            raise
-        resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
-        movimiento = None
-    except AvisoDuplicado:
-        resultado = AvisoRecibido.Resultado.DUPLICADO_TRANSACCION
-    except MontoDistinto:
-        resultado = AvisoRecibido.Resultado.MONTO_DISTINTO
-    except AvisoSinCobro:
-        resultado = AvisoRecibido.Resultado.SIN_COBRO
-    except TransicionInvalida:
-        resultado = AvisoRecibido.Resultado.TRANSICION_INVALIDA
-    except AvisoInvalido:
-        resultado = AvisoRecibido.Resultado.TIPO_DESCONOCIDO
     else:
-        resultado = AvisoRecibido.Resultado.APLICADO
-
-    return _cerrar(
-        recibido,
-        webhook_id=webhook_id,
-        tipo=aviso.tipo,
-        resultado=resultado,
-        movimiento=movimiento,
-    )
+        _registrar(webhook_id, recibido.tipo, recibido.resultado)
+    return _respuesta({"estado": recibido.resultado}, 200)
 
 
 def _recibir_aviso_http(
@@ -312,6 +293,14 @@ def _recibir_aviso_http(
                     webhook_id=webhook_id,
                     tipo=entrada.tipo,
                     transaction_id=entrada.transaction_id,
+                    payload_hash=hashlib.sha256(request.body).hexdigest(),
+                    monto=entrada.aviso.monto if entrada.aviso else None,
+                    codi_qr_id=(entrada.aviso.codi_qr_id or "")
+                    if entrada.aviso else "",
+                    bank_account_id=entrada.bank_account_id,
+                    fecha_pago=entrada.fecha_pago,
+                    verificado_en=timezone.now(),
+                    origen=origen,
                 )
         except IntegrityError:
             _registrar(webhook_id, entrada.tipo, "duplicado")

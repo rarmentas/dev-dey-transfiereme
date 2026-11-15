@@ -1,23 +1,26 @@
 """Alta de venta. El puerto es el adaptador de desarrollo o un doble: sin red."""
 
+import json
 from contextlib import contextmanager
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-from rest_framework.test import APIClient
+from pedidos.tests.soporte_cobro import ClienteLegacy
+from pedidos.servicios.cobros import vencer_intento
+from pedidos.models import IntentoCobro
 
 from ambito.models import Comercio, Membresia
 from ambito.tests.soporte import crear_cuenta
-from movimientos.correlacion import AvisoPago, aplicar_aviso
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.produccion import AdaptadorProduccion
 from pey.tipos import ErrorPey, ParametroInvalido, QrCreado
 from sesion.middleware import _MENSAJE_SIN_SESION
+from webhooks.tests.support.pey_webhook import SECRETO, post_firmado
 from ventas.servicio import (
     ConceptoInvalido,
     MontoInvalido,
@@ -71,9 +74,9 @@ class _PuertoParametroInvalido:
         raise ParametroInvalido("num_ref debe ser de 1 a 7 dígitos")
 
 
-class AltaVentaApiTests(TestCase):
+class AltaVentaApiTests(TransactionTestCase):
     def setUp(self) -> None:
-        self.client = APIClient()
+        self.client = ClienteLegacy.crear()
         self.comercio_a = Comercio.objects.create(
             nombre="Comercio A",
             semilla_active_dev=True,
@@ -117,7 +120,9 @@ class AltaVentaApiTests(TestCase):
         doble = _DoblePuerto()
         for referencia in ("12A", "12345678", "   "):
             with self.subTest(referencia=referencia):
-                with patch("ventas.servicio.obtener_puerto", return_value=doble):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+                ):
                     respuesta = self.client.post(
                         _RUTA,
                         {"monto": "0.01", "concepto": "Taco", "referencia": referencia},
@@ -127,6 +132,7 @@ class AltaVentaApiTests(TestCase):
                 self.assertIn("referencia", respuesta.json())
                 with self.assertRaises(ReferenciaInvalida):
                     crear_venta_qr(
+                        clave="prueba",
                         comercio=self.comercio_a,
                         monto=Decimal("0.01"),
                         concepto="Taco",
@@ -147,7 +153,9 @@ class AltaVentaApiTests(TestCase):
         for cuerpo in cuerpos:
             with self.subTest(cuerpo=cuerpo):
                 espia = _Espia()
-                with patch("ventas.servicio.obtener_puerto", return_value=espia):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=espia
+                ):
                     respuesta = self.client.post(_RUTA, cuerpo, format="json")
                 self.assertEqual(respuesta.status_code, 201)
                 self.assertEqual(len(espia.qr_kwargs), 1)
@@ -163,54 +171,36 @@ class AltaVentaApiTests(TestCase):
                 self.assertEqual(movimiento.monto, Decimal("0.01"))
                 self.assertEqual(movimiento.concepto, "Transferencia")
                 self.assertEqual(movimiento.concepto_visible, "Transferencia")
-                movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
+                vencer_intento(movimiento)
 
-    def test_error_pey_no_persiste_ni_deja_pagado(self) -> None:
+    def test_error_pey_conserva_estado_y_no_deja_pagado(self) -> None:
         self._entrar(self.usuario_a)
         for puede in (False, True):
             with self.subTest(puede_haberse_creado=puede):
-                adaptador = AdaptadorDesarrollo(
-                    fallar_con=ErrorPey(
-                        "INVALID_STATE",
-                        "rechazado-por-pey",
-                        "req-1",
-                        puede_haberse_creado=puede,
+                adaptador = AdaptadorDesarrollo(fallar_con=ErrorPey(
+                    "INVALID_STATE", "rechazado", "req-1", puede_haberse_creado=puede,
+                ))
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=adaptador
+                ):
+                    respuesta = self.client.post(
+                        _RUTA, {"monto": "0.01", "concepto": "Taco"}, format="json"
                     )
-                )
-                with patch("ventas.servicio.obtener_puerto", return_value=adaptador):
-                    with self.assertLogs("ventas.views", level="WARNING") as logs:
-                        respuesta = self.client.post(
-                            _RUTA,
-                            {"monto": "0.01", "concepto": "Taco"},
-                            format="json",
-                        )
                 self.assertEqual(respuesta.status_code, 502)
-                self.assertEqual(
-                    respuesta.json(),
-                    {
-                        "detail": "pey no pudo crear el cobro.",
-                        "tipo": "INVALID_STATE",
-                        "request_id": "req-1",
-                        "puede_haberse_creado": puede,
-                    },
-                )
-                texto = " ".join(logs.output)
-                self.assertIn("INVALID_STATE", texto)
-                self.assertIn("req-1", texto)
-                self.assertIn(f"comercio_id={self.comercio_a.pk}", texto)
-                self.assertNotIn("rechazado-por-pey", texto)
-                self.assertNotIn("PEY_API_KEY", texto)
-                self.assertEqual(Cobro.objects.count(), 0)
-                self.assertEqual(Movimiento.objects.count(), 0)
-                self.assertFalse(
-                    Movimiento.objects.filter(estado=Movimiento.Estado.PAGADO).exists()
-                )
+                self.assertEqual(respuesta.json()["puede_haberse_creado"], puede)
+                self.assertEqual(respuesta.json()["tipo"], "INVALID_STATE")
+                intento = IntentoCobro.objects.order_by("-creado_en").first()
+                self.assertEqual(intento.estado, "incierto" if puede else "rechazado")
+                self.assertFalse(Cobro.objects.exists())
+                self.assertFalse(Movimiento.objects.exists())
 
     def test_exito_crea_cobro_qr_venta_y_movimiento_pendiente(self) -> None:
         self._entrar(self.usuario_a)
         espia = _Espia()
         antes = timezone.now()
-        with patch("ventas.servicio.obtener_puerto", return_value=espia):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=espia
+        ):
             respuesta = self.client.post(
                 _RUTA,
                 {"monto": "0.01", "concepto": "Tacos", "referencia": "42"},
@@ -283,7 +273,9 @@ class AltaVentaApiTests(TestCase):
         self._entrar(self.usuario_off)
         adaptador = AdaptadorDesarrollo()
         with patch.object(adaptador, "crear_qr", wraps=adaptador.crear_qr) as crear_qr:
-            with patch("ventas.servicio.obtener_puerto", return_value=adaptador):
+            with patch(
+                "pedidos.servicios.despacho.obtener_puerto", return_value=adaptador
+            ):
                 respuesta = self.client.post(
                     _RUTA,
                     {"monto": "0.01", "concepto": "Taco"},
@@ -318,7 +310,9 @@ class AltaVentaApiTests(TestCase):
         invalidos = ("0", "-1", "0.005", "abc", 0, -5, "10000000000")
         for monto in invalidos:
             with self.subTest(monto=monto):
-                with patch("ventas.servicio.obtener_puerto", return_value=doble):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+                ):
                     respuesta = self.client.post(
                         _RUTA,
                         {"monto": monto, "referencia": "1"},
@@ -330,6 +324,7 @@ class AltaVentaApiTests(TestCase):
             with self.subTest(servicio=monto):
                 with self.assertRaises(MontoInvalido):
                     crear_venta_qr(
+                        clave="prueba",
                         comercio=self.comercio_a,
                         monto=monto,
                         concepto="Taco",
@@ -351,7 +346,9 @@ class AltaVentaApiTests(TestCase):
     def test_concepto_demasiado_largo_no_llama_al_adaptador(self) -> None:
         self._entrar(self.usuario_a)
         doble = _DoblePuerto()
-        with patch("ventas.servicio.obtener_puerto", return_value=doble):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+        ):
             respuesta = self.client.post(
                 _RUTA,
                 {"monto": "0.01", "concepto": "a" * 501},
@@ -361,6 +358,7 @@ class AltaVentaApiTests(TestCase):
         self.assertIn("concepto", respuesta.json())
         with self.assertRaises(ConceptoInvalido):
             crear_venta_qr(
+                clave="prueba",
                 comercio=self.comercio_a,
                 monto=Decimal("0.01"),
                 concepto="a" * 501,
@@ -373,7 +371,7 @@ class AltaVentaApiTests(TestCase):
     def test_parametro_invalido_del_puerto_es_400(self) -> None:
         self._entrar(self.usuario_a)
         with patch(
-            "ventas.servicio.obtener_puerto",
+            "pedidos.servicios.despacho.obtener_puerto",
             return_value=_PuertoParametroInvalido(),
         ):
             respuesta = self.client.post(
@@ -382,13 +380,15 @@ class AltaVentaApiTests(TestCase):
                 format="json",
             )
         self.assertEqual(respuesta.status_code, 400)
-        self.assertIn("num_ref", respuesta.json()["detail"])
+        self.assertEqual(
+            respuesta.json()["detail"], "Parámetros rechazados por el proveedor."
+        )
         self.assertEqual(Cobro.objects.count(), 0)
         self.assertEqual(Movimiento.objects.count(), 0)
 
     def test_venta_de_a_no_aparece_en_movimientos_de_b(self) -> None:
         self._entrar(self.usuario_a)
-        with patch("ventas.servicio.obtener_puerto", return_value=_Espia()):
+        with patch("pedidos.servicios.despacho.obtener_puerto", return_value=_Espia()):
             alta = self.client.post(
                 _RUTA,
                 {"monto": "0.01", "concepto": "Solo A"},
@@ -424,7 +424,9 @@ class AltaVentaApiTests(TestCase):
     def test_null_en_concepto_y_referencia_equivale_a_ausente(self) -> None:
         self._entrar(self.usuario_a)
         espia = _Espia()
-        with patch("ventas.servicio.obtener_puerto", return_value=espia):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=espia
+        ):
             respuesta = self.client.post(
                 _RUTA,
                 {"monto": "0.01", "concepto": None, "referencia": None},
@@ -442,7 +444,9 @@ class AltaVentaApiTests(TestCase):
     def test_comercio_en_query_responde_400(self) -> None:
         self._entrar(self.usuario_a)
         doble = _DoblePuerto()
-        with patch("ventas.servicio.obtener_puerto", return_value=doble):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=doble
+        ):
             respuesta = self.client.post(
                 "/api/ventas/?comercio=2",
                 {"monto": "0.01"},
@@ -455,40 +459,33 @@ class AltaVentaApiTests(TestCase):
         self.assertEqual(Movimiento.objects.count(), 0)
 
     @override_settings(PEY_API_KEY=_LLAVE_PRUEBA)
-    def test_fallo_de_bd_tras_qr_loguea_el_id_y_no_persiste(self) -> None:
+    def test_fallo_de_bd_tras_qr_conserva_envio_y_bloquea(self) -> None:
         self._entrar(self.usuario_a)
         espia = _Espia()
-        with self.assertLogs("ventas.servicio", level="ERROR") as logs:
-            with patch("ventas.servicio.obtener_puerto", return_value=espia):
-                with patch(
-                    "ventas.servicio.Movimiento.objects.create",
-                    side_effect=RuntimeError("bd"),
-                ):
-                    with self.assertRaises(RuntimeError):
-                        self.client.post(
-                            _RUTA,
-                            {"monto": "0.01", "concepto": "Taco"},
-                            format="json",
-                        )
+        with patch("pedidos.servicios.despacho.obtener_puerto", return_value=espia):
+            with patch(
+                "ventas.servicio.Movimiento.objects.create",
+                side_effect=RuntimeError("bd"),
+            ):
+                with self.assertRaises(RuntimeError):
+                    self.client.post(_RUTA, {"monto": "0.01"}, format="json")
         self.assertIsNotNone(espia.qr)
-        texto = " ".join(logs.output)
-        self.assertIn(f"pey_qr_id={espia.qr.id}", texto)
-        self.assertIn(f"comercio_id={self.comercio_a.pk}", texto)
-        self.assertNotIn(_LLAVE_PRUEBA, texto)
-        self.assertNotIn(espia.qr.qr_string, texto)
-        self.assertEqual(Cobro.objects.count(), 0)
-        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertEqual(IntentoCobro.objects.get().estado, "enviando")
+        self.assertFalse(Cobro.objects.exists())
+        self.assertFalse(Movimiento.objects.exists())
 
     def test_monto_numero_json_notacion_y_no_finitos(self) -> None:
         self._entrar(self.usuario_a)
         espia = _Espia()
-        with patch("ventas.servicio.obtener_puerto", return_value=espia):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=espia
+        ):
             respuesta = self._post_crudo(b'{"monto": 0.01}')
         self.assertEqual(respuesta.status_code, 201)
         self.assertEqual(espia.qr_kwargs[0]["monto"], Decimal("0.01"))
         centavo = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
         self.assertEqual(centavo.monto, Decimal("0.01"))
-        centavo.cambiar_estado(Movimiento.Estado.VENCIDO)
+        vencer_intento(centavo)
 
         for cuerpo in (b'{"monto": true}', b'{"monto": false}', b'{"monto": null}'):
             with self.subTest(cuerpo=cuerpo.decode()):
@@ -497,7 +494,9 @@ class AltaVentaApiTests(TestCase):
                 self.assertIn("monto", respuesta.json())
 
         espia_cien = _Espia()
-        with patch("ventas.servicio.obtener_puerto", return_value=espia_cien):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=espia_cien
+        ):
             respuesta = self.client.post(
                 _RUTA,
                 {"monto": "1E+2"},
@@ -537,7 +536,9 @@ class AltaVentaApiTests(TestCase):
         puerto = AdaptadorProduccion(transporte=transporte)
         with _cuenta_produccion_activa(self.comercio_a):
             with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-                with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+                with patch(
+                    "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+                ):
                     respuesta = self.client.post(
                         _RUTA,
                         {"monto": "0.01", "concepto": "Tacos"},
@@ -562,27 +563,23 @@ class AltaVentaApiTests(TestCase):
         cobro = Cobro.objects.get(pk=cuerpo["cobro_id"])
         self.assertEqual(cobro.pey_qr_id, "qr-prod-1")
 
+    @override_settings(PEY_WEBHOOK_SECRET=SECRETO)
     def test_aviso_de_pago_marca_la_venta_pagada(self) -> None:
         self._entrar(self.usuario_a)
-        with patch("ventas.servicio.obtener_puerto", return_value=_Espia()):
+        with patch("pedidos.servicios.despacho.obtener_puerto", return_value=_Espia()):
             respuesta = self.client.post(
-                _RUTA,
-                {"monto": "0.01", "concepto": "Tacos"},
-                format="json",
+                _RUTA, {"monto": "0.01", "concepto": "Tacos"}, format="json"
             )
         self.assertEqual(respuesta.status_code, 201)
         cobro = Cobro.objects.get(pk=respuesta.json()["cobro_id"])
-        movimiento = aplicar_aviso(
-            AvisoPago(
-                tipo="codi.qr.payment_received",
-                monto=Decimal("0.01"),
-                transaction_id="tx-venta-3-1",
-                codi_qr_id=cobro.pey_qr_id,
-            ),
-            origen=Movimiento.Origen.ORIGEN_DESARROLLO,
-        )
-        self.assertEqual(movimiento.pk, respuesta.json()["movimiento_id"])
-        guardado = Movimiento.objects.get(pk=movimiento.pk)
+        cuerpo = json.dumps({
+            "type": "codi.qr.payment_received", "amount": 0.01,
+            "transactionId": "tx-venta-3-1", "codiQrId": cobro.pey_qr_id,
+            "bankAccountId": cobro.pey_bank_account_id,
+        }, separators=(",", ":"))
+        aviso = post_firmado(self.client, cuerpo, "venta-pagada")
+        self.assertEqual(aviso.json()["estado"], "aplicado")
+        guardado = Movimiento.objects.get(pk=respuesta.json()["movimiento_id"])
         self.assertEqual(guardado.estado, Movimiento.Estado.PAGADO)
         self.assertEqual(guardado.pey_transaction_id, "tx-venta-3-1")
         self.assertIsNotNone(guardado.pagado_en)

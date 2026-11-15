@@ -40,6 +40,22 @@ class Pedido(models.Model):
     abierto = models.BooleanField(default=True)
     revision_vigente = models.PositiveIntegerField(null=True)
     ultima_revision = models.PositiveIntegerField(default=0)
+    preparacion = models.CharField(
+        max_length=10, default="pendiente", choices=[
+            ("pendiente", "Pendiente"), ("listo", "Listo"),
+            ("entregado", "Entregado"),
+        ],
+    )
+    listo_en = models.DateTimeField(null=True, blank=True)
+    entregado_en = models.DateTimeField(null=True, blank=True)
+    listo_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="pedidos_listos",
+    )
+    entregado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="pedidos_entregados",
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
@@ -47,6 +63,22 @@ class Pedido(models.Model):
         verbose_name = "pedido"
         verbose_name_plural = "pedidos"
         constraints = [
+            models.CheckConstraint(
+                condition=Q(preparacion__in=["pendiente", "listo", "entregado"]),
+                name="pedido_preparacion_valida",
+            ),
+            models.CheckConstraint(
+                condition=~Q(preparacion__in=["listo", "entregado"])
+                | Q(listo_en__isnull=False, listo_por__isnull=False),
+                name="pedido_listo_coherente",
+            ),
+            models.CheckConstraint(
+                condition=~Q(preparacion="entregado") | Q(
+                    entregado_en__isnull=False, entregado_por__isnull=False,
+                    estado="cerrado",
+                ),
+                name="pedido_entregado_coherente",
+            ),
             models.UniqueConstraint(
                 fields=["comercio", "numero"], name="pedido_numero_unico"
             ),
@@ -256,6 +288,179 @@ class ComandoNucleo(models.Model):
         ]
 
 
+class IntentoCobro(models.Model):
+    """Intención durable y destino histórico de un cobro."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    origen = models.CharField(
+        max_length=10, choices=[("pedido", "Pedido"), ("legado", "Legado")]
+    )
+    comercio = models.ForeignKey("ambito.Comercio", on_delete=models.PROTECT)
+    pedido = models.ForeignKey(
+        Pedido, null=True, blank=True, on_delete=models.PROTECT, related_name="intentos"
+    )
+    aceptacion = models.OneToOneField(
+        Aceptacion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="intento",
+    )
+    cotizacion = models.ForeignKey(
+        Cotizacion, null=True, blank=True, on_delete=models.PROTECT
+    )
+    canal = models.CharField(
+        max_length=20,
+        choices=[("qr_venta", "QR de venta"), ("notificacion", "Notificación")],
+    )
+    estado = models.CharField(
+        max_length=12,
+        choices=[
+            (v, v)
+            for v in (
+                "en_espera",
+                "reservado",
+                "enviando",
+                "pendiente",
+                "incierto",
+                "rechazado",
+                "vencido",
+                "pagado",
+                "descartado",
+            )
+        ],
+    )
+    version = models.PositiveIntegerField(default=1)
+    importe_efectivo_centavos = models.BigIntegerField()
+    demo_mode = models.BooleanField()
+    politica_cobro_version = models.CharField(max_length=32)
+    cuenta = models.ForeignKey(
+        "ambito.CuentaCobro", null=True, blank=True, on_delete=models.PROTECT
+    )
+    pey_bank_account_id = models.CharField(max_length=26, blank=True)
+    concepto = models.CharField(max_length=500)
+    referencia = models.CharField(max_length=7, default="0")
+    expiracion_s = models.PositiveSmallIntegerField()
+    telefono_bancario = models.CharField(max_length=10, blank=True)
+    clave_legado = models.CharField(max_length=128, blank=True)
+    huella_legado = models.CharField(max_length=64, blank=True)
+    token_envio = models.UUIDField(null=True, blank=True)
+    envio_iniciado_en = models.DateTimeField(null=True, blank=True)
+    enviado_en = models.DateTimeField(null=True, blank=True)
+    request_id = models.CharField(max_length=64, blank=True)
+    error = models.CharField(max_length=200, blank=True)
+    motivo_descarte = models.CharField(max_length=60, blank=True)
+    cobro = models.OneToOneField(
+        "movimientos.Cobro",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="intento",
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comercio"],
+                condition=Q(
+                    estado__in=["reservado", "enviando", "pendiente", "incierto"]
+                ),
+                name="intento_un_vivo_por_comercio",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        origen="pedido",
+                        pedido__isnull=False,
+                        aceptacion__isnull=False,
+                        cotizacion__isnull=False,
+                    )
+                    | (
+                        Q(
+                            origen="legado",
+                            pedido__isnull=True,
+                            aceptacion__isnull=True,
+                            cotizacion__isnull=True,
+                        )
+                        & ~Q(clave_legado="")
+                    )
+                ),
+                name="intento_origen_coherente",
+            ),
+            models.UniqueConstraint(
+                fields=["comercio", "clave_legado"],
+                condition=~Q(clave_legado=""),
+                name="intento_clave_legado_unica",
+            ),
+            models.CheckConstraint(
+                condition=~Q(
+                    estado__in=[
+                        "reservado",
+                        "enviando",
+                        "pendiente",
+                        "incierto",
+                        "rechazado",
+                        "vencido",
+                        "pagado",
+                    ]
+                )
+                | (Q(cuenta__isnull=False) & ~Q(pey_bank_account_id="")),
+                name="intento_destino_fijado",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    estado__in=[
+                        "en_espera",
+                        "reservado",
+                        "enviando",
+                        "pendiente",
+                        "incierto",
+                        "rechazado",
+                        "vencido",
+                        "pagado",
+                        "descartado",
+                    ]
+                ),
+                name="intento_estado_valido",
+            ),
+            models.CheckConstraint(
+                condition=Q(canal__in=["qr_venta", "notificacion"]),
+                name="intento_canal_valido",
+            ),
+            models.CheckConstraint(
+                condition=Q(importe_efectivo_centavos__gt=0),
+                name="intento_importe_positivo",
+            ),
+            models.CheckConstraint(
+                condition=Q(demo_mode=False) | Q(importe_efectivo_centavos=1),
+                name="intento_demo_un_centavo",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        campos = (
+            "cuenta_id",
+            "pey_bank_account_id",
+            "importe_efectivo_centavos",
+            "canal",
+            "demo_mode",
+            "politica_cobro_version",
+        )
+        if not self._state.adding:
+            previo = (
+                type(self).objects.filter(pk=self.pk).values("estado", *campos).first()
+            )
+            if (
+                previo
+                and previo["estado"] != "en_espera"
+                and any(previo[campo] != getattr(self, campo) for campo in campos)
+            ):
+                raise ValueError("El destino histórico del intento es inmutable.")
+        super().save(*args, **kwargs)
+
+
 class EventoPedido(models.Model):
     evento_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     comercio = models.ForeignKey("ambito.Comercio", on_delete=models.PROTECT)
@@ -269,6 +474,10 @@ class EventoPedido(models.Model):
     sesion_id = models.CharField(max_length=64)
     conversacion_id = models.CharField(max_length=64)
     cotizacion = models.ForeignKey(Cotizacion, null=True, on_delete=models.PROTECT)
+    intento = models.ForeignKey(
+        IntentoCobro, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="eventos",
+    )
     snapshot = models.JSONField()
     creado_en = models.DateTimeField(auto_now_add=True)
 
@@ -278,6 +487,18 @@ class EventoPedido(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["comercio", "secuencia_comercio"], name="evento_secuencia_unica"
+            ),
+            models.UniqueConstraint(
+                fields=["intento", "tipo"], condition=Q(tipo__in=[
+                    "cobro.en_espera", "cobro.pendiente", "cobro.incierto",
+                    "cobro.rechazado", "cobro.descartado", "cobro.vencido",
+                    "pago.confirmado",
+                ]), name="evento_unico_por_intento_tipo",
+            ),
+            models.UniqueConstraint(
+                fields=["pedido", "tipo"],
+                condition=Q(tipo__in=["pedido.listo", "pedido.entregado"]),
+                name="evento_unico_por_pedido_tipo",
             )
         ]
         indexes = [

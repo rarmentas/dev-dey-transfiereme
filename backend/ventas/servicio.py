@@ -1,24 +1,12 @@
 """Alta de una venta por QR. No habla con la red: usa el puerto inyectado."""
 
-import logging
 import re
 from dataclasses import dataclass
-from datetime import timedelta
 from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 
-from django.db import transaction
-from django.utils import timezone
-
-from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
-from pey.desarrollo import AdaptadorDesarrollo
-from pey.produccion import AdaptadorProduccion
 from pey.puerto import PuertoPey
-from pey.seleccion import obtener_puerto
-from ventas.canal import exigir_sin_venta_viva, vencer_pendientes
-
-logger = logging.getLogger(__name__)
 
 VENTA_EXPIRACION_S = 600
 
@@ -85,167 +73,28 @@ class VentaCreada:
 
 
 def crear_venta_qr(
-    *,
-    comercio: Comercio,
-    monto: Decimal,
-    concepto: str,
-    referencia: str,
-    puerto: PuertoPey | None = None,
+    *, comercio: Comercio, monto: Decimal, concepto: str, referencia: str,
+    clave: str, puerto: PuertoPey | None = None,
 ) -> VentaCreada:
-    """Valida, pide el QR y solo entonces persiste cobro y movimiento."""
-    referencia_ok = _referencia(referencia)
-    monto_ok = _monto(monto)
-    concepto_ok = _concepto(concepto)
+    from pedidos.servicios.legado import emitir_legado
 
-    if puerto is None:
-        puerto = obtener_puerto()
-
-    origen = _origen(puerto)
-    # Fuera del candado: un ErrorPey no revierte estos vencidos.
-    vencer_pendientes(comercio)
-    # El candado del comercio se sostiene durante la llamada a pey (timeout
-    # 10 s) a propósito: dos altas simultáneas no abren dos cobros (C12).
-    qr = None
-    try:
-        with transaction.atomic():
-            exigir_sin_venta_viva(comercio)
-            if not puerto.cuenta_active(comercio):
-                raise CuentaNoActive()
-            cuenta = _cuenta_de_produccion(puerto, comercio)
-            qr = puerto.crear_qr(
-                monto=monto_ok,
-                concepto=concepto_ok,
-                expiracion_s=VENTA_EXPIRACION_S,
-                num_ref=referencia_ok,
-                **cuenta,
-            )
-            vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
-            cobro = Cobro.objects.create(
-                comercio=comercio,
-                canal=Movimiento.Canal.QR_VENTA,
-                monto=monto_ok,
-                concepto=concepto_ok,
-                vence_en=vence_en,
-                pey_qr_id=qr.id,
-                qr_string=qr.qr_string,
-                pey_bank_account_id=cuenta.get("bank_account_id", ""),
-            )
-            movimiento = Movimiento.objects.create(
-                comercio=comercio,
-                cobro=cobro,
-                canal=Movimiento.Canal.QR_VENTA,
-                monto=monto_ok,
-                concepto=concepto_ok,
-                estado=Movimiento.Estado.PENDIENTE,
-                origen=origen,
-            )
-    except Exception:
-        # Si la base falla, el QR ya existe en pey pero qr_string no se entrega.
-        if qr is not None:
-            logger.error(
-                "qr de venta creado en pey sin persistir pey_qr_id=%s comercio_id=%s",
-                qr.id,
-                comercio.pk,
-            )
-        raise
-    return VentaCreada(movimiento=movimiento, cobro=cobro, qr_string=qr.qr_string)
+    return emitir_legado(
+        comercio, "qr_venta", _monto(monto), _concepto(concepto),
+        _referencia(referencia), "", clave, puerto,
+    )
 
 
 def crear_venta_notificacion(
-    *,
-    comercio: Comercio,
-    monto: Decimal,
-    telefono: str,
-    concepto: str,
-    referencia: str,
-    puerto: PuertoPey | None = None,
+    *, comercio: Comercio, monto: Decimal, telefono: str, concepto: str,
+    referencia: str, clave: str, puerto: PuertoPey | None = None,
 ) -> VentaCreada:
-    """Valida, pide la notificación y solo entonces persiste cobro y movimiento."""
-    telefono_ok = _telefono(telefono)
-    monto_ok = _monto(monto, tope=_TOPE_NOTIFICACION, exclusivo=False)
-    referencia_ok = _referencia(referencia)
-    concepto_ok = _concepto(concepto)
+    from pedidos.servicios.legado import emitir_legado
 
-    if puerto is None:
-        puerto = obtener_puerto()
-
-    origen = _origen(puerto)
-    # Fuera del candado: un ErrorPey no revierte estos vencidos.
-    vencer_pendientes(comercio)
-    aviso = None
-    try:
-        with transaction.atomic():
-            exigir_sin_venta_viva(comercio)
-            if not puerto.cuenta_active(comercio):
-                raise CuentaNoActive()
-            cuenta = _cuenta_de_produccion(puerto, comercio)
-            aviso = puerto.crear_notificacion(
-                monto=monto_ok,
-                telefono=telefono_ok,
-                concepto=concepto_ok,
-                expiracion_s=VENTA_EXPIRACION_S,
-                num_ref=referencia_ok,
-                **cuenta,
-            )
-            vence_en = timezone.now() + timedelta(seconds=VENTA_EXPIRACION_S)
-            cobro = Cobro.objects.create(
-                comercio=comercio,
-                canal=Movimiento.Canal.NOTIFICACION,
-                monto=monto_ok,
-                concepto=concepto_ok,
-                vence_en=vence_en,
-                pey_transaction_id=aviso.transaction_id,
-                pey_bank_account_id=cuenta.get("bank_account_id", ""),
-            )
-            movimiento = Movimiento.objects.create(
-                comercio=comercio,
-                cobro=cobro,
-                canal=Movimiento.Canal.NOTIFICACION,
-                monto=monto_ok,
-                concepto=concepto_ok,
-                estado=Movimiento.Estado.PENDIENTE,
-                origen=origen,
-            )
-    except Exception:
-        # El teléfono completo no se escribe: como mucho los 4 últimos.
-        if aviso is not None:
-            logger.error(
-                "notificación de venta creada en pey sin persistir "
-                "transaction_id=%s comercio_id=%s telefono_final=%s",
-                aviso.transaction_id,
-                comercio.pk,
-                telefono_ok[-4:],
-            )
-        raise
-    logger.info(
-        "venta por notificación comercio_id=%s transaction_id=%s telefono_final=%s",
-        comercio.pk,
-        aviso.transaction_id,
-        telefono_ok[-4:],
+    return emitir_legado(
+        comercio, "notificacion", _monto(monto, tope=_TOPE_NOTIFICACION,
+                                         exclusivo=False), _concepto(concepto),
+        _referencia(referencia), _telefono(telefono), clave, puerto,
     )
-    return VentaCreada(
-        movimiento=movimiento,
-        cobro=cobro,
-        qr_string="",
-        transaction_id=aviso.transaction_id,
-    )
-
-
-def _cuenta_de_produccion(puerto: PuertoPey, comercio: Comercio) -> dict[str, str]:
-    """En producción el cobro va a la cuenta del comercio. En desarrollo no se exige."""
-    if not isinstance(puerto, AdaptadorProduccion):
-        return {}
-    cuenta = cuenta_por_defecto(comercio)
-    ident = cuenta.pey_bank_account_id if cuenta else ""
-    if not cuenta_apta(cuenta):
-        raise CuentaNoActive()
-    return {"bank_account_id": ident}
-
-
-def _origen(puerto: PuertoPey) -> str:
-    if isinstance(puerto, AdaptadorDesarrollo):
-        return Movimiento.Origen.ORIGEN_DESARROLLO
-    return Movimiento.Origen.ORIGEN_PEY
 
 
 def _referencia(referencia: str | None) -> str:

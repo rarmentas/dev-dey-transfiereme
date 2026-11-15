@@ -38,7 +38,9 @@ def vencer_pendientes(comercio: Comercio) -> None:
     )
     for movimiento in pendientes:
         try:
-            movimiento.cambiar_estado(Movimiento.Estado.VENCIDO)
+            from pedidos.servicios.cobros import vencer_intento
+
+            vencer_intento(movimiento)
         except TransicionInvalida:
             pass
 

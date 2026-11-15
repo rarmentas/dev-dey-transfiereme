@@ -15,6 +15,7 @@ from ambito.exceptions import (
 from ambito.scope import preparar_operacion_cobro
 from config.modo import demo_activo, respuesta_bloqueada_en_demo
 from movimientos.alta_qr_general import alta_qr_general
+from movimientos.exceptions import DemoBloqueado, QrGeneralNoDisponible
 from pey.tipos import ErrorPey, ParametroInvalido
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,10 @@ class AltaQrGeneralView(APIView):
 
         try:
             resultado = alta_qr_general(comercio)
+        except DemoBloqueado:
+            return respuesta_bloqueada_en_demo()
+        except QrGeneralNoDisponible:
+            return Response({"codigo": "QR_GENERAL_NO_DISPONIBLE"}, status=409)
         except CuentaNoActiveError as exc:
             return Response(
                 {

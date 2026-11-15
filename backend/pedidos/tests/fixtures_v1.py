@@ -49,6 +49,9 @@ class DriverFixtureV1(ABC):
     @abstractmethod
     def cambiar_sesion(self, ctx, sesion, comercio=None): ...
 
+    def despachar(self):
+        return None
+
     def fijar_cuenta(self, estado):
         raise NotImplementedError
 
@@ -163,6 +166,12 @@ class FixturesContratoV1:
         }
         return datos, self.nucleo.solicitar_cobro(ctx, **datos)
 
+    def _despachar(self, ctx, pedido_id):
+        getattr(self.driver, "despachar", lambda: None)()
+        return self.nucleo.consultar_pedido(
+            ctx, contrato_version="1.0", pedido_id=pedido_id
+        ).data["pedido"]
+
     def _feed(self, ctx, cursor=None):
         return self.nucleo.consultar_eventos(
             ContextoConsumidorV1(ctx.instancia_id, ctx.sesion_id),
@@ -246,20 +255,19 @@ class FixturesContratoV1:
             CodigoError.MODO_CAMBIO,
         )
         self.driver.cambiar_modo(False, "normal-1")
-        if self.nucleo.ES_SIMULACION:
-            reservado = self.driver.reservar_sin_envio(pedido.id)
-            self.assertEqual(reservado.pago_estado, EstadoPago.RESERVADO)
-            self.driver.cambiar_modo(True, "demo-1")
-            actual = self.nucleo.consultar_pedido(
-                ctx, contrato_version="1.0", pedido_id=pedido.id
-            )
-            self.assertEqual(actual.data["pedido"].pago_estado, EstadoPago.DESCARTADO)
-            self.assertEqual(self.driver.contar_llamadas(), 0)
-            ctx2, otro, _ = self._aceptar("-plaza")
-            _, cobro = self._cobrar(ctx2, otro, "cobro-plaza")
-            self.assertEqual(cobro.data["pedido"].pago_estado, EstadoPago.PENDIENTE)
-        else:
-            self.driver.invalidar_cotizacion(pedido.id)
+        reservado = self.driver.reservar_sin_envio(pedido.id)
+        self.assertEqual(reservado.pago_estado, EstadoPago.RESERVADO)
+        self.driver.cambiar_modo(True, "demo-1")
+        actual = self.nucleo.consultar_pedido(
+            ctx, contrato_version="1.0", pedido_id=pedido.id
+        )
+        self.assertEqual(actual.data["pedido"].pago_estado, EstadoPago.DESCARTADO)
+        self.assertEqual(self.driver.contar_llamadas(), 0)
+        ctx2, otro, _ = self._aceptar("-plaza")
+        _, cobro = self._cobrar(ctx2, otro, "cobro-plaza")
+        self.assertTrue(cobro.ok, cobro.error)
+        actual = self._despachar(ctx2, otro.id)
+        self.assertEqual(actual.pago_estado, EstadoPago.PENDIENTE)
         self.assertEqual(
             self.nucleo.aceptar_cotizacion(ctx, **datos).error.code,
             CodigoError.REVISION_OBSOLETA,
@@ -269,7 +277,6 @@ class FixturesContratoV1:
         )
         self.assertIsNone(actual.data["pedido"].aceptacion)
 
-    @solo_stub
     def test_f07_cuenta_pendiente_sin_llamada(self):
         ctx, pedido, _ = self._aceptar()
         self.driver.fijar_cuenta("pendiente")
@@ -277,18 +284,18 @@ class FixturesContratoV1:
         self.assertEqual(respuesta.error.code, CodigoError.CUENTA_NO_ACTIVE)
         self.assertEqual(self.driver.contar_llamadas(), 0)
 
-    @solo_stub
     def test_f08_espera_y_activacion_explicita_mismo_intento(self):
         ctx1, primero, _ = self._aceptar("1")
         _, cobro1 = self._cobrar(ctx1, primero, "cobro1")
-        self.assertEqual(cobro1.data["pedido"].pago_estado, EstadoPago.PENDIENTE)
+        enviado1 = self._despachar(ctx1, primero.id)
+        self.assertEqual(enviado1.pago_estado, EstadoPago.PENDIENTE)
         ctx2, segundo, _ = self._aceptar("2")
         datos, cobro2 = self._cobrar(ctx2, segundo, "cobro2")
         espera = cobro2.data["pedido"]
         self.assertEqual(espera.pago_estado, EstadoPago.EN_ESPERA)
         self.assertIsNone(espera.intento.cobro_id)
         self.assertNotEqual(
-            espera.intento.intento_id, cobro1.data["pedido"].intento.intento_id
+            espera.intento.intento_id, enviado1.intento.intento_id
         )
         datos["command_key"] = "cobro2-otra"
         self.driver.confirmar_pago(primero.id, "webhook1")
@@ -310,12 +317,12 @@ class FixturesContratoV1:
         self.assertEqual(activado.pago_estado, EstadoPago.PENDIENTE)
         self.assertEqual(self.driver.contar_llamadas(), 2)
 
-    @solo_stub
     def test_f09_incierto_no_reenvia(self):
         ctx, pedido, _ = self._aceptar()
         self.driver.forzar_incierto()
         datos, respuesta = self._cobrar(ctx, pedido)
-        self.assertEqual(respuesta.data["pedido"].pago_estado, EstadoPago.INCIERTO)
+        actual = self._despachar(ctx, pedido.id)
+        self.assertEqual(actual.pago_estado, EstadoPago.INCIERTO)
         datos["command_key"] = "otra"
         self.assertEqual(
             self.nucleo.solicitar_cobro(ctx, **datos).data["pedido"].pago_estado,
@@ -323,19 +330,19 @@ class FixturesContratoV1:
         )
         self.assertEqual(self.driver.contar_llamadas(), 1)
 
-    @solo_stub
     def test_f10_webhook_repetido_un_evento(self):
         ctx, pedido, _ = self._aceptar()
         self._cobrar(ctx, pedido)
+        self._despachar(ctx, pedido.id)
         self.driver.confirmar_pago(pedido.id, "webhook")
         self.driver.confirmar_pago(pedido.id, "webhook")
         eventos = [e.tipo.value for e in self._feed(ctx).data["eventos"]]
         self.assertEqual(eventos.count("pago.confirmado"), 1)
 
-    @solo_stub
     def test_f11_pago_listo_entregado_separados(self):
         ctx, pedido, _ = self._aceptar()
         self._cobrar(ctx, pedido)
+        self._despachar(ctx, pedido.id)
         with self.assertRaises(ValueError):
             self.driver.marcar_listo(pedido.id)
         pagado = self.driver.confirmar_pago(pedido.id, "pago")
@@ -414,14 +421,15 @@ class FixturesContratoV1:
         )
         self.assertEqual(actual.data["pedido"].renglones[0].texto_solicitado, "pan")
 
-    @solo_stub
     def test_f14_webhook_temprano_se_reaplica_una_vez(self):
         ctx, pedido, _ = self._aceptar()
         cobro_id = id_determinista(pedido.id, "cobro")
         self.driver.webhook_temprano(cobro_id, "webhook")
         self.driver.webhook_temprano(cobro_id, "webhook")
         _, respuesta = self._cobrar(ctx, pedido)
-        self.assertEqual(respuesta.data["pedido"].pago_estado, EstadoPago.PAGADO)
+        self.assertTrue(respuesta.ok, respuesta.error)
+        actual = self._despachar(ctx, pedido.id)
+        self.assertEqual(actual.pago_estado, EstadoPago.PAGADO)
         self.driver.confirmar_pago(pedido.id, "webhook")
         eventos = [e.tipo.value for e in self._feed(ctx).data["eventos"]]
         self.assertEqual(eventos.count("pago.confirmado"), 1)

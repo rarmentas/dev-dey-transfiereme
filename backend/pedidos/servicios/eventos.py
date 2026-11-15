@@ -9,17 +9,19 @@ from pedidos.models import EventoPedido
 SALT = "pedidos.cursor.v1"
 
 
-def emitir(comercio, pedido, tipo, cotizacion=None):
+def emitir(comercio, pedido, tipo, cotizacion=None, intento=None):
     comercio.secuencia_evento += 1
     comercio.save(update_fields=["secuencia_evento"])
     cot = (
         cotizacion
         or pedido.cotizaciones.filter(revision=pedido.revision_vigente).first()
     )
+    ultimo = pedido.intentos.order_by("-creado_en", "-id").first()
     snapshot = {
         "estado": pedido.estado,
-        "pago_estado": "sin_cobro",
-        "preparacion": "pendiente",
+        "pedido_numero": pedido.numero,
+        "pago_estado": ultimo.estado if ultimo else "sin_cobro",
+        "preparacion": pedido.preparacion,
         "cotizacion_revision": cot.revision if cot else None,
         "total_comercial_centavos": cot.total_comercial_centavos if cot else None,
         "importe_efectivo_centavos": cot.importe_efectivo_centavos if cot else None,
@@ -35,6 +37,7 @@ def emitir(comercio, pedido, tipo, cotizacion=None):
         sesion_id=pedido.sesion_id,
         conversacion_id=pedido.conversacion_id,
         cotizacion=cot,
+        intento=intento,
         snapshot=snapshot,
     )
 
@@ -78,6 +81,7 @@ def consultar(comercio, ctx, cursor, limite):
                     fila.conversacion_id,
                     str(fila.cotizacion_id) if fila.cotizacion_id else None,
                     fila.snapshot,
+                    str(fila.intento_id) if fila.intento_id else None,
                 )
             )
         secuencia = fila.secuencia_comercio

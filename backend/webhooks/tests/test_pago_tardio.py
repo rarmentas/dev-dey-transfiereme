@@ -1,12 +1,13 @@
 """Un aviso firmado cobra la venta aunque ya se haya vencido al abrir la siguiente."""
 
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-from rest_framework.test import APIClient
+from pedidos.tests.soporte_cobro import ClienteLegacy
 
 from ambito.models import Comercio, Membresia
 from ambito.tests.soporte import crear_cuenta
@@ -16,7 +17,7 @@ from webhooks.tests.support.pey_webhook import SECRETO, cuerpo_qr, post_firmado
 
 
 @override_settings(PEY_WEBHOOK_SECRET=SECRETO)
-class PagoTardioVentaTests(TestCase):
+class PagoTardioVentaTests(TransactionTestCase):
     def test_aviso_de_la_venta_vencida_aparece_en_el_tablero_y_el_repetido_es_duplicado(
         self,
     ) -> None:
@@ -24,11 +25,15 @@ class PagoTardioVentaTests(TestCase):
         crear_cuenta(comercio)
         usuario = User.objects.create_user(username="vendedor_tarde", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
-        cliente = APIClient()
+        cliente = ClienteLegacy.crear()
         cliente.force_login(usuario)
         puerto = AdaptadorDesarrollo()
 
-        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+        with patch(
+
+            "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+
+        ):
             alta_a = cliente.post(
                 "/api/ventas/",
                 {"monto": "25.00", "concepto": "Tacos"},
@@ -55,6 +60,9 @@ class PagoTardioVentaTests(TestCase):
             codi_qr_id=cobro_a.pey_qr_id,
             amount=25,
         )
+        datos = json.loads(cuerpo)
+        datos["bankAccountId"] = cobro_a.pey_bank_account_id
+        cuerpo = json.dumps(datos, separators=(",", ":"))
         with self.assertLogs("movimientos.correlacion", level="WARNING") as logs:
             aviso = post_firmado(cliente, cuerpo, "msg_tarde_a")
         self.assertEqual(aviso.status_code, 200)

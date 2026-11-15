@@ -2,11 +2,8 @@ import base64
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import patch
 
-from django.db import IntegrityError
 from django.test import TestCase, override_settings
-from standardwebhooks import Webhook
 
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
@@ -86,7 +83,9 @@ class PuertoWebhookPeyTests(TestCase):
             ("firma", firma_mala),
             ("sin_headers", {}),
             ("header_ausente", sin_firma),
-            ("timestamp_viejo", _encabezados(cuerpo, "msg_viejo", ahora - timedelta(minutes=6))),
+            ("timestamp_viejo", _encabezados(
+                cuerpo, "msg_viejo", ahora - timedelta(minutes=6)
+            )),
         )
         for nombre, headers in casos:
             with self.subTest(nombre=nombre):
@@ -234,9 +233,9 @@ class PuertoWebhookPeyTests(TestCase):
         with self.assertLogs("webhooks.views", level="WARNING") as logs:
             respuesta = self._post(cuerpo, "msg_sin_cobro_pn")
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json(), {"estado": "sin_cobro"})
+        self.assertEqual(respuesta.json(), {"estado": "pendiente_correlacion"})
         aviso = AvisoRecibido.objects.get(webhook_id="msg_sin_cobro_pn")
-        self.assertEqual(aviso.resultado, AvisoRecibido.Resultado.SIN_COBRO)
+        self.assertEqual(aviso.resultado, AvisoRecibido.Resultado.PENDIENTE_CORRELACION)
         self.assertEqual(aviso.transaction_id, "TX-DESCONOCIDO")
         texto = " ".join(logs.output)
         self.assertIn("codi.pn.payment_received", texto)
@@ -249,11 +248,11 @@ class PuertoWebhookPeyTests(TestCase):
         cuerpo = _cuerpo_qr(transaction_id="TX-NADIE", codi_qr_id="QR-NADIE")
         respuesta = self._post(cuerpo, "msg_nadie")
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json(), {"estado": "sin_cobro"})
+        self.assertEqual(respuesta.json(), {"estado": "pendiente_correlacion"})
         self.assertEqual(Movimiento.objects.count(), 0)
         self.assertEqual(
             AvisoRecibido.objects.get().resultado,
-            AvisoRecibido.Resultado.SIN_COBRO,
+            AvisoRecibido.Resultado.PENDIENTE_CORRELACION,
         )
 
     def test_aviso_sobre_vencido_marca_pagado(self) -> None:
@@ -395,8 +394,7 @@ class PuertoWebhookPeyTests(TestCase):
         cuerpo = _cuerpo_qr(transaction_id="TX-VENTA", codi_qr_id="QR-VENTA")
         primera = self._post(cuerpo, "msg_uno")
         self.assertEqual(primera.json(), {"estado": "aplicado"})
-        with patch("webhooks.views._pago_ya_registrado", return_value=False):
-            segunda = self._post(cuerpo, "msg_dos")
+        segunda = self._post(cuerpo, "msg_dos")
         self.assertEqual(segunda.status_code, 200)
         self.assertEqual(segunda.json(), {"estado": "duplicado_transaccion"})
         leido = Movimiento.objects.get(pk=movimiento.pk)
@@ -415,16 +413,13 @@ class PuertoWebhookPeyTests(TestCase):
             '"concept":"Transferencia","transactionId":"TX-CARRERA",'
             '"codiQrId":"QR-GEN"}'
         )
-        error = IntegrityError(
-            "duplicate key value violates unique constraint "
-            '"movimientos_movimiento_pey_transaction_id_key"'
-        )
-        with patch("webhooks.views.aplicar_aviso", side_effect=error):
-            respuesta = self._post(cuerpo, "msg_carrera")
+        primera = self._post(cuerpo, "msg_primero")
+        respuesta = self._post(cuerpo, "msg_carrera")
+        self.assertEqual(primera.json(), {"estado": "aplicado"})
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.json(), {"estado": "duplicado_transaccion"})
-        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 1)
         self.assertEqual(
-            AvisoRecibido.objects.get().resultado,
+            AvisoRecibido.objects.get(webhook_id="msg_carrera").resultado,
             AvisoRecibido.Resultado.DUPLICADO_TRANSACCION,
         )

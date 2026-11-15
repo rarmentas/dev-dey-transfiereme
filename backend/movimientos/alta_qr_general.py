@@ -1,6 +1,5 @@
 """Alta del QR general de un comercio vía el puerto pey (sin HTTP aquí)."""
 
-import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -10,12 +9,12 @@ from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from movimientos.cobro_qr import preparar_alta_qr_general
+from config.modo import demo_activo
+from movimientos.exceptions import DemoBloqueado, QrGeneralNoDisponible
 from movimientos.models import Cobro, Movimiento
 from pey.produccion import AdaptadorProduccion
 from pey.seleccion import obtener_puerto
 from pey.tipos import QrCreado
-
-logger = logging.getLogger(__name__)
 
 _CONCEPTO_QR_GENERAL = "Transferencia"
 
@@ -27,20 +26,23 @@ class ResultadoAltaQrGeneral:
 
 
 def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
+    if demo_activo():
+        raise DemoBloqueado()
     preparar_alta_qr_general(comercio)
+    if comercio.cuentas.count() > 1:
+        raise QrGeneralNoDisponible()
     puerto = obtener_puerto()
     # En producción se exige la cuenta antes de reutilizar un QR viejo.
     cuenta = _cuenta_de_produccion(puerto, comercio)
     ident = cuenta.get("bank_account_id", "")
 
     existente = _qr_general_de_comercio(comercio)
-    if existente is not None and _se_reutiliza(puerto, existente, ident):
+    if existente is not None:
+        if existente.pey_bank_account_id != ident:
+            raise QrGeneralNoDisponible()
         return ResultadoAltaQrGeneral(cobro=existente, creado=False)
 
     qr = _pedir_qr(puerto, cuenta)
-    if existente is not None:
-        return _regenerar(existente, qr, ident)
-
     try:
         with transaction.atomic():
             cobro = Cobro.objects.create(
@@ -52,15 +54,16 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
                 pey_qr_id=qr.id,
                 qr_string=qr.qr_string,
                 pey_bank_account_id=ident,
+                cuenta=cuenta_por_defecto(comercio),
             )
             return ResultadoAltaQrGeneral(cobro=cobro, creado=True)
     except IntegrityError:
         existente = _qr_general_de_comercio(comercio)
         if existente is None:
             raise
-        if _se_reutiliza(puerto, existente, ident):
-            return ResultadoAltaQrGeneral(cobro=existente, creado=False)
-        return _regenerar(existente, qr, ident)
+        if existente.pey_bank_account_id != ident:
+            raise QrGeneralNoDisponible() from None
+        return ResultadoAltaQrGeneral(cobro=existente, creado=False)
 
 
 def _cuenta_de_produccion(puerto: object, comercio: Comercio) -> dict[str, str]:
@@ -73,13 +76,6 @@ def _cuenta_de_produccion(puerto: object, comercio: Comercio) -> dict[str, str]:
     return {"bank_account_id": ident}
 
 
-def _se_reutiliza(puerto: object, cobro: Cobro, ident: str) -> bool:
-    """En desarrollo se reutiliza siempre. En producción, solo si la cuenta coincide."""
-    if not isinstance(puerto, AdaptadorProduccion):
-        return True
-    return cobro.pey_bank_account_id == ident
-
-
 def _pedir_qr(puerto: object, cuenta: dict[str, str]) -> QrCreado:
     return puerto.crear_qr(
         monto=Decimal("0"),
@@ -88,16 +84,6 @@ def _pedir_qr(puerto: object, cuenta: dict[str, str]) -> QrCreado:
         num_ref="0",
         **cuenta,
     )
-
-
-def _regenerar(cobro: Cobro, qr: QrCreado, ident: str) -> ResultadoAltaQrGeneral:
-    """Misma fila: el QR general es único por comercio y pey_qr_id es único."""
-    cobro.pey_qr_id = qr.id
-    cobro.qr_string = qr.qr_string
-    cobro.pey_bank_account_id = ident
-    cobro.save(update_fields=["pey_qr_id", "qr_string", "pey_bank_account_id"])
-    logger.warning("QR general regenerado cobro_id=%s", cobro.pk)
-    return ResultadoAltaQrGeneral(cobro=cobro, creado=False)
 
 
 def _qr_general_de_comercio(comercio: Comercio) -> Cobro | None:

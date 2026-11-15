@@ -9,6 +9,7 @@ from pedidos.errores import ErrorNucleo
 from pedidos.models import Pedido
 from pedidos.servicios.comandos import guardar, repeticion
 from pedidos.servicios.cotizaciones import invalidar, publicar
+from pedidos.servicios.intentos import exigir_editable
 
 
 def operar(comercio, pedido_id, operacion, datos, usuario=None):
@@ -35,6 +36,7 @@ def operar(comercio, pedido_id, operacion, datos, usuario=None):
             )
         if pedido.estado == "cerrado":
             raise ErrorNucleo(CodigoError.PEDIDO_CONGELADO)
+        exigir_editable(comercio, pedido)
         if operacion == "revisar_renglones":
             existentes = {str(r.id): r for r in pedido.renglones.all()}
             recibidos = datos["renglones"]

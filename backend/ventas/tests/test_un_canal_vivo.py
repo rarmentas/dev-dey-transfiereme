@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.db import connections
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from django.utils import timezone
+from pedidos.tests.soporte_cobro import ClienteLegacy
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
@@ -57,9 +58,9 @@ class _PuertoEspera:
         )
 
 
-class UnCanalVivoTests(TestCase):
+class UnCanalVivoTests(TransactionTestCase):
     def setUp(self) -> None:
-        self.client = APIClient()
+        self.client = ClienteLegacy.crear()
         self.comercio_a = Comercio.objects.create(
             nombre="Comercio A",
             semilla_active_dev=True,
@@ -83,7 +84,9 @@ class UnCanalVivoTests(TestCase):
         self.client.force_login(usuario)
 
     def _post(self, puerto, cuerpo=None):
-        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+        with patch(
+            "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+        ):
             return self.client.post(
                 _RUTA,
                 cuerpo or {"monto": "0.01", "concepto": "Taco"},
@@ -339,7 +342,7 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
         candado = threading.Lock()
         candado_llegada = threading.Lock()
         llegados = [0]
-        clientes = [APIClient(), APIClient()]
+        clientes = [ClienteLegacy.crear(), ClienteLegacy.crear()]
         for cliente in clientes:
             cliente.force_login(usuario)
 
@@ -358,13 +361,20 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
                 )
                 with candado:
                     codigos.append(respuesta.status_code)
-                    detalles.append(respuesta.json().get("detail", ""))
+                    detalles.append(
+                        respuesta.json().get("detail")
+                        or respuesta.json().get("codigo", "")
+                    )
             except BaseException as exc:
                 errores.append(exc)
             finally:
                 connections.close_all()
 
-        with patch("ventas.servicio.obtener_puerto", return_value=puerto):
+        with patch(
+
+            "pedidos.servicios.despacho.obtener_puerto", return_value=puerto
+
+        ):
             hilos = [
                 threading.Thread(target=alta, args=(cliente,)) for cliente in clientes
             ]
@@ -376,7 +386,9 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
 
         self.assertEqual(errores, [])
         self.assertEqual(sorted(codigos), [201, 409])
-        self.assertIn("Ya hay una venta pendiente.", detalles)
+        self.assertTrue(
+            {"Ya hay una venta pendiente.", "COBRO_EN_CURSO"}.intersection(detalles)
+        )
         self.assertEqual(puerto.llamadas, 1)
         self.assertEqual(Cobro.objects.filter(comercio=comercio).count(), 1)
         self.assertEqual(

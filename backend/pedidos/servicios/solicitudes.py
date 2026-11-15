@@ -10,6 +10,7 @@ from pedidos.models import Pedido
 from pedidos.servicios.comandos import guardar, repeticion
 from pedidos.servicios.cotizaciones import invalidar
 from pedidos.servicios.eventos import emitir
+from pedidos.servicios.intentos import exigir_editable
 
 
 def registrar_solicitud(self, ctx, **datos):
@@ -71,6 +72,7 @@ def corregir_borrador(self, ctx, **datos):
             raise ErrorNucleo(CodigoError.VERSION_OBSOLETA)
         if pedido.estado == "cerrado":
             raise ErrorNucleo(CodigoError.PEDIDO_CONGELADO)
+        exigir_editable(comercio, pedido)
         self._renglones(pedido, datos["renglones"])
         pedido.version += 1
         tenia_cotizacion = pedido.revision_vigente is not None

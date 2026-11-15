@@ -3,10 +3,13 @@
 from datetime import datetime
 from decimal import Decimal
 
+from ambito.cuenta_pey_servicio import enmascarar_clabe
 from pedidos.contratos.calculo import subtotal_centavos
 from pedidos.contratos.v1 import (
     AceptacionDTO,
     CotizacionDTO,
+    CobroDTO,
+    CanalCobro,
     EstadoPago,
     EstadoPedido,
     EstadoPreparacion,
@@ -73,6 +76,17 @@ def pedido_dto(pedido):
         if aceptacion and pedido.estado == "aceptado"
         else None
     )
+    ultimo = pedido.intentos.select_related("cuenta", "cobro").order_by(
+        "-creado_en", "-id"
+    ).first()
+    cobro = ultimo.cobro if ultimo else None
+    intento_dto = CobroDTO(
+        str(ultimo.pk), str(cobro.pk) if cobro else None,
+        CanalCobro(ultimo.canal), EstadoPago(ultimo.estado),
+        cobro.qr_string or None if cobro else None,
+        cobro.vence_en if cobro else None,
+        enmascarar_clabe(ultimo.cuenta.clabe) if ultimo.cuenta_id else None,
+    ) if ultimo else None
     return PedidoDTO(
         str(pedido.id),
         pedido.numero,
@@ -89,9 +103,9 @@ def pedido_dto(pedido):
         cotizacion_dto(cot),
         pedido.ultima_revision,
         aceptado,
-        EstadoPago.SIN_COBRO,
-        EstadoPreparacion.PENDIENTE,
-        None,
+        EstadoPago(ultimo.estado) if ultimo else EstadoPago.SIN_COBRO,
+        EstadoPreparacion(pedido.preparacion),
+        intento_dto,
         False,
     )
 
@@ -125,4 +139,13 @@ def pedido_desde_json(data):
             aceptacion["aceptada_en"].replace("Z", "+00:00")
         )
         data["aceptacion"] = AceptacionDTO(**aceptacion)
+    if data["intento"]:
+        intento = dict(data["intento"])
+        intento["canal"] = CanalCobro(intento["canal"])
+        intento["estado"] = EstadoPago(intento["estado"])
+        if intento["vencimiento"]:
+            intento["vencimiento"] = datetime.fromisoformat(
+                intento["vencimiento"].replace("Z", "+00:00")
+            )
+        data["intento"] = CobroDTO(**intento)
     return PedidoDTO(**data)

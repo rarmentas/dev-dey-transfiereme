@@ -4,7 +4,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 
 from ambito.models import Comercio, Membresia
 from ambito.tests.soporte import crear_cuenta
@@ -33,7 +33,7 @@ def _transporte_pn(llamadas: list):
 
 
 @override_settings(PEY_API_KEY=_LLAVE, PEY_BASE_URL="https://api.pey.mx")
-class CobroALaCuentaDelComercioTests(TestCase):
+class CobroALaCuentaDelComercioTests(TransactionTestCase):
     def setUp(self) -> None:
         self.comercio = Comercio.objects.create(nombre="Con cuenta")
         cuenta = crear_cuenta(self.comercio)
@@ -51,6 +51,7 @@ class CobroALaCuentaDelComercioTests(TestCase):
                 monto=Decimal("0.01"),
                 concepto="Tacos",
                 referencia="",
+                clave="prueba",
                 puerto=puerto,
             )
         self.assertEqual(len(llamadas), 1)
@@ -67,6 +68,7 @@ class CobroALaCuentaDelComercioTests(TestCase):
                 telefono="5512345678",
                 concepto="Aviso",
                 referencia="",
+                clave="prueba",
                 puerto=puerto,
             )
         self.assertEqual(len(llamadas), 1)
@@ -85,6 +87,7 @@ class CobroALaCuentaDelComercioTests(TestCase):
                     monto=Decimal("0.01"),
                     concepto="Tacos",
                     referencia="",
+                    clave="prueba",
                     puerto=puerto,
                 )
             with self.assertRaises(CuentaNoActive):
@@ -94,17 +97,20 @@ class CobroALaCuentaDelComercioTests(TestCase):
                     telefono="5512345678",
                     concepto="Aviso",
                     referencia="",
+                    clave="prueba",
                     puerto=AdaptadorProduccion(transporte=_transporte_pn(llamadas)),
                 )
         self.assertEqual(llamadas, [])
 
-    def test_desarrollo_usa_default_sin_enviar_id(self) -> None:
+    def test_desarrollo_conserva_el_default_en_el_cobro(self) -> None:
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
             venta = crear_venta_qr(
                 comercio=self.comercio,
                 monto=Decimal("0.01"),
                 concepto="Tacos",
                 referencia="",
+                clave="prueba",
                 puerto=AdaptadorDesarrollo(),
             )
         self.assertTrue(venta.qr_string.startswith("cody-dev://qr/"))
+        self.assertEqual(venta.cobro.pey_bank_account_id, _CUENTA)
