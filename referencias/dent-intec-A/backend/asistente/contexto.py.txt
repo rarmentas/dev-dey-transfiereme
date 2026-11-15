@@ -1,0 +1,28 @@
+from contextvars import ContextVar, Token
+
+_conversacion_actual: ContextVar = ContextVar('conversacion_asistente', default=None)
+_clinica_actual: ContextVar = ContextVar('clinica_asistente', default=None)
+
+
+def establecer_conversacion(conversacion) -> Token:
+    return _conversacion_actual.set(conversacion)
+
+
+def restablecer_conversacion(token: Token) -> None:
+    _conversacion_actual.reset(token)
+
+
+def obtener_conversacion():
+    return _conversacion_actual.get()
+
+
+def establecer_clinica(clinica) -> Token:
+    return _clinica_actual.set(clinica)
+
+
+def restablecer_clinica(token: Token) -> None:
+    _clinica_actual.reset(token)
+
+
+def obtener_clinica():
+    return _clinica_actual.get()

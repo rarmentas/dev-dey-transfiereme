@@ -117,7 +117,7 @@ backend:test:
   script:
     - .venv/bin/python manage.py migrate --noinput
     - .venv/bin/python manage.py makemigrations --check --dry-run
-    - .venv/bin/python manage.py test config.tests ambito.tests sesion.tests movimientos.tests webhooks.tests pey.tests integracion.tests ventas.tests pedidos.tests canales.tests
+    - .venv/bin/python manage.py test config.tests ambito.tests sesion.tests movimientos.tests webhooks.tests pey.tests integracion.tests ventas.tests pedidos.tests canales.tests asistente_pedidos.tests
   needs:
     - backend:check
 

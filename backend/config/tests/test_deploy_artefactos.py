@@ -66,6 +66,7 @@ class DeployArtefactosTests(SimpleTestCase):
             self.assertNotIn("docker compose", texto)
         ci = (RAIZ / ".gitlab-ci.yml").read_text()
         for valor in ("requirements-canal.txt", "pedidos.tests canales.tests",
+                      "asistente_pedidos.tests",
                       "makemigrations --check --dry-run", "resource_group: codi-vps",
                       "when: never", "when: manual",
                       "flutter test test/widget_smoke_test.dart test/features/pedidos"):

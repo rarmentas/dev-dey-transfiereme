@@ -272,10 +272,11 @@ grep -Fxq "ExecStart=$stt_home/venv/bin/python manage.py procesar_audio" "$backu
 grep -Fxq "Environment=CODY_ROL=stt HF_HOME=$stt_home/modelos HF_HUB_OFFLINE=1" "$backup_dir/cody-stt.service"
 # Las listas permitidas evitan propagar secretos o sobrescribir CODY_ROL.
 comunes='POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_HOST|POSTGRES_PORT|DJANGO_SECRET_KEY|DEBUG|ALLOWED_HOSTS|DEMO_MODE|DEMO_PEY_BANK_ACCOUNT_ID|NUCLEO_ADAPTADOR|POLITICA_COBRO_VERSION|PEDIDOS_COBRO_HABILITADO'
-canal_claves="$comunes|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY|STT_HABILITADO|STT_MODELO|STT_CPU_THREADS"
+stt_claves="$comunes|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY|STT_HABILITADO|STT_MODELO|STT_CPU_THREADS"
+canal_claves="$stt_claves|AGENTE_PEDIDOS_API_KEY|AGENTE_PEDIDOS_MODELO|AGENTE_PEDIDOS_TIMEOUT_S"
 cobros_claves="$comunes|PEY_API_KEY|PEY_ADAPTADOR"
 grep -E "^[[:space:]]*($canal_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.canal" || [[ "$?" -eq 1 ]]
-cp "$backup_dir/env.canal" "$backup_dir/env.stt"
+grep -E "^[[:space:]]*($stt_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.stt" || [[ "$?" -eq 1 ]]
 grep -E "^[[:space:]]*($cobros_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.cobros" || [[ "$?" -eq 1 ]]
 
 chmod 600 "$backup_dir/env.canal" "$backup_dir/env.cobros" "$backup_dir/env.stt"

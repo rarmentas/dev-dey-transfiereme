@@ -25,9 +25,9 @@ if [[ ! -x "$VENV_PY" ]]; then
 fi
 if "$VENV_PY" -m pip --version >/dev/null 2>&1; then
   "$VENV_PY" -m pip install --upgrade pip
-  "$VENV_PY" -m pip install -r backend/requirements.txt
+  "$VENV_PY" -m pip install -r backend/requirements-canal.txt
 elif command -v uv >/dev/null 2>&1; then
-  uv pip install -r backend/requirements.txt --python "$VENV_PY"
+  uv pip install -r backend/requirements-canal.txt --python "$VENV_PY"
 else
   echo "Instale pip en el venv o instale uv." >&2
   exit 1

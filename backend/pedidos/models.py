@@ -139,6 +139,9 @@ class RenglonPedido(models.Model):
         default=EstadoResolucion.PENDIENTE,
     )
     motivo_exclusion = models.CharField(max_length=200, blank=True)
+    producto_catalogo = models.ForeignKey(
+        "pedidos.ProductoCatalogo", null=True, blank=True, on_delete=models.SET_NULL
+    )
 
     class Meta:
         verbose_name = "renglón de pedido"
@@ -181,6 +184,22 @@ class RenglonPedido(models.Model):
                 condition=~Q(resolucion="excluido") | ~Q(motivo_exclusion=""),
                 name="renglon_excluido_motivo",
             ),
+        ]
+
+
+class ProductoCatalogo(models.Model):
+    comercio = models.ForeignKey("ambito.Comercio", on_delete=models.PROTECT, related_name="productos")
+    nombre = models.CharField(max_length=200)
+    alias = models.JSONField(default=list, blank=True)
+    unidad = models.CharField(max_length=30)
+    precio_centavos = models.BigIntegerField(null=True, blank=True)
+    disponible = models.BooleanField(default=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["comercio", "nombre"], name="producto_nombre_por_comercio"),
+            models.CheckConstraint(condition=models.Q(precio_centavos__isnull=True) | models.Q(precio_centavos__gt=0), name="producto_precio_positivo"),
         ]
 
 

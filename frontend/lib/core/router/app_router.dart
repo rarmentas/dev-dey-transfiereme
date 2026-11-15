@@ -8,6 +8,7 @@ import '../../features/cuenta/presentation/cuentas_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/pedidos/presentation/pedido_detalle_page.dart';
 import '../../features/pedidos/presentation/pedidos_page.dart';
+import '../../features/pedidos/presentation/catalogo_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
 import '../../features/tablero/presentation/tablero_page.dart';
@@ -107,6 +108,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: kRutaPedidos,
         builder: (context, state) => const PedidosPage(),
+      ),
+      GoRoute(
+        path: '/pedidos/catalogo',
+        builder: (context, state) => const CatalogoPage(),
       ),
       GoRoute(
         path: kRutaPedido,

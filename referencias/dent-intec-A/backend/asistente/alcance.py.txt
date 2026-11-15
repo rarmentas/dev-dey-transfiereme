@@ -1,0 +1,375 @@
+import re
+from datetime import date, timedelta
+
+from django.utils import timezone
+
+from asistente.formato import (
+    etiqueta_relativa,
+    fecha_hablada,
+    hora_12h,
+    indice_dia_semana,
+    normalizar,
+)
+from consulta.views import listado_del_dia
+
+from asistente.herramientas import huecos_de_un_dia, _resolver_fecha_relativa_o_iso
+
+RESPUESTA_FUERA_DE_ALCANCE = (
+    'Solo puedo ayudarle con la agenda de la clínica y con consultas de '
+    'facturación de un paciente (líneas pendientes, datos fiscales e '
+    'historial de facturas). No hago reportes generales de la clínica.'
+)
+RESPUESTA_SALUDO = (
+    'Hola. ¿En qué le ayudo con la agenda o con la facturación de un paciente?'
+)
+RESPUESTA_FACTURACION_ESCRITURA = (
+    'Aún no puede cancelar facturas desde este chat. '
+    'Puede consultar, timbrar y enviar por correo con confirmación; '
+    'para cancelación use la pantalla de facturación.'
+)
+
+_TOKENS_RECHAZO = frozenset(
+    {
+        'python',
+        'javascript',
+        'java',
+        'codigo',
+        'programacion',
+        'script',
+        'funcion',
+        'variable',
+        'sql',
+        'html',
+        'css',
+        'import',
+        'def',
+        'print',
+        'ciclo',
+        'for',
+        'while',
+        'antibiotico',
+        'medicamento',
+        'dosis',
+        'receta',
+        'diagnostico',
+        'sintoma',
+        'incapacidad',
+        'constancia',
+        'justificante',
+    }
+)
+
+_FRASES_RECHAZO = (
+    'olvida las instrucciones',
+    'ignora las instrucciones',
+    'actua como',
+    'jailbreak',
+    'dan un ejemplo',
+    'dame un ejemplo',
+)
+
+_TOKENS_PASO = frozenset(
+    {
+        'hoy',
+        'manana',
+        'ayer',
+        'cita',
+        'citas',
+        'paciente',
+        'pacientes',
+        'viene',
+        'vienen',
+        'vino',
+        'vinieron',
+        'agenda',
+        'agendar',
+        'reagendar',
+        'cancelar',
+        'hueco',
+        'huecos',
+        'libre',
+        'libres',
+        'saldo',
+        'debe',
+        'deben',
+        'tratamiento',
+        'tratamientos',
+        'estudio',
+        'estudios',
+        'radiografia',
+        'pieza',
+        'piezas',
+        'muela',
+        'muelas',
+        'hora',
+        'horario',
+        'horarios',
+        'primera',
+        'proxima',
+        'catalogo',
+        'extraccion',
+        'limpieza',
+        'resina',
+        'buscar',
+        'quien',
+        'factura',
+        'facturas',
+        'facturacion',
+        'fiscal',
+        'fiscales',
+        'rfc',
+        'cfdi',
+        'timbrada',
+        'timbradas',
+        'folio',
+        'folios',
+        'comprobante',
+        'comprobantes',
+        'xml',
+        'pdf',
+        'pendiente',
+        'pendientes',
+        'conceptos',
+        'facturables',
+        'facturar',
+        'timbrar',
+        'emitir',
+    }
+)
+
+_SALUDOS = frozenset(
+    {
+        'hola',
+        'buenos dias',
+        'buenas tardes',
+        'buenas noches',
+        'gracias',
+        'muchas gracias',
+    }
+)
+
+_RE_VIENE = re.compile(
+    r'\b(?:quien|quién)\s+(?:viene|vienen|vino|vinieron)\b',
+    re.IGNORECASE,
+)
+_RE_CUANTAS = re.compile(
+    r'\b(?:cuantas|cuántas)\s+citas\b',
+    re.IGNORECASE,
+)
+_RE_HUECOS = re.compile(
+    r'\b(?:que|qué|hay)\s+(?:huecos?|lugar|horarios?\s+libres?)\b',
+    re.IGNORECASE,
+)
+_RE_CANCEL_FACTURACION = re.compile(
+    r'\b(?:'
+    r'cancel(?:ar|a|e|ad)(?:\s+(?:la|el|me|se|le))?\s*(?:la\s+)?(?:factura|cfdi|comprobante)'
+    r')\b',
+    re.IGNORECASE,
+)
+
+
+def es_saludo(texto: str) -> bool:
+    norm = normalizar(texto).strip('.,!?')
+    return norm in _SALUDOS
+
+
+def _contiene_rechazo(norm: str) -> bool:
+    palabras = set(norm.split())
+    if palabras & _TOKENS_RECHAZO:
+        return True
+    return any(frase in norm for frase in _FRASES_RECHAZO)
+
+
+def contiene_rechazo(texto: str) -> bool:
+    """Indica si el texto debe rechazarse por alcance o contenido prohibido (texto crudo)."""
+    return _contiene_rechazo(normalizar(texto))
+
+
+def es_solicitud_facturacion_escritura(texto: str) -> bool:
+    """True si pide cancelar factura por chat (no timbrar ni enviar por correo)."""
+    norm = normalizar(texto)
+    if _RE_CANCEL_FACTURACION.search(norm):
+        return True
+    palabras = set(norm.split())
+    if palabras & {'cancelar', 'cancela', 'cancelen'} and palabras & {
+        'factura',
+        'cfdi',
+        'comprobante',
+    }:
+        return True
+    return False
+
+
+def _es_de_agenda(norm: str, *, ultimo_asistente_valido: bool) -> bool:
+    palabras = set(norm.split())
+    if palabras & _TOKENS_PASO:
+        return True
+    if indice_dia_semana(norm) is not None:
+        return True
+    if re.search(r'\b\d{1,2}\s+de\s+\w+\b', norm):
+        return True
+    if re.search(r'\b\d{4}-\d{2}-\d{2}\b', norm):
+        return True
+    if len(palabras) <= 5 and ultimo_asistente_valido:
+        return True
+    return False
+
+
+def ultimo_turno_asistente_valido(conversacion) -> bool:
+    ultimo = (
+        conversacion.mensajes.filter(rol='asistente')
+        .order_by('-creado', '-id')
+        .first()
+    )
+    if ultimo is None:
+        return False
+    if getattr(ultimo, 'fuera_de_alcance', False):
+        return False
+    return ultimo.texto.strip() != RESPUESTA_SALUDO
+
+
+def clasificar_mensaje(texto: str, conversacion) -> str:
+    """Devuelve 'saludo', 'agenda' o 'rechazo'."""
+    norm = normalizar(texto)
+    if not norm:
+        return 'rechazo'
+    if es_saludo(texto):
+        return 'saludo'
+    if _contiene_rechazo(norm):
+        return 'rechazo'
+    valido_previo = ultimo_turno_asistente_valido(conversacion)
+    if not _es_de_agenda(norm, ultimo_asistente_valido=valido_previo):
+        return 'rechazo'
+    return 'agenda'
+
+
+def _tiempo_desde_texto(norm: str) -> str | None:
+    if re.search(r'\b(?:vino|vinieron)\b', norm):
+        return 'pasado'
+    if re.search(r'\b(?:viene|vienen)\b', norm):
+        return 'futuro'
+    return None
+
+
+def _dia_desde_texto(texto: str, *, tiempo: str | None = None) -> date | None:
+    norm = normalizar(texto)
+    hoy = timezone.localdate()
+    for token in ('hoy', 'manana', 'ayer'):
+        if re.search(rf'\b{token}\b', norm):
+            return _resolver_fecha_relativa_o_iso(token)
+    indice = indice_dia_semana(norm)
+    if indice is not None:
+        objetivo = indice
+        actual = hoy.weekday()
+        delta = (objetivo - actual) % 7
+        if delta == 0 and tiempo == 'futuro':
+            delta = 7
+        if delta == 0 and tiempo == 'pasado':
+            delta = -7
+        elif tiempo == 'pasado' and delta > 0:
+            delta -= 7
+        elif tiempo == 'futuro' and delta < 0:
+            delta += 7
+        return hoy + timedelta(days=delta)
+    match = re.search(r'\b(\d{1,2})\s+de\s+(\w+)\b', norm)
+    if match:
+        dia_num = int(match.group(1))
+        mes_nombre = match.group(2)
+        meses_norm = [
+            normalizar(m) for m in (
+                'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+            )
+        ]
+        if mes_nombre in meses_norm:
+            mes = meses_norm.index(mes_nombre) + 1
+            ano = hoy.year
+            candidato = date(ano, mes, dia_num)
+            if tiempo == 'pasado' and candidato > hoy:
+                candidato = date(ano - 1, mes, dia_num)
+            elif tiempo == 'futuro' and candidato < hoy:
+                candidato = date(ano + 1, mes, dia_num)
+            return candidato
+    return None
+
+
+def _nombre_paciente(fila: dict) -> str:
+    apellidos = (fila.get('apellidos') or '').strip()
+    nombre = (fila.get('nombre') or '').strip()
+    if apellidos:
+        return f'{nombre} {apellidos}'.strip()
+    return nombre
+
+
+def _linea_cita(fila: dict, *, una_sola: bool = False) -> str:
+    hora = hora_12h(fila.get('hora_llegada') or '09:00')
+    tratamiento = (fila.get('tratamiento') or '').strip()
+    nombre = _nombre_paciente(fila)
+    if tratamiento:
+        if una_sola:
+            return f'{nombre} a las {hora} por una {tratamiento.lower()}'
+        return f'{nombre} a las {hora} ({tratamiento.lower()})'
+    return f'{nombre} a las {hora}'
+
+
+def _plantilla_listado(dia: date, pacientes: list, *, pasado: bool) -> str:
+    hoy = timezone.localdate()
+    etiqueta = etiqueta_relativa(dia, hoy)
+    fecha_txt = fecha_hablada(dia)
+    encabezado = f'{etiqueta}, {fecha_txt}'
+    if not pacientes:
+        if pasado:
+            return f'{encabezado}, no vinieron pacientes con cita.'
+        return f'{encabezado}, no hay pacientes con cita.'
+    if len(pacientes) == 1:
+        verbo = 'vino' if pasado else 'viene'
+        return f'{encabezado}, {verbo} {_linea_cita(pacientes[0], una_sola=True)}.'
+    verbo = 'vinieron' if pasado else 'vienen'
+    mostrar = pacientes[:5]
+    partes = [_linea_cita(f) for f in mostrar]
+    cuerpo = ', '.join(partes)
+    extra = len(pacientes) - len(mostrar)
+    if extra > 0:
+        cuerpo = f'{cuerpo} y {extra} más'
+    return f'{encabezado}, {verbo} {len(pacientes)} pacientes: {cuerpo}.'
+
+
+def respuesta_rapida(texto: str, clinica) -> str | None:
+    norm = normalizar(texto)
+    tiempo = _tiempo_desde_texto(norm)
+    pasado = tiempo == 'pasado'
+
+    if _RE_VIENE.search(texto) or _RE_CUANTAS.search(texto):
+        dia = _dia_desde_texto(texto, tiempo=tiempo)
+        if dia is None:
+            return None
+        datos = listado_del_dia(dia, clinica)
+        pacientes = datos.get('pacientes') or []
+        if _RE_CUANTAS.search(texto):
+            hoy = timezone.localdate()
+            etiqueta = etiqueta_relativa(dia, hoy)
+            return (
+                f'{etiqueta}, {fecha_hablada(dia)}, hay {len(pacientes)} citas.'
+            )
+        return _plantilla_listado(dia, pacientes, pasado=pasado)
+
+    if _RE_HUECOS.search(texto):
+        dia = _dia_desde_texto(texto, tiempo=tiempo or 'futuro')
+        if dia is None:
+            return None
+        datos = huecos_de_un_dia(dia.isoformat(), clinica=clinica)
+        if datos.get('error'):
+            return None
+        hoy = timezone.localdate()
+        etiqueta = etiqueta_relativa(dia, hoy)
+        encabezado = f'{etiqueta}, {fecha_hablada(dia)}'
+        if not datos.get('abre'):
+            return f'{encabezado}, la clínica está cerrada.'
+        libres = datos.get('horarios_libres') or []
+        if not libres:
+            return f'{encabezado}, no hay horarios libres.'
+        horas = [hora_12h(h) for h in libres[:6]]
+        lista = ', '.join(horas)
+        return f'{encabezado}, hay lugar a las {lista}.'
+
+    return None

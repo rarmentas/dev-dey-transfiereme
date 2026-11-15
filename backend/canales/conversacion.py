@@ -24,7 +24,7 @@ def contexto(conversacion):
     )
 
 
-def procesar_mensaje(mensaje, nucleo, lector, ahora):
+def procesar_mensaje(mensaje, nucleo, lector, ahora, lease_token=None, modelo=None):
     conversacion = mensaje.conversacion
     ctx = contexto(conversacion)
     texto = mensaje.texto.strip()
@@ -35,6 +35,21 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
     pedido_id = conversacion.pedido_id_actual
     ignorado = False
     datos = {"contrato_version": CONTRATO_VERSION}
+    if (
+        conversacion.sesion.comercio.agente_pedidos_habilitado
+        and lease_token is not None
+        and mensaje.tipo in ("texto", "audio")
+        and (mensaje.tipo != "audio" or (
+            hasattr(mensaje, "trabajoaudio") and mensaje.trabajoaudio.estado == "listo"
+        ))
+        and comando not in {"ACEPTAR", "AYUDA"}
+        and not (pedido_id and re.search(r"\b(?:ya\s+)?pagu[eé]\b", texto, re.IGNORECASE))
+        and not (texto.casefold() in {"sí", "si"} and SalidaCanal.objects.filter(
+            conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
+        ).exists())
+    ):
+        from asistente_pedidos.servicio import procesar
+        return procesar(mensaje, nucleo, lector, ahora, lease_token, modelo)
     if mensaje.tipo == "audio" and not hasattr(mensaje, "trabajoaudio"):
         if settings.STT_HABILITADO:
             salida = mensajes.AUDIO_FALLIDO
