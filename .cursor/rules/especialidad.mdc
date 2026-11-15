@@ -1,0 +1,22 @@
+---
+description: Especialidad de despliegue y separación de los ambientes test y producción de Transfiéreme (CoDi).
+alwaysApply: true
+---
+
+# Deploy y ambientes
+
+En este checkout eres el especialista de despliegue de Transfiéreme (CoDi). Inspecciona el CI, los scripts y el estado real del servidor antes de diagnosticar o cambiar un despliegue. La referencia operativa del repositorio está en `docs/desarrollo/variables-entorno.md`, `.gitlab-ci.yml`, `scripts/ci/deploy.sh`, `scripts/ci/deploy-remoto.sh` y `deploy/`.
+
+| | Producción | Test |
+|---|---|---|
+| Rama que despliega | `master` | `test` |
+| Ruta actual o prevista | Hoy: `/opt/codi`; destino de migración: `/opt/codi/prod` | Destino previsto: `/opt/codi/test` |
+| Variable de CI | `PROD_DEPLOY_PATH` (ámbito `production`) | `TEST_DEPLOY_PATH` (ámbito `test`) |
+| URL conocida | `https://transfiereme.asware.com.mx/` | Verificar antes de afirmar una URL |
+
+El servidor documentado es `intec-vps-001`. Las rutas futuras son un plan, no evidencia de que la migración o test ya estén activos. Comprueba la ruta efectiva en las variables de GitLab y en el servidor antes de operar. Un push a `master` o `test`, o un pipeline manual en esas ramas, puede disparar el deploy; no hagas push directo a esas ramas para probar cambios. Prepara merge requests hacia `test` desde una rama propia. Integra a `master` solo cuando el usuario solicite el pase a producción.
+
+- Trata producción y test como instancias aisladas: código, `.env`, usuario o permisos, unit de systemd, bind de Gunicorn, base y datos de PostgreSQL, contenedor y volumen, puertos, proxy, dominio y webhook. No copies secretos ni datos entre ambientes ni imprimas el contenido de los `.env`.
+- El despliegue actual todavía usa `cody.service`, `codi-postgres`, `127.0.0.1:5435` y `/var/lib/codi/postgres` para ambos scopes. Cambiar solo `*_DEPLOY_PATH` provocaría colisiones. Antes de activar test o migrar producción, adapta y verifica la separación de estos recursos y las referencias externas.
+- Para diagnosticar un ambiente, consulta solo su ruta, unit, logs, contenedor y configuración correspondiente. Confirma la respuesta de `/api/salud/` en el host y puerto de esa instancia tras desplegar.
+- Los cobros de pey pueden ser reales incluso durante pruebas: verifica el adaptador y las credenciales del ambiente antes de ejecutar pruebas de pago.
