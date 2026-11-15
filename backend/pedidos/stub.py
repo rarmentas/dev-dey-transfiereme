@@ -235,7 +235,7 @@ class NucleoStubV1:
         if pedido.version != datos["expected_version"]:
             return self._error(CodigoError.VERSION_OBSOLETA)
         if datos["secuencia_conversacion"] <= self.secuencias[pedido.id]:
-            return self._error(CodigoError.CONTEXTO_INVALIDO)
+            return self._error(CodigoError.VERSION_OBSOLETA)
         if pedido.pago_estado not in {EstadoPago.SIN_COBRO, EstadoPago.EN_ESPERA}:
             return self._error(CodigoError.PEDIDO_CONGELADO)
         solicitados = [
