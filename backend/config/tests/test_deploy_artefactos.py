@@ -60,13 +60,61 @@ class DeployArtefactosTests(SimpleTestCase):
             remoto.index("manage.py migrate"),
             remoto.index('systemctl restart "${unit_base}-canal"'),
         )
-        self.assertIn("manage.py estado_canal --max-edad 30", remoto)
+        self.assertLess(
+            remoto.index("inicio_canal="),
+            remoto.index('systemctl restart "${unit_base}-canal"'),
+        )
+        self.assertIn('--max-edad 30 --desde "$inicio_canal"', remoto)
         ci = (RAIZ / ".gitlab-ci.yml").read_text()
         self.assertIn("pedidos.tests canales.tests", ci)
         self.assertIn("makemigrations --check --dry-run", ci)
         self.assertIn(
             "flutter test test/widget_smoke_test.dart test/features/pedidos", ci
         )
+
+    def test_arranque_fallido_no_acepta_latido_anterior(self) -> None:
+        remoto = (RAIZ / SCRIPTS[1]).read_text()
+        bloque = remoto[remoto.index("inicio_canal=") :]
+        with tempfile.TemporaryDirectory() as directorio:
+            backend = Path(directorio) / "backend"
+            python = backend / ".venv/bin/python"
+            python.parent.mkdir(parents=True)
+            python.write_text(
+                "#!/bin/sh\n"
+                'if [ "$1" = -c ]; then echo 2026-01-01T00:00:00Z; exit 0; fi\n'
+                'case " $* " in *" --desde 2026-01-01T00:00:00Z "*) '
+                'exit "$LATIDO_ANTERIOR";; *) exit 2;; esac\n'
+            )
+            python.chmod(0o755)
+            script = (
+                'dest="$1"; unit_base=cody\n'
+                'as_root() { if [[ "$2" == is-active ]]; then '
+                'return "$UNIT_INACTIVA"; fi; return 0; }\n'
+                "sleep() { :; }\n" + bloque
+            )
+            for latido, inactiva, esperado in (
+                (1, 1, 1),
+                (1, 0, 1),
+                (0, 1, 1),
+                (0, 0, 0),
+            ):
+                with self.subTest(latido=latido, inactiva=inactiva):
+                    entorno = os.environ.copy()
+                    entorno.update(
+                        LATIDO_ANTERIOR=str(latido), UNIT_INACTIVA=str(inactiva)
+                    )
+                    resultado = subprocess.run(
+                        ["bash", "-c", script, "prueba", directorio],
+                        env=entorno,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(resultado.returncode, esperado)
+
+    def test_instancia_waha_obligatoria(self) -> None:
+        script = (RAIZ / SCRIPTS[2]).read_text()
+        bloque = script.split("required=(", 1)[1].split(")", 1)[0]
+        self.assertIn("WAHA_INSTANCIA", bloque.split())
 
     def test_validacion_de_entorno_y_casos_vacios(self) -> None:
         valores = {
@@ -84,6 +132,7 @@ class DeployArtefactosTests(SimpleTestCase):
                 "PEY_API_KEY",
                 "PEY_WEBHOOK_SECRET",
                 "POLITICA_COBRO_VERSION",
+                "WAHA_INSTANCIA",
                 "WAHA_IMAGE",
                 "WAHA_BASE_URL",
                 "WAHA_API_KEY",
@@ -116,6 +165,8 @@ class DeployArtefactosTests(SimpleTestCase):
                 )
 
             self.assertEqual(ejecutar(valores).returncode, 0)
+            sin_instancia = {k: v for k, v in valores.items() if k != "WAHA_INSTANCIA"}
+            self.assertNotEqual(ejecutar(sin_instancia).returncode, 0)
             for clave in valores:
                 with self.subTest(clave=clave):
                     self.assertNotEqual(ejecutar({**valores, clave: ""}).returncode, 0)

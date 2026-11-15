@@ -177,9 +177,13 @@ if [[ "$codigo" != "200" ]]; then
   exit 1
 fi
 
+inicio_canal="$("${dest}/backend/.venv/bin/python" -c \
+  'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')"
 as_root systemctl restart "${unit_base}-canal"
 for _ in $(seq 1 30); do
-  if (cd "${dest}/backend" && ./.venv/bin/python manage.py estado_canal --max-edad 30); then
+  if (cd "${dest}/backend" && ./.venv/bin/python manage.py estado_canal \
+    --max-edad 30 --desde "$inicio_canal") && \
+    as_root systemctl is-active --quiet "${unit_base}-canal"; then
     exit 0
   fi
   sleep 1

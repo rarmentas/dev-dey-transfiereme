@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from canales.models import LatidoCanal, MensajeEntrante, SalidaCanal
 
@@ -10,8 +11,17 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--max-edad", type=int, default=30)
         parser.add_argument("--mensajes", type=int, default=0)
+        parser.add_argument("--desde")
 
     def handle(self, *args, **opciones):
+        desde = None
+        if opciones["desde"] is not None:
+            try:
+                desde = parse_datetime(opciones["desde"])
+            except ValueError:
+                desde = None
+            if desde is None or timezone.is_naive(desde):
+                raise CommandError("Fecha de inicio inválida; indique zona horaria.")
         latido = LatidoCanal.objects.filter(pk="procesar_canal").first()
         edad = (
             (timezone.now() - latido.ultimo_ciclo).total_seconds() if latido else None
@@ -30,3 +40,5 @@ class Command(BaseCommand):
             self.stdout.write(str(identidad))
         if edad is None or edad > opciones["max_edad"]:
             raise CommandError("Latido ausente o vencido.")
+        if desde is not None and latido.ultimo_ciclo <= desde:
+            raise CommandError("Latido anterior al reinicio.")
