@@ -24,7 +24,7 @@ La lista de Fase 0 identifica código existente en el árbol de `85e24d8`; no ce
 
 La demo pública está en [transfiereme.asware.com.mx](https://transfiereme.asware.com.mx/).
 
-1. Escribe tu pedido por WhatsApp al número del comercio demo: **\<NÚMERO DE WHATSAPP DEL COMERCIO DEMO\>**. <!-- TODO(Rodrigo): reemplazar con el número de WhatsApp del comercio demo -->
+1. Escribe tu pedido por WhatsApp al número del comercio demo: **[+52 56 3830 0926](https://wa.me/525638300926)**.
 2. El tendero revisa y cotiza en la app Flutter, pestaña **Pedidos**. La app marca los artículos sin precio como pendientes de cotizar; el total no se inventa.
 3. Recibes el resumen y respondes `ACEPTAR <token>` con el token del último resumen.
 4. El tendero abre el pedido, en la tarjeta de **Pago** elige **Código QR** (o **Enviar al celular**) y pulsa **Cobrar**; paga el QR CoDi con tu app bancaria. En el comercio demo el cobro es de **$0.01 MXN** (modo demo `es_demo`; lo pagado no se devuelve).
