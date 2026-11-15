@@ -1,12 +1,18 @@
 """Envío durable y recuperación de incertidumbre."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as esperar
 from decimal import Decimal
-from threading import Barrier, Lock
+from threading import Barrier, Event, Lock
+from unittest.mock import patch
 
-from ambito.tests.soporte import crear_cuenta
+from ambito.cuenta import id_reservado_demo
+from ambito.operaciones_cuenta import sincronizar
+from ambito.tests.soporte import clabe_valida, crear_cuenta
 from django.db import close_old_connections, connections
 from django.test import override_settings
+from movimientos.models import Cobro, Movimiento
 from pey.tipos import ErrorPey
 
 from pedidos.models import IntentoCobro
@@ -586,3 +592,121 @@ class DespachoTests(CasoReal):
         self.assertEqual(enviar_intento(intento.pk, puerto).estado, "incierto")
         enviar_intento(intento.pk, puerto)
         self.assertEqual([tipo for tipo, _ in puerto.llamadas], ["notificacion"])
+
+    def reservar_y_sincronizar(self, canal, codi_status, clabe=None):
+        cambios = {"canal": canal}
+        if canal == "notificacion":
+            cambios["telefono_bancario_confirmado"] = "5512345678"
+        self.assertTrue(self.solicitar(**cambios).ok)
+        intento = IntentoCobro.objects.get()
+        cuenta = intento.cuenta
+        cuerpo = json.dumps(
+            {
+                "id": cuenta.pey_bank_account_id,
+                "clabe": clabe or cuenta.clabe,
+                "codiStatus": codi_status,
+            }
+        ).encode()
+        with override_settings(PEY_API_KEY="prueba"):
+            sincronizar(cuenta, transporte=lambda *args: (200, cuerpo))
+        return intento, cuenta
+
+    def assert_envio_bloqueado(self, intento, cuenta, anomalia):
+        cuenta.refresh_from_db()
+        self.assertEqual((cuenta.codi_status, cuenta.anomalia), ("pending", anomalia))
+        campos = [
+            "estado",
+            "version",
+            "cuenta_id",
+            "pey_bank_account_id",
+            "importe_efectivo_centavos",
+            "canal",
+            "telefono_bancario",
+            "token_envio",
+            "cobro_id",
+        ]
+        antes = IntentoCobro.objects.filter(pk=intento.pk).values(*campos).get()
+        otra = crear_cuenta(self.comercio)
+        puerto = PuertoPeyFalso()
+        enviado = enviar_intento(intento.pk, puerto)
+        self.assertEqual(enviado.estado, "reservado")
+        self.assertEqual(puerto.llamadas, [])
+        self.assertEqual(Cobro.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+        despues = IntentoCobro.objects.filter(pk=intento.pk).values(*campos).get()
+        self.assertEqual(despues, antes)
+        self.assertEqual(despues["cuenta_id"], cuenta.pk)
+        self.assertNotEqual(despues["pey_bank_account_id"], otra.pey_bank_account_id)
+
+    def test_qr_no_envia_si_la_cuenta_quedo_pending(self):
+        intento, cuenta = self.reservar_y_sincronizar("qr_venta", "PENDING")
+        self.assert_envio_bloqueado(intento, cuenta, "")
+
+    def test_push_no_envia_si_la_cuenta_quedo_pending(self):
+        intento, cuenta = self.reservar_y_sincronizar("notificacion", "PENDING")
+        self.assert_envio_bloqueado(intento, cuenta, "")
+
+    def test_qr_no_envia_si_la_clabe_no_coincide(self):
+        intento, cuenta = self.reservar_y_sincronizar(
+            "qr_venta", "ACTIVE", clabe_valida(99)
+        )
+        self.assert_envio_bloqueado(intento, cuenta, "CLABE_NO_COINCIDE")
+
+    def test_push_no_envia_si_la_clabe_no_coincide(self):
+        intento, cuenta = self.reservar_y_sincronizar(
+            "notificacion", "ACTIVE", clabe_valida(99)
+        )
+        self.assert_envio_bloqueado(intento, cuenta, "CLABE_NO_COINCIDE")
+
+    def test_carrera_sync_confirmada_antes_del_claim_no_envia(self):
+        self.assertTrue(self.solicitar().ok)
+        intento = IntentoCobro.objects.get()
+        cuenta = intento.cuenta
+        cuerpo = json.dumps(
+            {
+                "id": cuenta.pey_bank_account_id,
+                "clabe": cuenta.clabe,
+                "codiStatus": "PENDING",
+            }
+        ).encode()
+        dentro, seguir = Event(), Event()
+        puerto = PuertoPeyFalso()
+
+        def reservado(ident):
+            dentro.set()
+            seguir.wait(10)
+            return id_reservado_demo(ident)
+
+        def en_hilo(funcion):
+            close_old_connections()
+            try:
+                return funcion()
+            finally:
+                connections.close_all()
+
+        with (
+            override_settings(PEY_API_KEY="prueba"),
+            patch(
+                "ambito.operaciones_cuenta.id_reservado_demo", side_effect=reservado
+            ),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            sync = pool.submit(
+                en_hilo,
+                lambda: sincronizar(cuenta, transporte=lambda *args: (200, cuerpo)),
+            )
+            try:
+                self.assertTrue(dentro.wait(10))
+                envio = pool.submit(en_hilo, lambda: enviar_intento(intento.pk, puerto))
+                esperar([envio], timeout=1)
+                bloqueado = not envio.done()
+            finally:
+                seguir.set()
+            sync.result(10)
+            enviado = envio.result(10)
+        self.assertTrue(bloqueado)
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.codi_status, "pending")
+        self.assertEqual(enviado.estado, "reservado")
+        self.assertEqual(puerto.llamadas, [])
+        self.assertEqual(Cobro.objects.count(), 0)

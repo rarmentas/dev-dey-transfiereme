@@ -6,6 +6,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from ambito.cuenta import cuenta_apta
 from ambito.models import CuentaCobro
 from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
 from django.db import connection, transaction
@@ -100,6 +101,8 @@ def enviar_intento(intento_id, puerto=None):
         ):
             descartar(intento, "destino_invalido", comercio=comercio, pedido=pedido)
             intento.refresh_from_db()
+            return intento
+        elif not cuenta_apta(cuenta):
             return intento
         token = uuid.uuid4()
         n = IntentoCobro.objects.filter(
