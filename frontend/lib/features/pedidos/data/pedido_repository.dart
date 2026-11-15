@@ -40,6 +40,9 @@ class PedidoRepository {
         await _solicitar('POST', '$ruta$id/cotizaciones/', cuerpo),
       );
 
+  Future<Pedido> cancelar(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(await _solicitar('POST', '$ruta$id/cancelar/', cuerpo));
+
   Future<Pedido> cobro(String id, Map<String, dynamic> cuerpo) async =>
       Pedido.fromJson(await _solicitar('POST', '$ruta$id/cobro/', cuerpo));
   Future<Pedido> listo(String id, Map<String, dynamic> cuerpo) async =>
@@ -95,6 +98,8 @@ class PedidoRepository {
       'VERSION_OBSOLETA' => 'El pedido cambió. Cargamos la versión más reciente; revisa y guarda de nuevo.',
       'RENGLON_PENDIENTE' => 'Faltan renglones por resolver.',
       'PEDIDO_CONGELADO' => 'Este pedido ya no se puede editar.',
+      'COBRO_EN_CURSO' =>
+        'Hay un cobro en curso. Espera a que se resuelva antes de cancelar.',
       'CLAVE_REUTILIZADA' => 'No pudimos guardar. Intenta de nuevo.',
       'PAYLOAD_INVALIDO' => 'Revisa los datos de los renglones.',
       'PROVEEDOR_NO_DISPONIBLE' => 'El cobro no está habilitado todavía.',

@@ -58,6 +58,7 @@ class TipoEvento(str, Enum):
     PAGO_CONFIRMADO = "pago.confirmado"
     PEDIDO_LISTO = "pedido.listo"
     PEDIDO_ENTREGADO = "pedido.entregado"
+    PEDIDO_CANCELADO = "pedido.cancelado"
 
 
 class Resolucion(str, Enum):
@@ -93,6 +94,7 @@ class CodigoError(str, Enum):
     CURSOR_INVALIDO = "CURSOR_INVALIDO"
     INTENCION_DISTINTA = "INTENCION_DISTINTA"
     COBRO_OCUPADO = "COBRO_OCUPADO"
+    COBRO_EN_CURSO = "COBRO_EN_CURSO"
     PEY_INCIERTO = "PEY_INCIERTO"
     PROVEEDOR_NO_DISPONIBLE = "PROVEEDOR_NO_DISPONIBLE"
     SERVICIO_NO_DISPONIBLE = "SERVICIO_NO_DISPONIBLE"

@@ -19,6 +19,7 @@ from pedidos.http import error, exito
 from pedidos.models import Pedido
 from pedidos.serializers import validar_cuerpo
 from pedidos.servicios.entrega import operar as operar_entrega
+from pedidos.servicios.cancelacion import cancelar
 from pedidos.servicios.presentacion import pedido_dto
 from pedidos.servicios.tendero import operar
 
@@ -55,6 +56,9 @@ def _con_entrega(pedido, dto):
         "entregado_en": pedido.entregado_en if entregado else None,
         "entregado_por": pedido.entregado_por_id if entregado else None,
     }
+    datos["cobro_en_curso"] = pedido.intentos.filter(
+        estado__in=["enviando", "pendiente", "incierto"]
+    ).exists()
     return datos
 
 
@@ -188,6 +192,21 @@ class EntregadoPedidoView(APIView):
             comercio, pedido.id, validar_cuerpo(request.data), request.user,
             entregado=True,
         )
+        pedido.refresh_from_db()
+        return exito(
+            _con_entrega(pedido, resultado.data["pedido"]),
+            replayed=resultado.replayed,
+        )
+
+
+class CancelarPedidoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @capturar
+    def post(self, request, pedido_id):
+        comercio = _comercio(request, True)
+        pedido = _pedido(comercio, pedido_id)
+        resultado = cancelar(comercio, pedido.pk, validar_cuerpo(request.data))
         pedido.refresh_from_db()
         return exito(
             _con_entrega(pedido, resultado.data["pedido"]),
