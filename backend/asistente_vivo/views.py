@@ -41,7 +41,7 @@ def configuracion_live() -> dict:
 def crear_cliente():
     """Importación diferida: la app puede arrancar sin la integración instalada."""
     from google import genai
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(api_key=settings.GEMINI_API_KEY, http_options={"api_version": "v1alpha"})
 
 
 class TokenAsistenteVivoView(APIView):
@@ -64,7 +64,7 @@ class TokenAsistenteVivoView(APIView):
             return Response({"codigo": "LIMITE_SESIONES", "mensaje": "Alcanzaste el límite de sesiones por hora."}, status=429)
 
         # Reserva antes de pedir el token para evitar carreras entre pestañas.
-        if not cache.add(user_key, True, timeout=15 * 60):
+        if not cache.add(user_key, True, timeout=90):
             return Response({"codigo": "SESION_ACTIVA", "mensaje": "Ya tienes una sesión de asistente activa."}, status=429)
         try:
             ahora = datetime.now(timezone.utc)
