@@ -1,4 +1,5 @@
 import 'package:cody/features/cuenta/data/cuentas_repository.dart';
+import 'package:cody/features/cuenta/data/cuenta_cobro.dart';
 import 'package:cody/features/cuenta/data/clabe_repository.dart';
 import 'package:cody/features/cuenta/data/cuenta_estado_repository.dart';
 import 'package:dio/dio.dart';
@@ -6,6 +7,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 
 void main() {
+  test('I3 conserva campos independientes y protege CLABE en errores', () {
+    final cuenta = CuentaCobro.fromJson({
+      'id': '1',
+      'version': 2,
+      'sincronizada_en': null,
+      'ultimo_error': 'Fallo 000000000000001234',
+      'anomalia': 'CLABE_NO_COINCIDE',
+      'operacion': {'tipo': 'sync', 'estado': 'pendiente'},
+    });
+    expect(cuenta.sincronizadaEn, isNull);
+    expect(cuenta.ultimoError, 'Fallo ••••1234');
+    expect(cuenta.anomalia, 'CLABE_NO_COINCIDE');
+    expect(cuenta.operacionTipo, 'sync');
+    expect(cuenta.operacionEstado, 'pendiente');
+  });
+
   test('lectores anteriores tambien ocultan CLABE completa', () async {
     final dio = Dio(BaseOptions(baseUrl: 'http://test'));
     final adapter = DioAdapter(dio: dio);

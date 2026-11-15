@@ -207,7 +207,10 @@ void main() {
 
   testWidgets('409 de cuenta muestra el mensaje de Mi QR', (tester) async {
     final mock = MockVentaApi(crearDioVenta());
-    mock.alCrear(409, {'codigo': 'CUENTA_NO_ACTIVE'});
+    mock.alCrear(409, {
+      'codigo': 'CUENTA_NO_ACTIVE',
+      'detail': 'La cuenta no está ACTIVE.',
+    });
 
     await _montar(tester, mock);
     await _monto(tester, '12.50');

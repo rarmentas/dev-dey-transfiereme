@@ -4,6 +4,78 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/mock_venta_api.dart';
 
 void main() {
+  for (final notificacion in [false, true]) {
+    test(
+      'I8 cuenta inactiva 409 historico ${notificacion ? 'push' : 'QR'}',
+      () async {
+        final mock = MockVentaApi(crearDioVenta());
+        final payload = {'detail': 'La cuenta no está ACTIVE.'};
+        if (notificacion) {
+          mock.alCrearNotificacion(409, payload);
+        } else {
+          mock.alCrear(409, payload);
+        }
+        final repo = VentaRepository(mock.dio);
+        await expectLater(
+          notificacion
+              ? repo.crearNotificacion(monto: '1', telefono: '5512344321')
+              : repo.crear(monto: '1'),
+          throwsA(isA<CuentaNoActiveException>()),
+        );
+      },
+    );
+  }
+
+  test('I8 codigo distinto tiene prioridad sobre texto historico', () async {
+    final mock = MockVentaApi(crearDioVenta());
+    mock.alCrear(409, {
+      'codigo': 'COBRO_INCIERTO',
+      'detail': 'La cuenta no está ACTIVE.',
+    });
+    await expectLater(
+      VentaRepository(mock.dio).crear(monto: '1'),
+      throwsA(
+        isA<VentaApiException>().having(
+          (e) => e.mensaje,
+          'aviso',
+          contains('no lo repitas'),
+        ),
+      ),
+    );
+  });
+  test(
+    'I8 sin codigo ni detalle historico no supone cuenta inactiva',
+    () async {
+      final mock = MockVentaApi(crearDioVenta());
+      mock.alCrear(409, {'detail': 'Otro conflicto'});
+      await expectLater(
+        VentaRepository(mock.dio).crear(monto: '1'),
+        throwsA(isA<VentaApiException>()),
+      );
+    },
+  );
+
+  test(
+    'I8 movimiento pendiente prevalece sobre el detalle historico',
+    () async {
+      final mock = MockVentaApi(crearDioVenta());
+      mock.alCrear(409, {
+        'movimiento_id': 12,
+        'detail': 'La cuenta no está ACTIVE.',
+      });
+      await expectLater(
+        VentaRepository(mock.dio).crear(monto: '1'),
+        throwsA(
+          isA<VentaPendienteException>().having(
+            (e) => e.movimientoId,
+            'movimiento',
+            12,
+          ),
+        ),
+      );
+    },
+  );
+
   test('timeout conserva clave y payload distinto genera otra', () async {
     final mock = MockVentaApi(crearDioVenta());
     mock.alCrear(502, {'puede_haberse_creado': true});
@@ -55,7 +127,10 @@ void main() {
 
   test('crearNotificacion 409 sin movimiento es cuenta no activa', () async {
     final mock = MockVentaApi(crearDioVenta());
-    mock.alCrearNotificacion(409, {'codigo': 'CUENTA_NO_ACTIVE'});
+    mock.alCrearNotificacion(409, {
+      'codigo': 'CUENTA_NO_ACTIVE',
+      'detail': 'La cuenta no está ACTIVE.',
+    });
     expect(
       VentaRepository(mock.dio)
           .crearNotificacion(monto: '1', telefono: '5512344321'),

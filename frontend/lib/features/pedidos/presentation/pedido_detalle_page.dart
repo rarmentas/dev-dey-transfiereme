@@ -42,6 +42,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   bool congelado = false;
   bool noAccesible = false;
   bool modificado = false;
+  bool conflictoVersion = false;
   bool pendientes = false;
   int generacion = 0;
   @override
@@ -68,12 +69,15 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         }.contains(pedido!.pagoEstado)) {
       timer = Timer(
         const Duration(seconds: 2),
-        () => cargar(conservarAviso: true),
+        () => cargar(conservarAviso: true, esPolling: true),
       );
     }
   }
 
-  Future<void> cargar({bool conservarAviso = false}) async {
+  Future<void> cargar({
+    bool conservarAviso = false,
+    bool esPolling = false,
+  }) async {
     if (ocupado) return;
     setState(() {
       ocupado = true;
@@ -83,8 +87,18 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
           .read(pedidoRepositoryProvider)
           .obtener(widget.id);
       if (!mounted) return;
+      if (esPolling && modificado && pedido != null) {
+        if (resultado.version != pedido!.version) {
+          setState(() {
+            conflictoVersion = true;
+            aviso = 'El pedido cambió. Conservamos tu borrador; al recargar se perderán tus cambios.';
+          });
+        }
+        return;
+      }
       setState(() {
         pedido = resultado;
+        conflictoVersion = false;
         generacion++;
         modificado = false;
         errores = {};
@@ -112,7 +126,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   }
 
   Future<void> operar({required bool publicar}) async {
-    if (pedido == null || ocupado || congelado) return;
+    if (pedido == null || ocupado || congelado || conflictoVersion) return;
     if (!publicar && !(formulario.currentState?.validate() ?? false)) return;
     if (publicar && modificado) {
       setState(() {
@@ -156,8 +170,15 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
       });
       if (e.codigo == 'VERSION_OBSOLETA' || e.codigo == 'CLAVE_REUTILIZADA') {
         limpiarClaves();
-        setState(() => ocupado = false);
-        await cargar(conservarAviso: true);
+        if (modificado) {
+          setState(() {
+            conflictoVersion = true;
+            aviso = 'El pedido cambió. Conservamos tu borrador; al recargar se perderán tus cambios.';
+          });
+        } else {
+          setState(() => ocupado = false);
+          await cargar(conservarAviso: true);
+        }
       }
     } finally {
       if (mounted) {
@@ -256,8 +277,15 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
       }
       if (e.codigo == 'VERSION_OBSOLETA' || e.codigo == 'CLAVE_REUTILIZADA') {
         limpiarClaves();
-        setState(() => ocupado = false);
-        await cargar(conservarAviso: true);
+        if (modificado) {
+          setState(() {
+            conflictoVersion = true;
+            aviso = 'El pedido cambió. Conservamos tu borrador; al recargar se perderán tus cambios.';
+          });
+        } else {
+          setState(() => ocupado = false);
+          await cargar(conservarAviso: true);
+        }
       } else if (e.status != null && e.status! < 500) {
         clave.limpiar();
       }
@@ -282,6 +310,11 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(aviso!),
             ),
+          if (conflictoVersion)
+            OutlinedButton(
+              onPressed: ocupado ? null : cargar,
+              child: const Text('Recargar pedido'),
+            ),
           if (noAccesible)
             OutlinedButton(
               onPressed: () => context.go('/pedidos'),
@@ -295,7 +328,11 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
               pedido: actual,
               incierto: cobroIncierto,
               errorTelefono: errorTelefono,
-              ocupado: ocupado || cobroIncierto || cobroBloqueado,
+              ocupado:
+                  ocupado ||
+                  conflictoVersion ||
+                  cobroIncierto ||
+                  cobroBloqueado,
               telefono: telefono,
               canal: canal,
               cambiarCanal: (v) => setState(() => canal = v),
@@ -304,7 +341,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
             ),
             EntregaCard(
               pedido: actual,
-              ocupado: ocupado,
+              ocupado: ocupado || conflictoVersion,
               listo: () => accion('listo'),
               entregado: () => accion('entregado'),
             ),
@@ -341,11 +378,15 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
             ),
             if (!congelado) ...[
               FilledButton(
-                onPressed: ocupado ? null : () => operar(publicar: false),
+                onPressed: ocupado || conflictoVersion
+                    ? null
+                    : () => operar(publicar: false),
                 child: const Text('Guardar renglones'),
               ),
               OutlinedButton(
-                onPressed: ocupado ? null : () => operar(publicar: true),
+                onPressed: ocupado || conflictoVersion
+                    ? null
+                    : () => operar(publicar: true),
                 child: const Text('Publicar cotización'),
               ),
             ],

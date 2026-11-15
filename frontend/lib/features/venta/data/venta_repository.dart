@@ -153,7 +153,10 @@ Venta _leerCreacion(int status, Object? data) {
       throw VentaPendienteException(id);
     }
     final codigo = mapa['codigo'];
-    if (codigo == 'CUENTA_NO_ACTIVE') {
+    if (codigo == 'CUENTA_NO_ACTIVE' ||
+        (codigo == null &&
+            !mapa.containsKey('movimiento_id') &&
+            mapa['detail'] == 'La cuenta no está ACTIVE.')) {
       throw CuentaNoActiveException('La cuenta no está activa.');
     }
     if (codigo == 'COBRO_EN_CURSO' || codigo == 'COBRO_INCIERTO') {

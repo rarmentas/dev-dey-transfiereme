@@ -31,8 +31,22 @@ class CuentaCard extends StatelessWidget {
               'incierto' => 'Sin confirmar',
               'rechazado' => 'Rechazada',
               _ => 'Desconocido',
-            }} · ${cuenta.status == 'active' ? 'Activa' : 'Pendiente'}',
+            }} · Estado conocido: ${cuenta.status == 'active' ? 'Activa' : 'Pendiente'}',
           ),
+          Text(
+            cuenta.sincronizadaEn == null || cuenta.sincronizadaEn!.isEmpty
+                ? 'Última sincronización: sin datos'
+                : 'Última sincronización: ${cuenta.sincronizadaEn}',
+          ),
+          if (cuenta.ultimoError.isNotEmpty)
+            Text('Última consulta: ${cuenta.ultimoError}'),
+          if (cuenta.anomalia.isNotEmpty) Text('Anomalía: ${cuenta.anomalia}'),
+          if (cuenta.operacionEstado == 'pendiente' ||
+              cuenta.operacionEstado == 'en_curso')
+            Text(
+              '${cuenta.operacionTipo == 'sync' ? 'Sincronización' : 'Registro'} '
+              '${cuenta.operacionEstado == 'pendiente' ? 'pendiente' : 'en curso'}',
+            ),
           if (registroIncierto ||
               cuenta.registro == 'incierto' ||
               cuenta.registro == 'registrando')
