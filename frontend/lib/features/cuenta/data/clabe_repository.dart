@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import 'cuenta_cobro.dart';
+
 class ClabeApiException implements Exception {
   ClabeApiException(this.mensaje);
 
@@ -24,7 +26,7 @@ class ClabeRepository {
         final mapa = _mapa(respuesta.data);
         final clabe = mapa['clabe'];
         if (clabe is String) {
-          return clabe.trim();
+          return enmascararClabe(clabe.trim());
         }
         throw const FormatException('respuesta');
       }
@@ -37,31 +39,6 @@ class ClabeRepository {
       throw ClabeApiException(
         'No pudimos leer la respuesta. Inténtalo de nuevo.',
       );
-    }
-  }
-
-  Future<String> guardar(String clabe) async {
-    try {
-      final respuesta = await _dio.post<dynamic>(
-        ruta,
-        data: {'clabe': clabe.trim()},
-      );
-      final status = respuesta.statusCode ?? 0;
-      if (status == 200) {
-        final mapa = _mapa(respuesta.data);
-        final guardada = mapa['clabe'];
-        if (guardada is String && guardada.isNotEmpty) {
-          return guardada;
-        }
-        throw const FormatException('respuesta');
-      }
-      throw _errorDesdeRespuesta(respuesta.data, status, alGuardar: true);
-    } on ClabeApiException {
-      rethrow;
-    } on DioException catch (error) {
-      throw ClabeApiException(_mensajeDeDio(error, alGuardar: true));
-    } on FormatException {
-      throw ClabeApiException('No pudimos leer la respuesta. Inténtalo de nuevo.');
     }
   }
 }

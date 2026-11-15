@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,8 @@ import '../data/pedido.dart';
 import '../data/pedido_repository.dart';
 import 'pedido_providers.dart';
 import 'widgets/renglon_editor.dart';
+import 'widgets/pago_card.dart';
+import 'widgets/entrega_card.dart';
 import 'widgets/resumen_cotizacion_card.dart';
 
 class PedidoDetallePage extends ConsumerStatefulWidget {
@@ -20,8 +24,19 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   final formulario = GlobalKey<FormState>();
   final claveRevision = ClaveComando();
   final clavePublicacion = ClaveComando();
+  final claveCobro = ClaveComando();
+  final claveEspera = ClaveComando();
+  final claveListo = ClaveComando();
+  final claveEntregado = ClaveComando();
+  final telefono = TextEditingController();
+  String canal = 'qr_venta';
+  Timer? timer;
+  bool permisoDenegado = false;
+  bool cobroIncierto = false;
+  bool cobroBloqueado = false;
   Pedido? pedido;
   String? aviso;
+  String? errorTelefono;
   Map<String, dynamic> errores = {};
   bool ocupado = false;
   bool congelado = false;
@@ -35,7 +50,31 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
     cargar();
   }
 
+  @override
+  void dispose() {
+    timer?.cancel();
+    telefono.dispose();
+    super.dispose();
+  }
+
+  void programarPolling() {
+    timer?.cancel();
+    if (pedido != null &&
+        {
+          'en_espera',
+          'reservado',
+          'enviando',
+          'pendiente',
+        }.contains(pedido!.pagoEstado)) {
+      timer = Timer(
+        const Duration(seconds: 2),
+        () => cargar(conservarAviso: true),
+      );
+    }
+  }
+
   Future<void> cargar({bool conservarAviso = false}) async {
+    if (ocupado) return;
     setState(() {
       ocupado = true;
     });
@@ -50,13 +89,16 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         modificado = false;
         errores = {};
         noAccesible = false;
+        permisoDenegado = false;
         if (!conservarAviso) aviso = null;
       });
+      programarPolling();
     } on PedidoException catch (e) {
       if (mounted) {
         setState(() {
           aviso = e.mensaje;
           noAccesible = e.codigo == 'PEDIDO_NO_ACCESIBLE';
+          permisoDenegado = e.status == 401 || e.status == 403;
         });
       }
     } finally {
@@ -64,6 +106,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         setState(() {
           ocupado = false;
         });
+        if (!noAccesible && !permisoDenegado) programarPolling();
       }
     }
   }
@@ -112,8 +155,8 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         noAccesible = e.codigo == 'PEDIDO_NO_ACCESIBLE';
       });
       if (e.codigo == 'VERSION_OBSOLETA' || e.codigo == 'CLAVE_REUTILIZADA') {
-        claveRevision.limpiar();
-        clavePublicacion.limpiar();
+        limpiarClaves();
+        setState(() => ocupado = false);
         await cargar(conservarAviso: true);
       }
     } finally {
@@ -122,6 +165,104 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
           ocupado = false;
         });
       }
+    }
+  }
+
+  void limpiarClaves() {
+    claveRevision.limpiar();
+    clavePublicacion.limpiar();
+    claveCobro.limpiar();
+    claveEspera.limpiar();
+    claveListo.limpiar();
+    claveEntregado.limpiar();
+  }
+
+  Future<void> accion(String tipo) async {
+    if (pedido == null || ocupado) return;
+    if (tipo == 'cobro' &&
+        canal == 'notificacion' &&
+        !RegExp(r'^\d{10}$').hasMatch(telefono.text.trim())) {
+      setState(() => errorTelefono = 'El teléfono debe tener 10 dígitos.');
+      return;
+    }
+    final clave = switch (tipo) {
+      'cobro' => claveCobro,
+      'espera' => claveEspera,
+      'listo' => claveListo,
+      _ => claveEntregado,
+    };
+    final contenido = <String, dynamic>{
+      'expected_version': pedido!.version,
+      if (tipo == 'cobro') ...{
+        'accion': 'solicitar',
+        'canal': canal,
+        if (canal == 'notificacion')
+          'telefono_bancario_confirmado': telefono.text.trim(),
+      },
+      if (tipo == 'espera') ...{
+        'accion': 'activar_espera',
+        'intento_id': pedido!.intento?['intento_id'],
+      },
+    };
+    final cuerpo = {...contenido, 'command_key': clave.para(contenido)};
+    setState(() {
+      ocupado = true;
+      aviso = null;
+      errorTelefono = null;
+    });
+    try {
+      final repo = ref.read(pedidoRepositoryProvider);
+      final resultado = switch (tipo) {
+        'cobro' || 'espera' => await repo.cobro(widget.id, cuerpo),
+        'listo' => await repo.listo(widget.id, cuerpo),
+        _ => await repo.entregado(widget.id, cuerpo),
+      };
+      if (!mounted) return;
+      setState(() {
+        pedido = resultado;
+        cobroIncierto = false;
+      });
+      clave.limpiar();
+      programarPolling();
+    } on PedidoException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        aviso = e.mensaje;
+        if (tipo == 'cobro' &&
+            e.codigo == 'PAYLOAD_INVALIDO' &&
+            canal == 'notificacion') {
+          errorTelefono = 'Revisa el teléfono bancario.';
+        }
+        noAccesible = e.codigo == 'PEDIDO_NO_ACCESIBLE';
+        permisoDenegado = e.status == 401 || e.status == 403;
+        if (tipo == 'cobro' &&
+            {
+              'CUENTA_NO_ACTIVE',
+              'DEMO_DESTINO_NO_PERMITIDO',
+              'MODO_CAMBIO',
+              'ACEPTACION_REQUERIDA',
+              'INTENCION_DISTINTA',
+            }.contains(e.codigo)) {
+          cobroBloqueado = true;
+        }
+      });
+      if ((tipo == 'cobro' || tipo == 'espera') &&
+          (e.status == null || e.status! >= 500) &&
+          e.codigo != 'PROVEEDOR_NO_DISPONIBLE') {
+        setState(() {
+          cobroIncierto = true;
+          aviso = 'No sabemos si se generó el cobro; no lo repitas.';
+        });
+      }
+      if (e.codigo == 'VERSION_OBSOLETA' || e.codigo == 'CLAVE_REUTILIZADA') {
+        limpiarClaves();
+        setState(() => ocupado = false);
+        await cargar(conservarAviso: true);
+      } else if (e.status != null && e.status! < 500) {
+        clave.limpiar();
+      }
+    } finally {
+      if (mounted) setState(() => ocupado = false);
     }
   }
 
@@ -146,10 +287,27 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
               onPressed: () => context.go('/pedidos'),
               child: const Text('Volver a pedidos'),
             ),
-          if (actual == null && !noAccesible && !ocupado)
+          if (actual == null && !noAccesible && !permisoDenegado && !ocupado)
             OutlinedButton(onPressed: cargar, child: const Text('Reintentar')),
-          if (actual != null && !noAccesible) ...[
+          if (actual != null && !noAccesible && !permisoDenegado) ...[
             Text('Cliente: ${actual.cliente} · ${actual.estado}'),
+            PagoCard(
+              pedido: actual,
+              incierto: cobroIncierto,
+              errorTelefono: errorTelefono,
+              ocupado: ocupado || cobroIncierto || cobroBloqueado,
+              telefono: telefono,
+              canal: canal,
+              cambiarCanal: (v) => setState(() => canal = v),
+              cobrar: () => accion('cobro'),
+              activar: () => accion('espera'),
+            ),
+            EntregaCard(
+              pedido: actual,
+              ocupado: ocupado,
+              listo: () => accion('listo'),
+              entregado: () => accion('entregado'),
+            ),
             if (actual.cotizacion != null)
               ResumenCotizacionCard(
                 cotizacion: actual.cotizacion!,

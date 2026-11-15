@@ -14,10 +14,11 @@ Dio crearDioVenta({String baseUrl = 'http://test'}) {
 const rutaCrearVenta = '/api/ventas/';
 
 class PeticionVenta {
-  PeticionVenta(this.method, this.path);
+  PeticionVenta(this.method, this.path, this.headers);
 
   final String method;
   final String path;
+  final Map<String, dynamic> headers;
 }
 
 class MockVentaApi {
@@ -25,7 +26,13 @@ class MockVentaApi {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          peticiones.add(PeticionVenta(options.method, options.path));
+          peticiones.add(
+            PeticionVenta(
+              options.method,
+              options.path,
+              Map<String, dynamic>.from(options.headers),
+            ),
+          );
           handler.next(options);
         },
       ),

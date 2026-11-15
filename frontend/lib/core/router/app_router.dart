@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/ajustes/presentation/ajustes_page.dart';
 import '../../features/cobro/presentation/mi_qr_page.dart';
-import '../../features/cuenta/presentation/registrar_clabe_page.dart';
-import '../../features/cuenta/presentation/registrar_cuenta_pey_page.dart';
+import '../../features/cuenta/presentation/cuentas_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/pedidos/presentation/pedido_detalle_page.dart';
 import '../../features/pedidos/presentation/pedidos_page.dart';
@@ -23,6 +22,7 @@ const kRutaInicio = '/inicio';
 const kRutaMovimientos = '/movimientos';
 const kRutaTablero = '/tablero';
 const kRutaNuevaVenta = '/venta/nueva';
+const kRutaCuentas = '/cuenta/cuentas';
 const kRutaRegistrarClabe = '/cuenta/clabe';
 const kRutaRegistrarCuentaPey = '/cuenta/pey/registrar';
 const kRutaAjustes = '/ajustes';
@@ -30,9 +30,7 @@ const kRutaMiQr = '/mi-qr';
 const kRutaPedidos = '/pedidos';
 const kRutaPedido = '/pedidos/:id';
 
-const _rutasPublicasSinSesion = <String>{
-  kRutaEntrar,
-};
+const _rutasPublicasSinSesion = <String>{kRutaEntrar};
 
 bool _rutaPublicaSinSesion(String ubicacion) {
   return _rutasPublicasSinSesion.contains(ubicacion);
@@ -54,7 +52,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!sesion.autenticado && !_rutaPublicaSinSesion(ubicacion)) {
         return kRutaEntrar;
       }
-      if (sesion.autenticado && (enEntrar || _rutaPublicaSinSesion(ubicacion))) {
+      if (sesion.autenticado &&
+          (enEntrar || _rutaPublicaSinSesion(ubicacion))) {
         return kRutaInicio;
       }
       return null;
@@ -64,40 +63,45 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: kRutaEntrar,
         builder: (context, state) {
           final aviso = state.uri.queryParameters['aviso'];
-          return LoginPage(
-            key: ValueKey(aviso ?? ''),
-            mensajeInicial: aviso,
-          );
+          return LoginPage(key: ValueKey(aviso ?? ''), mensajeInicial: aviso);
         },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             TfShell(navigationShell: navigationShell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: kRutaInicio,
-              builder: (context, state) => const HomeAutenticadoPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: kRutaMovimientos,
-              builder: (context, state) => const ResumenMovimientosPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: kRutaTablero,
-              builder: (context, state) => const TableroPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: kRutaAjustes,
-              builder: (context, state) => const AjustesPage(),
-            ),
-          ]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaInicio,
+                builder: (context, state) => const HomeAutenticadoPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaMovimientos,
+                builder: (context, state) => const ResumenMovimientosPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaTablero,
+                builder: (context, state) => const TableroPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaAjustes,
+                builder: (context, state) => const AjustesPage(),
+              ),
+            ],
+          ),
         ],
       ),
       GoRoute(
@@ -109,21 +113,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             PedidoDetallePage(id: state.pathParameters['id']!),
       ),
-      GoRoute(
-        path: kRutaMiQr,
-        builder: (context, state) => const MiQrPage(),
-      ),
+      GoRoute(path: kRutaMiQr, builder: (context, state) => const MiQrPage()),
       GoRoute(
         path: kRutaNuevaVenta,
         builder: (context, state) => const NuevaVentaPage(),
       ),
       GoRoute(
+        path: kRutaCuentas,
+        builder: (context, state) => const CuentasPage(),
+      ),
+      GoRoute(
         path: kRutaRegistrarClabe,
-        builder: (context, state) => const RegistrarClabePage(),
+        builder: (context, state) => const CuentasPage(),
       ),
       GoRoute(
         path: kRutaRegistrarCuentaPey,
-        builder: (context, state) => const RegistrarCuentaPeyPage(),
+        builder: (context, state) => const CuentasPage(),
       ),
       GoRoute(
         path: '/venta/:id',

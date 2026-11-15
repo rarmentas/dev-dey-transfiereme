@@ -8,7 +8,7 @@ void main() {
   for (final caso in [
     (
       403,
-      <String, dynamic>{'detail': 'Debe iniciar sesión.'},
+      <String, dynamic>{'codigo': 'SESION_TERMINADA'},
       'SESION_TERMINADA',
       'Tu sesión terminó. Vuelve a entrar.',
     ),
@@ -74,7 +74,13 @@ void main() {
     await expectLater(
       PedidoRepository(mock.dio).listar(),
       throwsA(
-        isA<PedidoException>().having((e) => e.codigo, 'codigo', 'ERROR'),
+        isA<PedidoException>()
+            .having((e) => e.codigo, 'codigo', 'ERROR')
+            .having(
+              (e) => e.mensaje,
+              'mensaje',
+              'No pudimos completar la solicitud. Intenta de nuevo.',
+            ),
       ),
     );
   });

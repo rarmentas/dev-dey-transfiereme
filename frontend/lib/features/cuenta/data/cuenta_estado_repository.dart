@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'cuenta_estado.dart';
+import 'cuenta_cobro.dart';
 
 class CuentaEstadoRepository {
   CuentaEstadoRepository(this._dio);
@@ -8,9 +9,6 @@ class CuentaEstadoRepository {
   final Dio _dio;
 
   static const rutaEstado = '/api/cuenta/pey/estado/';
-  static const rutaRegistro = '/api/cuenta/pey/registro/';
-  static const rutaSincronizar = '/api/cuenta/pey/sincronizar/';
-
   Future<EstadoCuentaPey> obtenerEstado() async {
     try {
       final respuesta = await _dio.get<dynamic>(rutaEstado);
@@ -20,41 +18,15 @@ class CuentaEstadoRepository {
     }
   }
 
-  Future<EstadoCuentaPey> registrarEnPey({
-    required String nombre,
-    required String entidad,
-    String alias = '',
-    bool reemplazar = false,
-  }) async {
-    try {
-      final respuesta = await _dio.post<dynamic>(
-        rutaRegistro,
-        data: {
-          'nombre': nombre.trim(),
-          'entidad': entidad,
-          if (alias.trim().isNotEmpty) 'alias': alias.trim(),
-          'reemplazar': reemplazar,
-        },
-      );
-      return _estadoDesdeRespuesta(respuesta);
-    } on DioException catch (error) {
-      throw cuentaPeyErrorDeDio(error);
-    }
-  }
-
-  Future<EstadoCuentaPey> sincronizar() async {
-    try {
-      final respuesta = await _dio.post<dynamic>(rutaSincronizar);
-      return _estadoDesdeRespuesta(respuesta);
-    } on DioException catch (error) {
-      throw cuentaPeyErrorDeDio(error);
-    }
-  }
-
   EstadoCuentaPey _estadoDesdeRespuesta(Response<dynamic> respuesta) {
     final status = respuesta.statusCode ?? 0;
     if (status == 200) {
-      return EstadoCuentaPey.fromJson(_mapa(respuesta.data));
+      final data = _mapa(respuesta.data);
+      final clabe = data['clabe_enmascarada'];
+      if (clabe is String) {
+        data['clabe_enmascarada'] = enmascararClabe(clabe);
+      }
+      return EstadoCuentaPey.fromJson(data);
     }
     throw _errorDesdeRespuesta(respuesta.data, status);
   }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,7 +12,6 @@ class PedidosPage extends ConsumerStatefulWidget {
 }
 
 class _PedidosPageState extends ConsumerState<PedidosPage> {
-  Timer? timer;
   List<PedidoResumen>? pedidos;
   String? error;
   bool cargando = false;
@@ -22,13 +19,6 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
   void initState() {
     super.initState();
     cargar();
-    timer = Timer.periodic(const Duration(seconds: 5), (_) => cargar());
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
   }
 
   Future<void> cargar() async {
@@ -91,7 +81,7 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
             child: ListTile(
               title: Text('Pedido #${pedido.numero} · ${pedido.cliente}'),
               subtitle: Text(
-                '${pedido.estado} · ${pedido.pendientes} pendientes${pedido.total == null ? '' : ' · ${formatearCentavos(pedido.total!)}'}',
+                '${pedido.estado} · Pago: ${etiquetaPago(pedido.pagoEstado)} · Preparación: ${etiquetaPreparacion(pedido.preparacion)} · ${pedido.pendientes} pendientes${pedido.total == null ? '' : ' · ${formatearCentavos(pedido.total!)}'}',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
