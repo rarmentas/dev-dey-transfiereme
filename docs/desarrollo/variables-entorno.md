@@ -80,11 +80,18 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 
 El deploy de test está deshabilitado hasta aislar sus recursos. Producción utiliza
 `/opt/codi/prod`, las units `cody` y `cody-canal` y el bind existente de Gunicorn.
-El usuario necesita sudo sin contraseña para systemctl e install, acceso a Docker,
-y escritura en `/opt/codi` para el candado `/opt/codi/.deploy.lock`. Operación
-puede impedir despliegues creando `/opt/codi/.maintenance`; debe coordinarse con
-el mismo candado. El candado cubre validación, transferencias y reinicios; los
-jobs antiguos deben deshabilitarse aparte. Revise los drop-ins de ambas units.
+El usuario necesita sudo sin contraseña para systemctl e install y acceso a Docker.
+No necesita escritura sobre `/opt/codi`, que administra root. Operación precrea
+`/opt/codi/.deploy.lock` como archivo regular persistente, sin symlink, con
+lectura y escritura para la identidad de deploy (propietario, grupo o ACL). No se
+borra ni se recrea mientras se usa: flock protege el inode, no el nombre. Sin ese
+archivo el deploy falla antes de transferir; no se abren permisos del padre para
+sortearlo. Operación puede impedir despliegues creando `/opt/codi/.maintenance`
+bajo el mismo candado en modo exclusivo. El guard toma el candado exclusivo,
+escribe un token y pasa a compartido; rsync, la escritura del env y
+`deploy-remoto.sh` sostienen su propio flock compartido y validan ese token, así
+que un deploy o mantenimiento nuevo espera a que terminen. Los jobs antiguos deben
+deshabilitarse aparte. Revise los drop-ins de ambas units.
 
 PostgreSQL `codi-postgres` del proyecto `codi`, servicio `postgres`, debe estar
 operativo en `127.0.0.1:5435`; operación administra su ciclo de vida y datos.
