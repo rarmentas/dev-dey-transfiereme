@@ -54,6 +54,7 @@ class DeploySeguridadTests(SimpleTestCase):
             "POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
             "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
             "AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n"
+            "OPENAI_API_KEY=ficticia-openai\n"
             "AGENTE_PEDIDOS_MODELO=modelo-prueba\n"
             "AGENTE_PEDIDOS_TIMEOUT_S=25\n"
             "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
@@ -385,6 +386,7 @@ esac''')
         self.assertIn("WAHA_BASE_URL=http://127.0.0.1:3004\n", contenido)
         self.assertIn("WAHA_API_KEY=ficticia\n", contenido)
         self.assertIn("AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n", contenido)
+        self.assertIn("OPENAI_API_KEY=ficticia-openai\n", contenido)
         self.assertIn("AGENTE_PEDIDOS_MODELO=modelo-prueba\n", contenido)
         self.assertIn("AGENTE_PEDIDOS_TIMEOUT_S=25\n", contenido)
         for secreto in (
@@ -402,6 +404,8 @@ esac''')
         self.assertNotIn("PEY_API_KEY", stt)
         self.assertNotIn("AGENTE_PEDIDOS_API_KEY", stt)
         self.assertNotIn("AGENTE_PEDIDOS_API_KEY", cobros)
+        self.assertNotIn("OPENAI_API_KEY", stt)
+        self.assertNotIn("OPENAI_API_KEY", cobros)
         for rol in ("canal", "cobros", "stt"):
             entorno = self.destino / f"backend/.env.{rol}"
             self.assertEqual(entorno.stat().st_mode & 0o777, 0o600)

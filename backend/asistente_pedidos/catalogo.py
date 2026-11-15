@@ -1,5 +1,6 @@
 """Resolución exacta de nombres, unidades y precios aprobados del comercio."""
 
+import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
 
@@ -10,6 +11,20 @@ from pedidos.contratos.validacion import ErrorContrato
 def normalizar(valor):
     texto = unicodedata.normalize("NFKD", str(valor).casefold())
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).split())
+
+
+def coincidencias_consulta(texto, productos):
+    """Busca una frase breve por prefijo de nombre o alias, sin tratarla como pedido."""
+    def canonico(valor):
+        return re.sub(r"\b(?:lt|litro|litros)\b", "l", normalizar(valor))
+
+    consulta = canonico(texto)
+    if not consulta:
+        return []
+    return [producto for producto in productos if any(
+        re.search(r"^" + re.escape(consulta) + r"(?:\b|$)", canonico(nombre))
+        for nombre in [producto.nombre, *producto.alias] if nombre
+    )]
 
 
 def _unidad(valor):

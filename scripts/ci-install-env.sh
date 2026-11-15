@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Copia el .env de la app (variable File) y comprueba el acceso de deploy.
-# Los secretos de la app van dentro del archivo. Host, usuario, puerto y ruta
+# Los secretos de la app van dentro del archivo, salvo OPENAI_API_KEY cuando
+# GitLab la entrega como variable independiente. Host, usuario, puerto y ruta
 # quedan en variables de CI. PROD_SSH_PRIVATE_KEY_V2 y TEST_SSH_PRIVATE_KEY
 # llegan en base64 y se decodifican a un archivo temporal. Nada de eso se
 # copia a backend/.env. No imprime valores.
@@ -165,5 +166,13 @@ dest="${2:-$ROOT/backend/.env}"
 umask 077
 cp "$file_path" "$dest"
 chmod 600 "$dest"
+if [[ "$scope" == prod && -n "${OPENAI_API_KEY:-}" ]] &&
+  ! grep -Eq '^[[:space:]]*OPENAI_API_KEY[[:space:]]*=' "$dest"; then
+  if [[ "$OPENAI_API_KEY" =~ [[:space:]] ]]; then
+    echo "OPENAI_API_KEY debe ser un valor sin espacios ni saltos de línea." >&2
+    exit 1
+  fi
+  printf '\nOPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >>"$dest"
+fi
 
 echo "Entorno ${prefix} listo. Secretos de la app en el archivo. Deploy solo en variables de CI."
