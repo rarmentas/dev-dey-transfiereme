@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "pey",
     "integracion",
     "ventas",
+    "pedidos",
+    "canales",
 ]
 
 MIDDLEWARE = [
@@ -90,7 +92,10 @@ DATABASES = {
 }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation."
+        "UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -128,6 +133,14 @@ PEY_API_KEY = os.environ.get("PEY_API_KEY", "")
 # Vacío: obtener_puerto() elige desarrollo si DEBUG, y producción si no.
 PEY_ADAPTADOR = os.environ.get("PEY_ADAPTADOR", "")
 PEY_BASE_URL = "https://api.pey.mx"
+
+DEMO_MODE = os.environ.get("DEMO_MODE", "")
+DEMO_PEY_BANK_ACCOUNT_ID = os.environ.get("DEMO_PEY_BANK_ACCOUNT_ID", "")
+POLITICA_COBRO_VERSION = os.environ.get("POLITICA_COBRO_VERSION", "")
+NUCLEO_ADAPTADOR = os.environ.get("NUCLEO_ADAPTADOR", "")
+NUCLEO_STUB_PERMITIDO = DEBUG or "test" in sys.argv
+PEDIDOS_COBRO_HABILITADO = _env_bool("PEDIDOS_COBRO_HABILITADO", False)
+PEDIDOS_LECTOR_PROCEDENCIA = "canales.lector.LectorProcedenciaCanal"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -173,3 +186,9 @@ elif DEBUG and not _EMAIL_HOST_PASSWORD.strip():
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 else:
     EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", _EMAIL_BACKEND_DEFAULT)
+
+WAHA_BASE_URL = os.environ.get("WAHA_BASE_URL", "http://127.0.0.1:3004")
+WAHA_API_KEY = os.environ.get("WAHA_API_KEY", "")
+WAHA_WEBHOOK_SECRET = os.environ.get("WAHA_WEBHOOK_SECRET", "")
+WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "").strip() or "waha"
+CANAL_TRANSPORTE = "canales.waha.AdaptadorWaha"

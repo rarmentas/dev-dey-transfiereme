@@ -146,6 +146,12 @@ class HomeAutenticadoPage extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: TfSpace.s3),
+                  OutlinedButton(
+                    key: const Key('boton_pedidos'),
+                    onPressed: () => context.push(kRutaPedidos),
+                    child: const Text('Pedidos'),
+                  ),
                   const SizedBox(height: TfSpace.s6),
                   Row(
                     children: [

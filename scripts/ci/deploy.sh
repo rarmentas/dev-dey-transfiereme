@@ -133,6 +133,7 @@ rsync -az --delete --safe-links --chmod=Du=rwx,Dgo=rx,Fu+rw,Fgo+r,Fgo-w -e "$rsy
   --exclude '/.git/' --exclude '/.agents/' --exclude '/.cursor/' \
   --exclude '/.tooling/' --exclude '/.temp-*' \
   --exclude '/backend/.env' --exclude '/backend/.env.incoming' \
+  --exclude '/backend/.env.canal' \
   --exclude '/backend/.venv/' --exclude '/backend/staticfiles/' \
   --exclude '/frontend/.dart_tool/' --exclude '/frontend/.pub-cache/' \
   --exclude '/landing/node_modules/' --exclude '/landing/.astro/' \

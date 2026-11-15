@@ -1,0 +1,21 @@
+[Unit]
+Description=Cody canal WhatsApp (worker)
+After=network.target docker.service @UNIT_BASE@.service
+
+[Service]
+Type=simple
+User=@DEPLOY_USER@
+WorkingDirectory=@DEPLOY_PATH@/backend
+EnvironmentFile=@DEPLOY_PATH@/backend/.env.canal
+ExecStart=@DEPLOY_PATH@/backend/.venv/bin/python manage.py procesar_canal
+Restart=always
+RestartSec=5
+MemoryMax=512M
+CPUQuota=50%
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=@DEPLOY_PATH@
+
+[Install]
+WantedBy=multi-user.target

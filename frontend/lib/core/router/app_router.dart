@@ -7,6 +7,8 @@ import '../../features/cobro/presentation/mi_qr_page.dart';
 import '../../features/cuenta/presentation/registrar_clabe_page.dart';
 import '../../features/cuenta/presentation/registrar_cuenta_pey_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
+import '../../features/pedidos/presentation/pedido_detalle_page.dart';
+import '../../features/pedidos/presentation/pedidos_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
 import '../../features/tablero/presentation/tablero_page.dart';
@@ -25,6 +27,8 @@ const kRutaRegistrarClabe = '/cuenta/clabe';
 const kRutaRegistrarCuentaPey = '/cuenta/pey/registrar';
 const kRutaAjustes = '/ajustes';
 const kRutaMiQr = '/mi-qr';
+const kRutaPedidos = '/pedidos';
+const kRutaPedido = '/pedidos/:id';
 
 const _rutasPublicasSinSesion = <String>{
   kRutaEntrar,
@@ -95,6 +99,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ]),
         ],
+      ),
+      GoRoute(
+        path: kRutaPedidos,
+        builder: (context, state) => const PedidosPage(),
+      ),
+      GoRoute(
+        path: kRutaPedido,
+        builder: (context, state) =>
+            PedidoDetallePage(id: state.pathParameters['id']!),
       ),
       GoRoute(
         path: kRutaMiQr,

@@ -1,0 +1,21 @@
+"""Textos de la conversación guiada."""
+
+AYUDA = (
+    "Escribe tu pedido en líneas separadas. Usa CORREGIR: para cambiarlo y "
+    "ACEPTAR seguido del token para aceptar la cotización."
+)
+RECIBIDO = "Recibimos tu pedido. El tendero preparará la cotización."
+ABIERTO = "Ya hay un pedido abierto. Usa CORREGIR: para cambiarlo."
+CORREGIDO = "Pedido corregido. El tendero lo revisará."
+SOLO_TEXTO = "Por ahora solo recibimos texto. Escribe tu pedido, por favor."
+SIN_COTIZACION = "No hay una cotización enviada para aceptar."
+OBSOLETA = "La cotización ya cambió. Espera el resumen actualizado."
+ACEPTADO = "Aceptación registrada; el cobro aún no está habilitado."
+ESPERA = "Tu solicitud de cobro está en espera."
+PENDIENTE = "Tu solicitud de cobro está pendiente."
+INCIERTO = "No podemos confirmar el estado del cobro."
+ERROR = "No pudimos procesar tu mensaje. Intenta de nuevo."
+
+TOKEN_INVALIDO = "Para aceptar escribe exactamente ACEPTAR <token del último resumen>."
+REINTENTO_ESPERA = "Estamos en espera del servicio; reintentaremos tu mensaje."
+REINTENTO_AGOTADO = "No pudimos procesar tu mensaje. Intenta de nuevo más tarde."
