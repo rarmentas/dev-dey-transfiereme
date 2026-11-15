@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "ventas",
     "pedidos",
     "canales",
+    "asistente_vivo",
 ]
 
 MIDDLEWARE = [
@@ -199,3 +200,13 @@ STT_CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "2"))
 STT_PRESUPUESTO_S = 45
 WHATSAPP_AUDIO_MAX_BYTES = 5_000_000
 WHATSAPP_AUDIO_MAX_SEGUNDOS = 90
+
+# Gemini Live se autentica en el servidor y el navegador recibe únicamente un
+# token efímero, acotado a esta configuración.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# Modelo nativo de audio disponible en la capa gratuita de Gemini Live.
+# Se puede sustituir por variable de entorno sin desplegar cambios de código.
+GEMINI_LIVE_MODELO = os.environ.get(
+    "GEMINI_LIVE_MODELO", "gemini-2.5-flash-native-audio-preview-12-2025"
+)
+GEMINI_LIVE_MAX_SESIONES_HORA = int(os.environ.get("GEMINI_LIVE_MAX_SESIONES_HORA", "6"))

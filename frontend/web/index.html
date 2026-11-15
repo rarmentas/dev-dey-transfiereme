@@ -33,6 +33,65 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Web Audio + WebSocket directo a Gemini Live. Recibe un token efímero,
+    // nunca la GEMINI_API_KEY. ScriptProcessor mantiene compatibilidad amplia
+    // para la demo; el audio de entrada se remuestrea a PCM16/16 kHz.
+    (() => {
+      let ws, context, stream, processor, input, nextPlay = 0;
+      const fuentes = new Set();
+      // Un string evita diferencias de conversión de objetos entre renderers
+      // Dart web. Solo la misma ventana recibe el evento.
+      const emit = (type, text) => window.postMessage(JSON.stringify({source: 'transfiereme-live', type, text}), window.location.origin);
+      const b64 = bytes => btoa(String.fromCharCode(...bytes));
+      const pcm16 = (samples, rate) => {
+        const ratio = rate / 16000, length = Math.floor(samples.length / ratio), out = new Uint8Array(length * 2);
+        for (let i = 0; i < length; i++) { const v = Math.max(-1, Math.min(1, samples[Math.floor(i * ratio)])); const n = v < 0 ? v * 32768 : v * 32767; out[i * 2] = n & 255; out[i * 2 + 1] = (n >> 8) & 255; }
+        return b64(out);
+      };
+      const play = encoded => {
+        const raw = atob(encoded), samples = new Float32Array(raw.length / 2);
+        for (let i = 0; i < samples.length; i++) { let n = raw.charCodeAt(i * 2) | (raw.charCodeAt(i * 2 + 1) << 8); if (n >= 32768) n -= 65536; samples[i] = n / 32768; }
+        const buffer = context.createBuffer(1, samples.length, 24000); buffer.getChannelData(0).set(samples);
+        const source = context.createBufferSource(); source.buffer = buffer; source.connect(context.destination);
+        fuentes.add(source); source.onended = () => { fuentes.delete(source); if (!fuentes.size) emit('listening'); };
+        nextPlay = Math.max(nextPlay, context.currentTime + .03); source.start(nextPlay); nextPlay += buffer.duration; emit('speaking');
+      };
+      const detenerAudio = () => { for (const source of fuentes) { try { source.stop(); } catch (_) {} } fuentes.clear(); if (context) nextPlay = context.currentTime; };
+      const api = async (name, args) => {
+        const leer = async url => { const r = await fetch(url, {credentials:'include'}); return r.ok ? r.json() : {error:'No fue posible consultar tus datos ahora.'}; };
+        if (name === 'resumen_ventas_hoy') return leer('/api/movimientos/tablero/');
+        const pedidos = await leer('/api/pedidos/');
+        const lista = pedidos.data?.pedidos || pedidos.pedidos || [];
+        if (name === 'pedidos_pendientes') return lista.filter(p => p.abierto || p.estado === 'pendiente');
+        const pedido = lista.find(p => String(p.numero) === String(args.numero));
+        if (!pedido) return {error:'No encontré ese pedido.'};
+        return leer('/api/pedidos/' + encodeURIComponent(pedido.id) + '/');
+      };
+      window.transfieremeLiveStart = async (token, model) => {
+        try {
+          context = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 24000});
+          stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1, echoCancellation:true, noiseSuppression:true}});
+          ws = new WebSocket('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=' + encodeURIComponent(token));
+          ws.onopen = () => { ws.send(JSON.stringify({setup:{model, generationConfig:{responseModalities:['AUDIO'], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:'Kore'}}}}, inputAudioTranscription:{}, outputAudioTranscription:{}}})); emit('connected');
+            // 512 cuadros a 24 kHz son ~21 ms: suficiente para baja latencia.
+            processor = context.createScriptProcessor(512, 1, 1); input = context.createMediaStreamSource(stream); input.connect(processor); processor.connect(context.destination);
+            processor.onaudioprocess = e => { if (ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({realtimeInput:{mediaChunks:[{mimeType:'audio/pcm;rate=16000', data:pcm16(e.inputBuffer.getChannelData(0), context.sampleRate)}]}})); emit('listening'); } };
+          };
+          ws.onmessage = async event => { const data = JSON.parse(event.data); const server = data.serverContent || {};
+            const parts = server.modelTurn?.parts || []; for (const part of parts) { if (part.inlineData?.data) play(part.inlineData.data); if (part.text) emit('outputTranscript', part.text); }
+            if (server.inputTranscription?.text) emit('inputTranscript', server.inputTranscription.text);
+            if (server.outputTranscription?.text) emit('outputTranscript', server.outputTranscription.text);
+            const calls = data.toolCall?.functionCalls || []; for (const call of calls) { const result = await api(call.name, call.args || {}); ws.send(JSON.stringify({toolResponse:{functionResponses:[{id:call.id, name:call.name, response:{result}}]}})); }
+            // Barge-in: corta incluso los buffers que ya estaban programados.
+            if (server.interrupted) { detenerAudio(); emit('listening'); }
+          };
+          ws.onerror = () => emit('error', 'No se pudo conectar con Gemini Live.'); ws.onclose = () => emit('closed');
+        } catch (e) { emit('error', e.name === 'NotAllowedError' ? 'Necesitamos permiso para usar el micrófono.' : 'No pudimos iniciar el micrófono.'); }
+      };
+      window.transfieremeLiveStop = () => { detenerAudio(); if (processor) processor.disconnect(); if (input) input.disconnect(); if (stream) stream.getTracks().forEach(t => t.stop()); if (ws) ws.close(); if (context) context.close(); processor = input = stream = ws = context = undefined; emit('closed'); };
+    })();
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
