@@ -393,12 +393,19 @@ class IntegracionRealTests(TestCase):
         self.cotizar()
         cursor = CursorCanal.objects.get(consumidor="avisos")
         previo = cursor.cursor
-        with patch("canales.avisos.preparar", side_effect=RuntimeError):
-            with self.assertRaises(RuntimeError):
+
+        def fallar_al_guardar(*args, **kwargs):
+            self.assertEqual(
+                SalidaCanal.objects.filter(tipo="cotizacion_resumen").count(), 1
+            )
+            raise RuntimeError("fallo al guardar el cursor")
+
+        with patch.object(CursorCanal, "save", side_effect=fallar_al_guardar):
+            with self.assertRaisesRegex(RuntimeError, "fallo al guardar el cursor"):
                 procesar_avisos(obtener_nucleo(), LectorProcedenciaCanal())
+        self.assertFalse(SalidaCanal.objects.filter(tipo="cotizacion_resumen").exists())
         cursor.refresh_from_db()
         self.assertEqual(cursor.cursor, previo)
-        self.assertFalse(SalidaCanal.objects.filter(tipo="cotizacion_resumen").exists())
         procesar_avisos(obtener_nucleo(), LectorProcedenciaCanal())
         cursor.refresh_from_db()
         self.assertNotEqual(cursor.cursor, previo)
