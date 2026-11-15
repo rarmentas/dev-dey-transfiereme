@@ -115,8 +115,18 @@ cleanup() {
     sudo -n install -m 644 "$backup_dir/cody.service.previous" /etc/systemd/system/cody.service || true
     install -m 600 "$backup_dir/.env" "$target" || true
     sudo -n systemctl daemon-reload || true
-    sudo -n systemctl restart cody.service || true
-    sudo -n systemctl is-active cody.service || true
+    web_recuperada=1
+    if ! sudo -n systemctl restart cody.service; then
+      if ! sudo -n systemctl start cody.service; then
+        web_recuperada=0
+      fi
+    fi
+    if ! sudo -n systemctl is-active cody.service; then
+      web_recuperada=0
+    fi
+    if [[ "$web_recuperada" != 1 ]]; then
+      echo 'recuperación web fallida; requiere intervención de operación.' >&2
+    fi
     for rol in canal cobros stt; do
       if [[ -f "$backup_dir/$rol.enabled" ]]; then
         sudo -n systemctl enable "cody-$rol.service" || true
