@@ -384,7 +384,6 @@ class FixturesContratoV1:
         )
         self.assertEqual(respuesta.error.code, CodigoError.CURSOR_INVALIDO)
 
-    @solo_stub
     def test_f13_audio_fallido_texto_no_pisa_version_nueva(self):
         ctx, _, pedido = self._crear()
         audio, llave_audio = self.driver.agregar_mensaje(

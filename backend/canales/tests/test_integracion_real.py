@@ -5,13 +5,14 @@ import hmac
 import json
 from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 
 from ambito.models import Comercio
 from canales.models import MensajeEntrante, SalidaCanal, SesionCanal
 from canales.worker import ciclo
 from pedidos.models import Aceptacion, Pedido
 from pedidos.servicios.tendero import operar
+from webhooks.tests.support.pey_webhook import SECRETO
 
 
 class TransporteFalso:
@@ -520,3 +521,72 @@ class IntegracionRealTests(TestCase):
         )
         posterior.refresh_from_db()
         self.assertEqual(posterior.id_proveedor, "dos")
+
+    @override_settings(PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false")
+    def test_aceptar_real_reservado_informa_pendiente(self):
+        from ambito.tests.soporte import crear_cuenta
+        from canales import mensajes
+        from pedidos.models import IntentoCobro
+
+        crear_cuenta(self.comercio)
+        self.webhook("real-1", "leche")
+        ciclo()
+        self.cotizar()
+        ciclo()
+        resumen = SalidaCanal.objects.get(tipo="cotizacion_resumen")
+        self.webhook("real-2", f"ACEPTAR {resumen.payload['token_resumen']}")
+        ciclo()
+        self.assertEqual(IntentoCobro.objects.get().estado, "reservado")
+        mensaje = MensajeEntrante.objects.get(id_mensaje_proveedor="real-2")
+        salida = SalidaCanal.objects.get(causa=f"mensaje:{mensaje.id}")
+        self.assertEqual(salida.payload["texto"], mensajes.PENDIENTE)
+
+
+
+@override_settings(WAHA_WEBHOOK_SECRET="prueba", NUCLEO_ADAPTADOR="real")
+class IntegracionPagoRealTests(TransactionTestCase):
+    setUp = IntegracionRealTests.setUp
+    webhook = IntegracionRealTests.webhook
+    cotizar = IntegracionRealTests.cotizar
+
+    @override_settings(
+        PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false", PEY_WEBHOOK_SECRET=SECRETO
+    )
+    def test_pago_real_no_avanza_preparacion_y_avisa(self):
+        from unittest.mock import Mock
+
+        from ambito.tests.soporte import crear_cuenta
+        from pedidos.models import IntentoCobro
+        from pedidos.servicios.despacho import enviar_intento
+        from pey.tipos import QrCreado
+        from webhooks.tests.support.pey_webhook import post_firmado
+
+        cuenta = crear_cuenta(self.comercio)
+        self.webhook("pago-1", "leche")
+        ciclo()
+        self.cotizar()
+        ciclo()
+        resumen = SalidaCanal.objects.get(tipo="cotizacion_resumen")
+        self.webhook("pago-2", f"ACEPTAR {resumen.payload['token_resumen']}")
+        ciclo()
+        intento = IntentoCobro.objects.get()
+        puerto = Mock()
+        puerto.crear_qr.return_value = QrCreado("qr-prueba", "qr-prueba")
+        enviar_intento(intento.pk, puerto)
+        cuerpo = json.dumps({
+            "type": "codi.qr.payment_received", "amount": 20,
+            "transactionId": "pago-real", "codiQrId": "qr-prueba",
+            "bankAccountId": cuenta.pey_bank_account_id,
+        }, separators=(",", ":"))
+        respuesta = post_firmado(self.client, cuerpo, "pago-real")
+        self.assertEqual(respuesta.status_code, 200)
+        intento.refresh_from_db()
+        pedido = Pedido.objects.get()
+        self.assertEqual(intento.estado, "pagado")
+        self.assertEqual(pedido.preparacion, "pendiente")
+        self.assertIsNone(pedido.listo_en)
+        self.assertIsNone(pedido.entregado_en)
+        ciclo()
+        aviso = SalidaCanal.objects.get(tipo="aviso")
+        self.assertIn("confirmación del pago", aviso.payload["texto"])
+        self.assertNotIn("listo", aviso.payload["texto"].lower())

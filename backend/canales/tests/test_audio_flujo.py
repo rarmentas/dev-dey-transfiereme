@@ -59,11 +59,28 @@ class ColaAudioTests(TestCase):
         trabajo = audio.reclamar_trabajo()
         self.assertTrue(audio.completar(trabajo, texto="ACEPTAR P1-R1"))
         mensaje = MensajeEntrante.objects.select_related("conversacion__sesion").get()
+        from uuid import uuid4
+
+        conversacion = mensaje.conversacion
+        conversacion.pedido_id_actual = uuid4()
+        conversacion.save(update_fields=["pedido_id_actual"])
+        SalidaCanal.objects.create(
+            conversacion=conversacion, causa="resumen",
+            destinatario=conversacion.cliente_externo_id, tipo="cotizacion_resumen",
+            estado="enviada", id_proveedor="ack", envio_iniciado_en=timezone.now(),
+            payload={
+                "token_resumen": "P1-R1", "pedido_version": 1,
+                "cotizacion_id": "cot", "cotizacion_revision": 1,
+                "importe_efectivo_centavos": 100, "politica_cobro_version": "v1",
+            },
+        )
         nucleo = Mock(ES_SIMULACION=False)
         procesar_mensaje(mensaje, nucleo, None, timezone.now())
         nucleo.aceptar_cotizacion.assert_not_called()
         nucleo.solicitar_cobro.assert_not_called()
-        self.assertIn("texto", SalidaCanal.objects.get().payload["texto"])
+        self.assertIn(
+            "texto", SalidaCanal.objects.get(tipo="respuesta").payload["texto"]
+        )
 
     def test_procesar_audio_con_dobles_y_vacio(self):
         self.recibir(self.payload)

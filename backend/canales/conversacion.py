@@ -1,5 +1,6 @@
 """Conversación guiada mediante el puerto del núcleo."""
 
+import re
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
@@ -92,6 +93,10 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 )
                 if not cobro.ok and cobro.error.retryable:
                     respuesta = cobro
+                elif not cobro.ok and cobro.error.code.value in {
+                    "CUENTA_NO_ACTIVE", "DEMO_DESTINO_NO_PERMITIDO"
+                }:
+                    salida = mensajes.COBRO_NO_DISPONIBLE
                 elif (
                     not cobro.ok and cobro.error.code.value != "PROVEEDOR_NO_DISPONIBLE"
                 ):
@@ -100,11 +105,25 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                     estado = cobro.data["pedido"].pago_estado.value
                     salida = {
                         "en_espera": mensajes.ESPERA,
+                        "reservado": mensajes.PENDIENTE,
+                        "enviando": mensajes.PENDIENTE,
                         "pendiente": mensajes.PENDIENTE,
                         "incierto": mensajes.INCIERTO,
+                        "descartado": mensajes.OBSOLETA,
                     }.get(estado, mensajes.ACEPTADO)
                 else:
                     salida = mensajes.ACEPTADO
+    elif pedido_id and re.search(r"\b(?:ya\s+)?pagu[eé]\b", texto, re.IGNORECASE):
+        respuesta = nucleo.consultar_pedido(ctx, **datos, pedido_id=str(pedido_id))
+        if respuesta.ok:
+            pedido = respuesta.data["pedido"]
+            estado = pedido.pago_estado.value
+            if estado == "pagado":
+                salida = mensajes.PAGADO.format(pedido_numero=pedido.numero)
+            elif estado == "incierto":
+                salida = mensajes.INCIERTO
+            else:
+                salida = mensajes.AUN_SIN_PAGO
     elif comando == "CORREGIR" or comando.startswith("CORREGIR:"):
         contenido = texto[len("CORREGIR") :].lstrip(": ").strip()
         if not any(c.isalnum() for c in contenido):

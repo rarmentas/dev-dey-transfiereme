@@ -2,6 +2,7 @@
 
 from django.db import transaction
 
+from canales import mensajes
 from canales.conversacion import contexto
 from canales.models import ConversacionCanal, CursorCanal, SesionCanal
 from canales.salidas import preparar
@@ -24,12 +25,40 @@ def procesar_avisos(nucleo, lector):
             continue
         pendientes = []
         for evento in respuesta.data["eventos"]:
-            if evento.tipo != TipoEvento.COTIZACION_PUBLICADA:
+            plantillas = {
+                TipoEvento.PAGO_CONFIRMADO: mensajes.PAGADO,
+                TipoEvento.PEDIDO_LISTO: mensajes.LISTO,
+                TipoEvento.PEDIDO_ENTREGADO: mensajes.ENTREGADO,
+                TipoEvento.COBRO_INCIERTO: mensajes.COBRO_INCIERTO,
+                TipoEvento.COBRO_RECHAZADO: mensajes.COBRO_RECHAZADO,
+                TipoEvento.COBRO_VENCIDO: mensajes.COBRO_VENCIDO,
+                TipoEvento.COBRO_DESCARTADO: mensajes.COBRO_DESCARTADO,
+            }
+            if (
+                evento.tipo != TipoEvento.COTIZACION_PUBLICADA
+                and evento.tipo not in plantillas
+            ):
                 continue
             conversacion = ConversacionCanal.objects.filter(
                 sesion=sesion, pk=evento.conversacion_id
             ).first()
             if not conversacion:
+                continue
+            if evento.tipo in plantillas:
+                snapshot = evento.snapshot
+                numero = snapshot.get("pedido_numero")
+                texto = plantillas[evento.tipo].format(
+                    pedido_numero=numero if numero is not None else ""
+                )
+                importe = snapshot.get("importe_efectivo_centavos")
+                total = snapshot.get("total_comercial_centavos")
+                if importe is not None:
+                    texto += f" Importe: ${importe / 100:.2f}."
+                if snapshot.get("demo_mode") and total is not None:
+                    texto += f" Total comercial: ${total / 100:.2f}."
+                if nucleo.ES_SIMULACION:
+                    texto = "[SIMULACIÓN] " + texto
+                pendientes.append((conversacion, evento, {"texto": texto}, "aviso"))
                 continue
             consulta = nucleo.consultar_pedido(
                 contexto(conversacion),
@@ -71,18 +100,18 @@ def procesar_avisos(nucleo, lector):
                 "pedido_id": pedido.id,
                 "pedido_version": pedido.version,
             }
-            pendientes.append((conversacion, evento, payload))
+            pendientes.append((conversacion, evento, payload, "cotizacion_resumen"))
         if pendientes is None:
             continue
         with transaction.atomic():
             bloqueado = CursorCanal.objects.select_for_update().get(pk=cursor.pk)
             if bloqueado.cursor != cursor.cursor:
                 continue
-            for conversacion, evento, payload in pendientes:
+            for conversacion, evento, payload, tipo in pendientes:
                 preparar(
                     conversacion,
                     f"evento:{evento.evento_id}",
-                    "cotizacion_resumen",
+                    tipo,
                     payload,
                 )
             bloqueado.cursor = respuesta.data["next_cursor"]

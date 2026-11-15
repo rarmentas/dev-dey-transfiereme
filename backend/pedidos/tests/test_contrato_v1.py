@@ -289,7 +289,7 @@ class PrecedenciaContratoTests(SimpleTestCase):
 
 
 class DecoradorFixturesTests(SimpleTestCase):
-    def test_solo_fixture_audio_conserva_skip_en_real(self):
+    def test_fixtures_de_cobro_y_audio_corren_en_real(self):
         from pedidos.tests.fixtures_v1 import FixturesContratoV1
 
         nombres = ("f07", "f08", "f09", "f10", "f11", "f13", "f14")
@@ -301,6 +301,5 @@ class DecoradorFixturesTests(SimpleTestCase):
             )
             for nombre in nombres
         }
-        self.assertTrue(hasattr(metodos["f13"], "__wrapped__"))
-        for nombre in ("f07", "f08", "f09", "f10", "f11", "f14"):
+        for nombre in nombres:
             self.assertFalse(hasattr(metodos[nombre], "__wrapped__"), nombre)

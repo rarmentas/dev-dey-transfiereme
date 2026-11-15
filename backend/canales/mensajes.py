@@ -23,3 +23,13 @@ REINTENTO_AGOTADO = "No pudimos procesar tu mensaje. Intenta de nuevo más tarde
 AUDIO_FALLIDO = "No pudimos escuchar el audio. Escribe tu pedido por texto."
 AUDIO_NO_DISPONIBLE = "El audio no está disponible. Escribe tu pedido por texto."
 ACEPTAR_POR_TEXTO = "Para aceptar, escribe ACEPTAR y el token por texto."
+
+PAGADO = "Recibimos la confirmación del pago del pedido {pedido_numero}."
+LISTO = "El pedido {pedido_numero} está listo."
+ENTREGADO = "El pedido {pedido_numero} fue entregado."
+COBRO_INCIERTO = "No podemos confirmar el estado del cobro del pedido {pedido_numero}."
+COBRO_RECHAZADO = "El cobro del pedido {pedido_numero} fue rechazado."
+COBRO_VENCIDO = "El cobro del pedido {pedido_numero} venció."
+COBRO_DESCARTADO = "El cobro del pedido {pedido_numero} fue descartado."
+AUN_SIN_PAGO = "Aún no recibimos la confirmación del banco."
+COBRO_NO_DISPONIBLE = "El cobro no está disponible en este momento."

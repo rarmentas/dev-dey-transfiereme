@@ -298,3 +298,38 @@ class DriverReal(DriverFixtureV1):
             datos,
             hash_canonico("solicitar_cobro", datos, "fixture"),
         ).data["pedido"]
+
+    def audio_fallido(self, ctx, mensaje_id):
+        from canales.conversacion import procesar_mensaje
+        from canales.models import (
+            ConversacionCanal,
+            MensajeEntrante,
+            SalidaCanal,
+            SesionCanal,
+            TrabajoAudio,
+        )
+        from pedidos.nucleo_real import NucleoRealV1
+
+        sesion, _ = SesionCanal.objects.get_or_create(
+            instancia_id=ctx.instancia_id, sesion_id=ctx.sesion_id,
+            defaults={"comercio": self._comercio("comercio")},
+        )
+        conversacion, _ = ConversacionCanal.objects.get_or_create(
+            sesion=sesion, chat_id=ctx.conversacion_id,
+            defaults={"cliente_externo_id": ctx.cliente_externo_id},
+        )
+        mensaje, _ = MensajeEntrante.objects.get_or_create(
+            pk=mensaje_id,
+            defaults={
+                "conversacion": conversacion, "instancia_id": ctx.instancia_id,
+                "sesion_id": ctx.sesion_id, "id_mensaje_proveedor": str(mensaje_id),
+                "hash_payload": "fixture", "secuencia": 2, "tipo": "audio",
+            },
+        )
+        TrabajoAudio.objects.get_or_create(
+            mensaje=mensaje, defaults={"estado": "fallido", "vence_en": timezone.now()}
+        )
+        procesar_mensaje(
+            mensaje, NucleoRealV1(self.lector), self.lector, timezone.now()
+        )
+        return SalidaCanal.objects.get(causa=f"mensaje:{mensaje.id}").payload["texto"]
