@@ -22,7 +22,8 @@ if [[ ! -e /run/lock/codi-deploy.lock ]] || flock -n -x /run/lock/codi-deploy.lo
   exit 1
 fi
 for path in /opt/codi "$dest" "$dest/backend" "$dest/deploy" \
-  "$dest/backend/.venv" "$dest/backend/staticfiles" "$dest/backend/.env.canal"; do
+  "$dest/backend/.venv" "$dest/backend/staticfiles" "$dest/backend/.env.canal" \
+  "$dest/backend/.env.cobros" "$dest/backend/.env.stt"; do
   if [[ -L "$path" ]]; then echo "Enlace no permitido: $path" >&2; exit 1; fi
 done
 if [[ "$(realpath -e -- "$dest")" != "$dest" || ! -w "$dest" ||
@@ -57,6 +58,32 @@ if [[ "$(env_val POSTGRES_PORT)" != 5435 ]]; then
   exit 1
 fi
 
+[[ "$(env_val WAHA_BASE_URL)" == http://127.0.0.1:3004 ]] || {
+  echo "WAHA_BASE_URL de producción debe ser http://127.0.0.1:3004." >&2; exit 1;
+}
+stt_habilitado="$(env_val STT_HABILITADO)"
+if ! grep -Eq '^[[:space:]]*STT_HABILITADO[[:space:]]*=' "$incoming"; then
+  stt_habilitado=0
+fi
+[[ "$stt_habilitado" == 0 || "$stt_habilitado" == 1 ]] || {
+  echo "STT_HABILITADO debe ser 0 o 1." >&2; exit 1;
+}
+if linea_threads="$(grep -E '^[[:space:]]*STT_CPU_THREADS[[:space:]]*=' "$incoming" | tail -1)"; then
+  stt_threads="${linea_threads#*=}"
+  stt_threads="${stt_threads#"${stt_threads%%[![:space:]]*}"}"
+  stt_threads="${stt_threads%"${stt_threads##*[![:space:]]}"}"
+  digitos_threads="${stt_threads//_/}"
+  if [[ ! "$stt_threads" =~ ^[+-]?[0-9]+(_?[0-9]+)*$ || ${#digitos_threads} -gt 640 ]]; then
+    echo "STT_CPU_THREADS debe ser un entero válido." >&2
+    exit 1
+  fi
+fi
+rol_web="$(env_val CODY_ROL)"
+if grep -Eq '^[[:space:]]*CODY_ROL[[:space:]]*=' "$incoming" && [[ "$rol_web" != web ]]; then
+  echo "CODY_ROL del entorno común debe ser web." >&2; exit 1
+fi
+stt_home=/var/lib/codi/stt
+
 backup_dir="$(mktemp -d)"
 unit_tmp="$backup_dir/cody.service"
 committed=0
@@ -68,31 +95,36 @@ cleanup() {
   trap - EXIT
   if (( result != 0 && stopped && ! committed )); then
     echo 'El arranque falló; restaurando units y entornos previos.' >&2
-    sudo -n systemctl stop cody-canal.service || true
-    if [[ ! -f "$backup_dir/canal.enabled" ]]; then
-      sudo -n systemctl disable cody-canal.service || true
-    fi
-    if [[ -f "$backup_dir/cody-canal.service.previous" ]]; then
-      sudo -n install -m 644 "$backup_dir/cody-canal.service.previous" /etc/systemd/system/cody-canal.service || true
-    else
-      sudo -n rm -f -- /etc/systemd/system/cody-canal.service || true
-    fi
-    if [[ -f "$backup_dir/.env.canal" ]]; then
-      install -m 600 "$backup_dir/.env.canal" "$dest/backend/.env.canal" || true
-    else
-      rm -f -- "$dest/backend/.env.canal"
-    fi
+    for rol in canal cobros stt; do
+      sudo -n systemctl stop "cody-$rol.service" || true
+      if [[ ! -f "$backup_dir/$rol.enabled" ]]; then
+        sudo -n systemctl disable "cody-$rol.service" || true
+      fi
+      if [[ -f "$backup_dir/cody-$rol.service.previous" ]]; then
+        sudo -n install -m 644 "$backup_dir/cody-$rol.service.previous" \
+          "/etc/systemd/system/cody-$rol.service" || true
+      else
+        sudo -n rm -f -- "/etc/systemd/system/cody-$rol.service" || true
+      fi
+      if [[ -f "$backup_dir/.env.$rol" ]]; then
+        install -m 600 "$backup_dir/.env.$rol" "$dest/backend/.env.$rol" || true
+      else
+        rm -f -- "$dest/backend/.env.$rol"
+      fi
+    done
     sudo -n install -m 644 "$backup_dir/cody.service.previous" /etc/systemd/system/cody.service || true
     install -m 600 "$backup_dir/.env" "$target" || true
     sudo -n systemctl daemon-reload || true
     sudo -n systemctl start cody.service || true
     sudo -n systemctl is-active cody.service || true
-    if [[ -f "$backup_dir/canal.enabled" ]]; then
-      sudo -n systemctl enable cody-canal.service || true
-    fi
-    if [[ -f "$backup_dir/canal.active" ]]; then
-      sudo -n systemctl start cody-canal.service || true
-    fi
+    for rol in canal cobros stt; do
+      if [[ -f "$backup_dir/$rol.enabled" ]]; then
+        sudo -n systemctl enable "cody-$rol.service" || true
+      fi
+      if [[ -f "$backup_dir/$rol.active" ]]; then
+        sudo -n systemctl start "cody-$rol.service" || true
+      fi
+    done
   fi
   if [[ -n "$backup_partial" ]]; then rm -f -- "$backup_partial"; fi
   rm -f -- "$incoming" "$unit_tmp"
@@ -206,47 +238,124 @@ respaldar_base
 chmod -R u+rwX,go-rwx "$dest/backend/.venv"
 chmod -R u+rwX,go+rX,go-w "$dest/backend/staticfiles"
 
-# Preparar ambas units y el entorno del canal antes de detener servicios.
-for suffix in "" "-canal"; do
+# Preparar units y entornos por rol antes de detener servicios.
+for suffix in "" "-canal" "-cobros" "-stt"; do
   unit_tmp="$backup_dir/cody${suffix}.service"
   sed -e "s|@DEPLOY_PATH@|$dest|g" -e "s|@DEPLOY_USER@|$service_user|g" \
-    -e 's|@UNIT_BASE@|cody|g' \
+    -e 's|@UNIT_BASE@|cody|g' -e "s|@STT_HOME@|$stt_home|g" \
     "$dest/deploy/cody${suffix}.service.in" >"$unit_tmp"
-  if grep -Eq '@[A-Z_]+@' "$unit_tmp"; then
-    echo 'La unit conserva marcadores sin sustituir.' >&2
+  if grep -Eq '@[A-Z_]+@|/\.\.?(/|[[:space:]]|$)' "$unit_tmp" || \
+     sed -E "s|$dest(/| |$)|\\1|g" "$unit_tmp" | grep -q '/opt/codi'; then
+    echo 'La unit contiene marcadores o rutas no permitidas.' >&2; exit 1
+  fi
+  grep -Fxq "WorkingDirectory=$dest/backend" "$unit_tmp"
+  if [[ "$suffix" == -stt ]]; then
+    grep -Fxq "ReadWritePaths=$dest $stt_home" "$unit_tmp"
+  else
+    grep -Fxq "ReadWritePaths=$dest" "$unit_tmp"
+  fi
+  if [[ "$suffix" != -stt || "$stt_habilitado" == 1 ]]; then
+    systemd-analyze verify "$unit_tmp" >/dev/null
+  fi
+done
+grep -Fxq "EnvironmentFile=$dest/backend/.env" "$backup_dir/cody.service"
+grep -Fq "ExecStart=$dest/backend/.venv/bin/gunicorn " "$backup_dir/cody.service"
+grep -Fxq "RuntimeDirectory=cody" "$backup_dir/cody.service"
+grep -Fq -- "--pid /run/cody/gunicorn.pid" "$backup_dir/cody.service"
+for rol in canal cobros stt; do
+  grep -Fxq "EnvironmentFile=$dest/backend/.env.$rol" "$backup_dir/cody-$rol.service"
+  grep -Eq "^Environment=CODY_ROL=$rol( |$)" "$backup_dir/cody-$rol.service"
+done
+grep -Fxq "ExecStart=$dest/backend/.venv/bin/python manage.py procesar_canal" "$backup_dir/cody-canal.service"
+grep -Fxq "ExecStart=$dest/backend/.venv/bin/python manage.py procesar_cobros" "$backup_dir/cody-cobros.service"
+grep -Fxq "ExecStart=$stt_home/venv/bin/python manage.py procesar_audio" "$backup_dir/cody-stt.service"
+grep -Fxq "Environment=CODY_ROL=stt HF_HOME=$stt_home/modelos HF_HUB_OFFLINE=1" "$backup_dir/cody-stt.service"
+# Las listas permitidas evitan propagar secretos o sobrescribir CODY_ROL.
+comunes='POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_HOST|POSTGRES_PORT|DJANGO_SECRET_KEY|DEBUG|ALLOWED_HOSTS|DEMO_MODE|DEMO_PEY_BANK_ACCOUNT_ID|NUCLEO_ADAPTADOR|POLITICA_COBRO_VERSION|PEDIDOS_COBRO_HABILITADO'
+canal_claves="$comunes|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY|STT_HABILITADO|STT_MODELO|STT_CPU_THREADS"
+cobros_claves="$comunes|PEY_API_KEY|PEY_ADAPTADOR"
+grep -E "^[[:space:]]*($canal_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.canal" || [[ "$?" -eq 1 ]]
+cp "$backup_dir/env.canal" "$backup_dir/env.stt"
+grep -E "^[[:space:]]*($cobros_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.cobros" || [[ "$?" -eq 1 ]]
+
+chmod 600 "$backup_dir/env.canal" "$backup_dir/env.cobros" "$backup_dir/env.stt"
+if [[ "$stt_habilitado" == 1 ]]; then
+  for ruta in /var /var/lib /var/lib/codi "$stt_home" "$stt_home/venv" \
+    "$stt_home/venv/bin" "$stt_home/modelos"; do
+    [[ "$(realpath -m -- "$ruta")" == "$ruta" ]] || {
+      echo "Ruta STT rechazada." >&2; exit 1;
+    }
+  done
+  [[ -d "$stt_home/modelos" && -r "$stt_home/modelos" && -x "$stt_home/modelos" &&
+     -w "$stt_home" && -x "$stt_home/venv/bin/python" ]] || {
+    echo "Faltan venv, caché o permisos STT; consulte a operación." >&2; exit 1;
+  }
+  command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || {
+    echo "Faltan ffmpeg o ffprobe." >&2; exit 1;
+  }
+  disponible="$(df -Pk "$stt_home" | awk 'NR==2 {print $4}')"
+  [[ "$disponible" =~ ^[0-9]+$ && "$disponible" -ge 524288 ]] || {
+    echo "Espacio insuficiente para STT." >&2; exit 1;
+  }
+  if ! (cd "$dest/backend" && env -i PATH="$PATH" HOME="$stt_home" \
+      HF_HOME="$stt_home/modelos" HF_HUB_OFFLINE=1 CODY_ROL=stt \
+      DJANGO_SETTINGS_MODULE=config.settings "$stt_home/venv/bin/python" - \
+      "$backup_dir/env.stt" <<'PYSTT'
+import os
+import sys
+from pathlib import Path
+from importlib.metadata import version
+
+for linea in Path(sys.argv[1]).read_text().splitlines():
+    if "=" in linea:
+        clave, valor = linea.split("=", 1)
+        os.environ[clave.strip()] = valor.strip()
+import django
+import numpy
+import faster_whisper
+
+if version("faster-whisper") != "1.1.1" or version("numpy") != "2.2.4":
+    raise RuntimeError("versiones STT distintas de los requisitos")
+django.setup()
+from canales.stt import FasterWhisperTranscriptor
+FasterWhisperTranscriptor().precargar()
+PYSTT
+  ); then
+    echo "Dependencias o modelo STT no disponibles offline; consulte a operación." >&2
     exit 1
   fi
-  systemd-analyze verify "$unit_tmp" >/dev/null
-done
-canal_env="$backup_dir/env.canal"
-# Solo las variables necesarias para Django y el worker, sin secretos web.
-grep -E '^[[:space:]]*(POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_HOST|POSTGRES_PORT|DJANGO_SECRET_KEY|DEBUG|ALLOWED_HOSTS|DEMO_MODE|DEMO_PEY_BANK_ACCOUNT_ID|NUCLEO_ADAPTADOR|POLITICA_COBRO_VERSION|PEDIDOS_COBRO_HABILITADO|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY)[[:space:]]*=' \
-  "$incoming" >"$canal_env" || [[ "$?" -eq 1 ]]
-chmod 600 "$canal_env"
+fi
+
 
 cp -p /etc/systemd/system/cody.service "$backup_dir/cody.service.previous"
 cp -p "$target" "$backup_dir/.env"
-if [[ -f /etc/systemd/system/cody-canal.service ]]; then
-  cp -p /etc/systemd/system/cody-canal.service "$backup_dir/cody-canal.service.previous"
-fi
-if [[ -f "$dest/backend/.env.canal" ]]; then
-  cp -p "$dest/backend/.env.canal" "$backup_dir/.env.canal"
-fi
-if systemctl is-active --quiet cody-canal.service; then
-  touch "$backup_dir/canal.active"
-fi
-if systemctl is-enabled --quiet cody-canal.service; then
-  touch "$backup_dir/canal.enabled"
-fi
+for rol in canal cobros stt; do
+  if [[ -f "/etc/systemd/system/cody-$rol.service" ]]; then
+    cp -p "/etc/systemd/system/cody-$rol.service" "$backup_dir/cody-$rol.service.previous"
+  fi
+  if [[ -f "$dest/backend/.env.$rol" ]]; then
+    cp -p "$dest/backend/.env.$rol" "$backup_dir/.env.$rol"
+  fi
+  if systemctl is-active --quiet "cody-$rol.service"; then
+    touch "$backup_dir/$rol.active"
+  fi
+  if systemctl is-enabled --quiet "cody-$rol.service"; then
+    touch "$backup_dir/$rol.enabled"
+  fi
+done
 sudo -n true
 stopped=1
-if [[ -f "$backup_dir/canal.active" ]]; then
-  sudo -n systemctl stop cody-canal.service
-fi
+for rol in cobros canal stt; do
+  if [[ -f "$backup_dir/$rol.active" ]]; then
+    sudo -n systemctl stop "cody-$rol.service"
+  fi
+done
 sudo -n systemctl stop cody.service
 install -m 600 "$incoming" "$target"
-install -m 600 "$canal_env" "$dest/backend/.env.canal"
-for suffix in "" "-canal"; do
+for rol in canal cobros stt; do
+  install -m 600 "$backup_dir/env.$rol" "$dest/backend/.env.$rol"
+done
+for suffix in "" "-canal" "-cobros" "-stt"; do
   sudo -n install -m 644 "$backup_dir/cody${suffix}.service" "/etc/systemd/system/cody${suffix}.service"
 done
 sudo -n systemctl daemon-reload
@@ -267,17 +376,34 @@ fi
 
 inicio_canal="$("$dest/backend/.venv/bin/python" -c \
   'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')"
+sudo -n systemctl restart cody-cobros.service
 sudo -n systemctl restart cody-canal.service
-for _ in $(seq 1 30); do
-  if (cd "$dest/backend" && ./.venv/bin/python manage.py estado_canal \
-      --max-edad 30 --desde "$inicio_canal") && \
-     systemctl is-active --quiet cody-canal.service; then
-    sudo -n systemctl enable cody-canal.service
-    committed=1
-    echo 'CoDi y canal sanos en /opt/codi/prod; PostgreSQL no se recreó.'
-    exit 0
+if [[ "$stt_habilitado" == 1 ]]; then
+  sudo -n systemctl enable --now cody-stt.service
+else
+  sudo -n systemctl disable --now cody-stt.service
+fi
+procesos=(procesar_cobros procesar_canal)
+units=(cody-cobros.service cody-canal.service)
+if [[ "$stt_habilitado" == 1 ]]; then
+  procesos+=(procesar_audio)
+  units+=(cody-stt.service)
+fi
+for i in "${!procesos[@]}"; do
+  listo=0
+  for _ in $(seq 1 30); do
+    if (cd "$dest/backend" && ./.venv/bin/python manage.py estado_canal \
+        --proceso "${procesos[$i]}" --max-edad 30 --desde "$inicio_canal") && \
+       systemctl is-active --quiet "${units[$i]}"; then
+      listo=1; break
+    fi
+    sleep 1
+  done
+  if [[ "$listo" != 1 ]]; then
+    echo "El proceso ${procesos[$i]} no registró un latido reciente o está inactivo." >&2
+    exit 1
   fi
-  sleep 1
 done
-echo 'El canal no registró un latido reciente o su unit no está activa.' >&2
-exit 1
+sudo -n systemctl enable cody-cobros.service cody-canal.service
+committed=1
+echo 'CoDi y workers sanos en /opt/codi/prod; PostgreSQL no se recreó.'

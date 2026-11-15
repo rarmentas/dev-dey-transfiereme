@@ -25,6 +25,12 @@ ALLOWED_HOSTS=transfiereme.example
 WEBHOOK_BASE_URL=https://transfiereme.example
 PEY_API_KEY=example
 PEY_WEBHOOK_SECRET=example
+NUCLEO_ADAPTADOR=real
+PEDIDOS_COBRO_HABILITADO=false
+WAHA_INSTANCIA=waha
+WAHA_BASE_URL=http://127.0.0.1:3004
+WAHA_API_KEY=example
+WAHA_WEBHOOK_SECRET=example
 ENV
 
 cat >"$scratch/bin/ssh" <<'MOCK'

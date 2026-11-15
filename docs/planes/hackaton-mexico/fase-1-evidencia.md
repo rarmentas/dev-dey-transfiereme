@@ -155,8 +155,9 @@ Variables nuevas, solo nombres: `STT_HABILITADO`, `STT_MODELO`, `STT_CPU_THREADS
 `WHATSAPP_FILES_LIFETIME`, `WAHA_BASE_URL` (contenedor WAHA).
 
 Para voz, operación configura `WHATSAPP_DOWNLOAD_MEDIA=true` y
-`WHATSAPP_FILES_LIFETIME=86400` en el WAHA independiente, según la imagen
-fijada. Las URLs anunciadas para `/api/files/` deben usar el origen exacto
+`WHATSAPP_FILES_LIFETIME=0` en el WAHA independiente, según la imagen
+fijada y la política operativa actual. La activación de descarga de media debe
+confirmarse con operación y con la imagen instalada. Las URLs anunciadas para `/api/files/` deben usar el origen exacto
 `http://127.0.0.1:3004`, alcanzable desde el host e igual a `WAHA_BASE_URL` de
 Django. La URL de archivos y la API son conceptos distintos. Confirmar el
 contrato con la imagen; el bind de media depende de edición/motor y no se
