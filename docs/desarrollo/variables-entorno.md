@@ -79,10 +79,10 @@ El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML
 
 ## Fase 1: pedidos y canal WhatsApp
 
-La aplicación conserva `DEMO_MODE`, `NUCLEO_ADAPTADOR`,
-`POLITICA_COBRO_VERSION`, `PEDIDOS_COBRO_HABILITADO=false` y, si corresponde,
-`DEMO_PEY_BANK_ACCOUNT_ID`. El release MR-1 aún no habilita cobros de pedidos.
-Estas variables pertenecen a Django; no modifican el mecanismo de deploy.
+El demo se decide por comercio. Django usa `NUCLEO_ADAPTADOR` y
+`PEDIDOS_COBRO_HABILITADO`, que admite `true` o `false`; opcionalmente,
+`DEMO_PEY_BANK_ACCOUNT_ID` identifica el destino de la cuenta demo. Estas
+variables no modifican el mecanismo de deploy.
 
 Para WhatsApp, Django usa `WAHA_BASE_URL` (por defecto
 `http://127.0.0.1:3004`), `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET` y

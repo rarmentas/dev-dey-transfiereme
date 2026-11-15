@@ -115,7 +115,7 @@ cleanup() {
     sudo -n install -m 644 "$backup_dir/cody.service.previous" /etc/systemd/system/cody.service || true
     install -m 600 "$backup_dir/.env" "$target" || true
     sudo -n systemctl daemon-reload || true
-    sudo -n systemctl start cody.service || true
+    sudo -n systemctl restart cody.service || true
     sudo -n systemctl is-active cody.service || true
     for rol in canal cobros stt; do
       if [[ -f "$backup_dir/$rol.enabled" ]]; then
