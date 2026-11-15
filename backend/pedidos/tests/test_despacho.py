@@ -7,7 +7,7 @@ from decimal import Decimal
 from threading import Barrier, Event, Lock
 from unittest.mock import patch
 
-from ambito.cuenta import id_reservado_demo
+from ambito.candados import bloquear_cuenta
 from ambito.operaciones_cuenta import sincronizar
 from ambito.tests.soporte import clabe_valida, crear_cuenta
 from django.db import close_old_connections, connections
@@ -69,6 +69,47 @@ class DespachoTests(CasoReal):
         self.assertEqual(enviar_intento(intento.pk, puerto).estado, "incierto")
         enviar_intento(intento.pk, puerto)
         self.assertEqual(len(puerto.llamadas), 1)
+
+    def test_request_id_base64_se_persiste_y_recorta(self):
+        from ambito.models import Comercio
+
+        casos = (
+            ("req_+/=", "req_+/="),
+            ("a" * 63 + "=" + "b" * 12, "a" * 63 + "="),
+            ("req.con-guion", "req.con-guion"),
+            (None, ""),
+            (123, ""),
+            ("req\ninyectado", ""),
+        )
+        for n, (recibido, esperado) in enumerate(casos):
+            with self.subTest(request_id=recibido):
+                comercio = Comercio.objects.create(nombre=f"requestId-{n}")
+                cuenta = crear_cuenta(comercio)
+                intento = IntentoCobro.objects.create(
+                    origen="legado",
+                    estado="reservado",
+                    comercio=comercio,
+                    cuenta=cuenta,
+                    pey_bank_account_id=cuenta.pey_bank_account_id,
+                    canal="qr_venta",
+                    importe_efectivo_centavos=2500,
+                    demo_mode=False,
+                    politica_cobro_version="normal-1",
+                    concepto="requestId",
+                    expiracion_s=600,
+                    clave_legado=f"req-{n}",
+                )
+                puerto = PuertoPeyFalso()
+                puerto.fallar_con = ErrorPey(
+                    "RESPUESTA_INVALIDA",
+                    "estado inesperado",
+                    recibido,
+                    puede_haberse_creado=True,
+                )
+                resultado = enviar_intento(intento.pk, puerto)
+                self.assertEqual(resultado.estado, "incierto")
+                self.assertEqual(resultado.request_id, esperado)
+                self.assertEqual(len(puerto.llamadas), 1)
 
     def test_reservado_a_enviando_tiene_un_ganador(self):
         self.assertTrue(self.solicitar().ok)
@@ -156,11 +197,18 @@ class DespachoTests(CasoReal):
 
         cuenta = self.comercio.cuenta_por_defecto
         IntentoCobro.objects.create(
-            origen="legado", comercio=self.comercio, canal="qr_venta",
-            estado="reservado", importe_efectivo_centavos=100, demo_mode=False,
-            politica_cobro_version="normal-1", cuenta=cuenta,
-            pey_bank_account_id=cuenta.pey_bank_account_id, concepto="venta",
-            expiracion_s=600, clave_legado="ocupado",
+            origen="legado",
+            comercio=self.comercio,
+            canal="qr_venta",
+            estado="reservado",
+            importe_efectivo_centavos=100,
+            demo_mode=False,
+            politica_cobro_version="normal-1",
+            cuenta=cuenta,
+            pey_bank_account_id=cuenta.pey_bank_account_id,
+            concepto="venta",
+            expiracion_s=600,
+            clave_legado="ocupado",
         )
         resultado = self.solicitar()
         self.assertTrue(resultado.ok)
@@ -168,7 +216,9 @@ class DespachoTests(CasoReal):
         self.assertEqual(espera.estado, "en_espera")
         type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
         activar_espera(
-            self.comercio, espera.pedido_id, espera.pk,
+            self.comercio,
+            espera.pedido_id,
+            espera.pk,
             {
                 "command_key": "activar",
                 "expected_version": resultado.data["pedido"].version,
@@ -194,15 +244,24 @@ class DespachoTests(CasoReal):
         puerto = PuertoPeyFalso()
         enviar_intento(intento.pk, puerto)
         intento.refresh_from_db()
-        anterior = (intento.estado, intento.importe_efectivo_centavos,
-                    intento.pey_bank_account_id, intento.demo_mode)
+        anterior = (
+            intento.estado,
+            intento.importe_efectivo_centavos,
+            intento.pey_bank_account_id,
+            intento.demo_mode,
+        )
         self.assertEqual(anterior[0], "pendiente")
         type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
         enviar_intento(intento.pk, puerto)
         intento.refresh_from_db()
         self.assertEqual(
-            (intento.estado, intento.importe_efectivo_centavos,
-             intento.pey_bank_account_id, intento.demo_mode), anterior,
+            (
+                intento.estado,
+                intento.importe_efectivo_centavos,
+                intento.pey_bank_account_id,
+                intento.demo_mode,
+            ),
+            anterior,
         )
         self.assertEqual(len(puerto.llamadas), 1)
 
@@ -225,10 +284,11 @@ class DespachoTests(CasoReal):
         self.assertEqual(resultado.error.code.value, "CUENTA_NO_ACTIVE")
         self.assertFalse(IntentoCobro.objects.exists())
 
-    def test_demo_solo_un_centavo_al_destino_permitido(self):
+    def test_demo_solo_un_centavo_a_la_cuenta_seleccionada(self):
         from ambito.models import Comercio
 
         self.comercio = Comercio.objects.create(nombre="Demo", es_demo=True)
+        crear_cuenta(self.comercio)
         cuenta = crear_cuenta(self.comercio)
         self.driver.comercios["comercio"] = self.comercio
         ctx, _, pedido = self.crear("demo")
@@ -245,31 +305,16 @@ class DespachoTests(CasoReal):
             canal="qr_venta",
         )
         puerto = PuertoPeyFalso()
-        from unittest.mock import patch
-
-        for destino in ("", "no-permitido"):
-            with (
-                self.subTest(destino=destino),
-                override_settings(DEMO_PEY_BANK_ACCOUNT_ID=destino),
-                patch("pedidos.servicios.despacho.obtener_puerto") as obtener,
-            ):
-                resultado = self.nucleo.solicitar_cobro(ctx, **datos)
-                obtener.assert_not_called()
-                self.assertEqual(
-                    resultado.error.code.value, "DEMO_DESTINO_NO_PERMITIDO"
-                )
-                self.assertFalse(IntentoCobro.objects.exists())
-                self.assertEqual(puerto.llamadas, [])
-        with override_settings(DEMO_PEY_BANK_ACCOUNT_ID="01ARZ3NDEKTSV4RRFFQ69G5FAV"):
+        with override_settings(DEMO_PEY_BANK_ACCOUNT_ID=""):
             resultado = self.nucleo.solicitar_cobro(ctx, **datos)
             self.assertTrue(resultado.ok, resultado.error)
             intento = IntentoCobro.objects.get()
-            self.assertIsNone(intento.cuenta_id)
-            self.assertNotEqual(intento.pey_bank_account_id, cuenta.pey_bank_account_id)
+            self.assertEqual(intento.cuenta_id, cuenta.pk)
+            self.assertEqual(intento.pey_bank_account_id, cuenta.pey_bank_account_id)
             enviar_intento(intento.pk, puerto)
         self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("0.01"))
         self.assertEqual(
-            puerto.llamadas[0][1]["bank_account_id"], "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+            puerto.llamadas[0][1]["bank_account_id"], cuenta.pey_bank_account_id
         )
 
     def test_destino_normal_alterado_se_descarta_sin_red(self):
@@ -672,10 +717,16 @@ class DespachoTests(CasoReal):
         dentro, seguir = Event(), Event()
         puerto = PuertoPeyFalso()
 
-        def reservado(ident):
-            dentro.set()
-            seguir.wait(10)
-            return id_reservado_demo(ident)
+        bloqueos = 0
+
+        def bloquear(cuenta):
+            nonlocal bloqueos
+            cuenta = bloquear_cuenta(cuenta)
+            bloqueos += 1
+            if bloqueos == 2:  # _aplicar, después de consultar pey
+                dentro.set()
+                seguir.wait(10)
+            return cuenta
 
         def en_hilo(funcion):
             close_old_connections()
@@ -686,9 +737,7 @@ class DespachoTests(CasoReal):
 
         with (
             override_settings(PEY_API_KEY="prueba"),
-            patch(
-                "ambito.operaciones_cuenta.id_reservado_demo", side_effect=reservado
-            ),
+            patch("ambito.operaciones_cuenta.bloquear_cuenta", side_effect=bloquear),
             ThreadPoolExecutor(max_workers=2) as pool,
         ):
             sync = pool.submit(

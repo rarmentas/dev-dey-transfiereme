@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from decimal import Decimal
 from typing import NoReturn
@@ -14,7 +15,12 @@ from ambito.cuenta import cuenta_esta_active
 from ambito.models import Comercio
 
 from pey.tipos import ErrorPey, NotificacionCreada, QrCreado
-from pey.validacion import NotificacionValidada, QrValidado, validar_notificacion, validar_qr
+from pey.validacion import (
+    NotificacionValidada,
+    QrValidado,
+    validar_notificacion,
+    validar_qr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,10 +196,10 @@ def _cuerpo_ilegible() -> ErrorPey:
 
 def _falla_http(status: int, cuerpo: bytes) -> NoReturn:
     if status == 400:
-        raise _error_pey(cuerpo)
+        raise _error_pey(cuerpo, status=status)
     if 500 <= status <= 599:
         request_id = _request_id(cuerpo)
-        _loguear("NO_DISPONIBLE", request_id)
+        _loguear("NO_DISPONIBLE", request_id, status=status, cuerpo=cuerpo)
         raise ErrorPey(
             "NO_DISPONIBLE",
             "pey no está disponible",
@@ -201,7 +207,7 @@ def _falla_http(status: int, cuerpo: bytes) -> NoReturn:
             puede_haberse_creado=True,
         )
     request_id = _request_id(cuerpo)
-    _loguear("RESPUESTA_INVALIDA", request_id)
+    _loguear("RESPUESTA_INVALIDA", request_id, status=status, cuerpo=cuerpo)
     raise ErrorPey(
         "RESPUESTA_INVALIDA",
         "pey respondió un estado inesperado",
@@ -210,7 +216,8 @@ def _falla_http(status: int, cuerpo: bytes) -> NoReturn:
     )
 
 
-def _error_pey(cuerpo: bytes) -> ErrorPey:
+def _error_pey(cuerpo: bytes, *, status: int | None = None) -> ErrorPey:
+    _loguear("ERROR_PEY", _request_id(cuerpo), status=status, cuerpo=cuerpo)
     data = _objeto_o_invalido(cuerpo)
     error = data.get("error") if data is not None else None
     if not isinstance(error, dict):
@@ -222,7 +229,6 @@ def _error_pey(cuerpo: bytes) -> ErrorPey:
         raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un error ilegible")
     if request_id is not None and not isinstance(request_id, str):
         raise ErrorPey("RESPUESTA_INVALIDA", "pey respondió un error ilegible")
-    _loguear(tipo, request_id)
     return ErrorPey(tipo, mensaje, request_id)
 
 
@@ -249,5 +255,31 @@ def _request_id(cuerpo: bytes) -> str | None:
     return None
 
 
-def _loguear(tipo: str, request_id: str | None) -> None:
-    logger.warning("error de pey tipo=%s requestId=%s", tipo, request_id)
+def _campo_log(valor) -> str | None:
+    if not isinstance(valor, str):
+        return None
+    # Solo campos concretos; nunca el cuerpo ni credenciales reflejadas por pey.
+    if settings.PEY_API_KEY:
+        valor = valor.replace(settings.PEY_API_KEY, "[redactado]")
+    valor = re.sub(
+        r"(?i)\b(?:bearer|authorization|api[_ -]?key|password|secret|token)\b.*",
+        "[redactado]",
+        valor,
+    )
+    return " ".join(valor.split())[:512]
+
+
+def _loguear(
+    tipo: str, request_id: str | None, *, status: int | None = None, cuerpo: bytes = b""
+) -> None:
+    data = _objeto_o_invalido(cuerpo)
+    error = data.get("error") if data else None
+    error = error if isinstance(error, dict) else {}
+    logger.warning(
+        "error de pey tipo=%s requestId=%s status=%s error.type=%s error.message=%s",
+        tipo,
+        _campo_log(request_id),
+        status,
+        _campo_log(error.get("type")),
+        _campo_log(error.get("message")),
+    )

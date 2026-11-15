@@ -53,20 +53,29 @@ class DemoPorComercioTests(CasoReal):
         self.assertFalse(respuesta.ok)
         self.assertEqual(respuesta.error.code.value, "MODO_CAMBIO")
 
-    def test_demo_no_requiere_cuenta_y_normal_si(self):
-        from django.test import override_settings
-
+    def test_demo_y_normal_requieren_cuenta_apta(self):
+        from ambito.tests.soporte import crear_cuenta
+        from django.db import transaction
         from pedidos.errores import ErrorNucleo
         from pedidos.servicios.cobros import _destino
 
         demo = Comercio.objects.create(nombre="demo", es_demo=True)
         normal = Comercio.objects.create(nombre="normal")
-        destino = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-        with override_settings(DEMO_PEY_BANK_ACCOUNT_ID=destino):
-            self.assertEqual(_destino(demo, True, 1), (None, destino))
-            with self.assertRaises(ErrorNucleo) as error:
-                _destino(normal, False, 2500)
-        self.assertEqual(error.exception.codigo.value, "CUENTA_NO_ACTIVE")
+        for comercio, importe in ((demo, 1), (normal, 2500)):
+            with self.subTest(demo=comercio.es_demo), transaction.atomic():
+                with self.assertRaises(ErrorNucleo) as error:
+                    _destino(comercio, comercio.es_demo, importe)
+                self.assertEqual(error.exception.codigo.value, "CUENTA_NO_ACTIVE")
+                cuenta = crear_cuenta(comercio, "pending")
+                with self.assertRaises(ErrorNucleo) as error:
+                    _destino(comercio, comercio.es_demo, importe)
+                self.assertEqual(error.exception.codigo.value, "CUENTA_NO_ACTIVE")
+                cuenta.codi_status = "active"
+                cuenta.save(update_fields=["codi_status"])
+                self.assertEqual(
+                    _destino(comercio, comercio.es_demo, importe),
+                    (cuenta, cuenta.pey_bank_account_id),
+                )
 
 
 class CobrosPorComercioTests(CasoReal):
@@ -75,7 +84,7 @@ class CobrosPorComercioTests(CasoReal):
         from pedidos.models import Aceptacion, IntentoCobro
 
         comercio = Comercio.objects.create(nombre=nombre, es_demo=demo)
-        cuenta = None if demo else crear_cuenta(comercio)
+        cuenta = crear_cuenta(comercio)
         self.driver.comercios["comercio"] = comercio
         ctx, _, pedido = self.crear(nombre)
         pedido = self.cotizar(ctx, pedido)
@@ -102,7 +111,7 @@ class CobrosPorComercioTests(CasoReal):
         self.assertEqual(intento.politica_cobro_version, politica)
         return comercio, cuenta, intento
 
-    def test_worker_envia_ambos_modos_y_demo_sin_cuenta(self):
+    def test_worker_envia_ambos_modos_a_su_cuenta(self):
         from decimal import Decimal
         from django.test import override_settings
         from movimientos.models import Movimiento
@@ -114,10 +123,10 @@ class CobrosPorComercioTests(CasoReal):
         with override_settings(
             PEDIDOS_COBRO_HABILITADO=True, DEMO_PEY_BANK_ACCOUNT_ID=destino
         ):
-            demo, _, intento_demo = self.preparar("demo", True)
+            demo, cuenta_demo, intento_demo = self.preparar("demo", True)
             normal, cuenta, intento_normal = self.preparar("normal", False)
-            self.assertFalse(demo.cuentas.exists())
-            self.assertIsNone(intento_demo.cuenta_id)
+            destino = cuenta_demo.pey_bank_account_id
+            self.assertEqual(intento_demo.cuenta_id, cuenta_demo.pk)
             puerto = PuertoPeyFalso()
             original = puerto.crear_qr
 
@@ -136,7 +145,7 @@ class CobrosPorComercioTests(CasoReal):
             ],
         )
         for intento, monto, banco, cuenta_id in (
-            (intento_demo, Decimal("0.01"), destino, None),
+            (intento_demo, Decimal("0.01"), destino, cuenta_demo.pk),
             (intento_normal, Decimal("25.00"), cuenta.pey_bank_account_id, cuenta.pk),
         ):
             intento.refresh_from_db()
@@ -161,7 +170,7 @@ class CobrosPorComercioTests(CasoReal):
             self.assertEqual(
                 evento.snapshot["importe_efectivo_centavos"], int(monto * 100)
             )
-            self.assertEqual(evento.snapshot["demo_mode"], cuenta_id is None)
+            self.assertEqual(evento.snapshot["demo_mode"], intento.demo_mode)
             self.assertEqual(evento.snapshot["pago_estado"], "pendiente")
         self.assertNotEqual(demo.pk, normal.pk)
 
@@ -191,7 +200,7 @@ class CobrosPorComercioTests(CasoReal):
             self.assertEqual(len(puerto.llamadas), 1)
             self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("0.01"))
 
-    def test_reserva_demo_en_espera_fija_destino_sin_cuenta(self):
+    def test_reserva_demo_en_espera_fija_cuenta_seleccionada(self):
         from django.test import override_settings
         from pedidos.models import IntentoCobro
         from pedidos.servicios.cobros import activar_espera
@@ -204,6 +213,9 @@ class CobrosPorComercioTests(CasoReal):
             IntentoCobro.objects.filter(pk=intento.pk).update(
                 estado="en_espera", cuenta=None, pey_bank_account_id=""
             )
+            from ambito.tests.soporte import crear_cuenta
+
+            cuenta = crear_cuenta(comercio)
             respuesta = activar_espera(
                 comercio,
                 intento.pedido_id,
@@ -214,10 +226,10 @@ class CobrosPorComercioTests(CasoReal):
             intento.refresh_from_db()
             self.assertEqual(
                 (intento.estado, intento.cuenta_id, intento.pey_bank_account_id),
-                ("reservado", None, destino),
+                ("reservado", cuenta.pk, cuenta.pey_bank_account_id),
             )
 
-    def test_reserva_demo_descartada_si_cambia_modo_o_destino(self):
+    def test_reserva_demo_descartada_si_cambia_modo_o_cuenta_fijada(self):
         from django.test import override_settings
         from pedidos.servicios.despacho import enviar_intento
         from pedidos.tests.soporte_cobro import PuertoPeyFalso
@@ -228,13 +240,15 @@ class CobrosPorComercioTests(CasoReal):
         ):
             comercio, _, intento = self.preparar("demo", True)
             puerto = PuertoPeyFalso()
-            with override_settings(
-                DEMO_PEY_BANK_ACCOUNT_ID="01ARZ3NDEKTSV4RRFFQ69G5FAW"
-            ):
-                resultado = enviar_intento(intento.pk, puerto)
+            from ambito.models import CuentaCobro
+
+            CuentaCobro.objects.filter(pk=intento.cuenta_id).update(
+                pey_bank_account_id="01ARZ3NDEKTSV4RRFFQ69G5FAW"
+            )
+            resultado = enviar_intento(intento.pk, puerto)
             self.assertEqual(
                 (resultado.estado, resultado.motivo_descarte),
-                ("descartado", "destino_demo_invalido"),
+                ("descartado", "destino_invalido"),
             )
             self.assertEqual(puerto.llamadas, [])
             self.driver.comercios["comercio"] = comercio
@@ -266,53 +280,34 @@ class CobrosPorComercioTests(CasoReal):
             )
             self.assertEqual(puerto.llamadas, [])
 
-    def test_destino_invalido_no_bloquea_cobro_normal(self):
+    def test_variable_obsoleta_no_impide_cobrar_demo_ni_normal(self):
         from decimal import Decimal
-        from unittest.mock import patch
-
         from django.test import override_settings
-        from pedidos.models import IntentoCobro
         from pedidos.servicios.despacho import enviar_intento
         from pedidos.tests.soporte_cobro import PuertoPeyFalso
 
-        demo = Comercio.objects.create(nombre="demo", es_demo=True)
-        self.driver.comercios["comercio"] = demo
-        ctx, _, pedido = self.crear("demo")
-        pedido = self.cotizar(ctx, pedido)
-        pedido = self.nucleo.aceptar_cotizacion(
-            ctx, **self.datos_aceptacion(ctx, pedido)
-        ).data["pedido"]
-        puerto = PuertoPeyFalso()
         with override_settings(PEDIDOS_COBRO_HABILITADO=True):
-            for destino in ("", "invalido"):
+            for valor in ("", "invalido"):
                 with (
-                    self.subTest(destino=destino),
-                    override_settings(DEMO_PEY_BANK_ACCOUNT_ID=destino),
-                    patch("pedidos.servicios.despacho.obtener_puerto") as obtener,
+                    self.subTest(valor=valor),
+                    override_settings(DEMO_PEY_BANK_ACCOUNT_ID=valor),
                 ):
-                    respuesta = self.nucleo.solicitar_cobro(
-                        ctx,
-                        contrato_version="1.0",
-                        command_key="demo",
-                        pedido_id=pedido.id,
-                        expected_version=pedido.version,
-                        aceptacion_id=pedido.aceptacion.id,
-                        canal="qr_venta",
-                    )
-                    self.assertFalse(respuesta.ok)
+                    comercio, cuenta, intento = self.preparar("demo" + valor, True)
+                    puerto = PuertoPeyFalso()
+                    puerto.siguiente_id = "demo-" + valor
                     self.assertEqual(
-                        respuesta.error.code.value, "DEMO_DESTINO_NO_PERMITIDO"
+                        enviar_intento(intento.pk, puerto).estado, "pendiente"
                     )
-                    self.assertFalse(IntentoCobro.objects.exists())
-                    obtener.assert_not_called()
-                    self.assertEqual(puerto.llamadas, [])
-            with override_settings(DEMO_PEY_BANK_ACCOUNT_ID=""):
-                _, cuenta, intento = self.preparar("normal", False)
-                self.assertEqual(enviar_intento(intento.pk, puerto).estado, "pendiente")
-                self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("25.00"))
-                self.assertEqual(
-                    puerto.llamadas[0][1]["bank_account_id"], cuenta.pey_bank_account_id
-                )
+                    self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("0.01"))
+                    self.assertEqual(
+                        puerto.llamadas[0][1]["bank_account_id"],
+                        cuenta.pey_bank_account_id,
+                    )
+                    Comercio.objects.filter(pk=comercio.pk).update(es_demo=False)
+            _, cuenta, intento = self.preparar("normal", False)
+            puerto = PuertoPeyFalso()
+            self.assertEqual(enviar_intento(intento.pk, puerto).estado, "pendiente")
+            self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("25.00"))
 
     def test_flip_demo_no_afecta_reserva_normal(self):
         from django.test import override_settings
@@ -332,3 +327,92 @@ class CobrosPorComercioTests(CasoReal):
             self.assertEqual(
                 puerto.llamadas[0][1]["bank_account_id"], cuenta.pey_bank_account_id
             )
+
+    def test_demo_sin_cuenta_apta_no_reserva_ni_llama_pey(self):
+        from unittest.mock import patch
+
+        from ambito.tests.soporte import crear_cuenta
+        from django.test import override_settings
+        from pedidos.models import IntentoCobro
+
+        comercio = Comercio.objects.create(nombre="demo", es_demo=True)
+        self.driver.comercios["comercio"] = comercio
+        ctx, _, pedido = self.crear("sin-cuenta")
+        pedido = self.cotizar(ctx, pedido)
+        pedido = self.nucleo.aceptar_cotizacion(
+            ctx, **self.datos_aceptacion(ctx, pedido)
+        ).data["pedido"]
+        with (
+            override_settings(PEDIDOS_COBRO_HABILITADO=True),
+            patch("pedidos.servicios.despacho.obtener_puerto") as obtener,
+        ):
+            for estado in (None, "pending"):
+                if estado:
+                    crear_cuenta(comercio, estado)
+                respuesta = self.nucleo.solicitar_cobro(
+                    ctx,
+                    contrato_version="1.0",
+                    command_key="sin-cuenta",
+                    pedido_id=pedido.id,
+                    expected_version=pedido.version,
+                    aceptacion_id=pedido.aceptacion.id,
+                    canal="qr_venta",
+                )
+                self.assertFalse(respuesta.ok)
+                self.assertEqual(respuesta.error.code.value, "CUENTA_NO_ACTIVE")
+                self.assertFalse(IntentoCobro.objects.exists())
+            obtener.assert_not_called()
+
+    def test_demo_importe_invalido_no_reserva(self):
+        from ambito.tests.soporte import crear_cuenta
+        from django.db import transaction
+        from pedidos.errores import ErrorNucleo
+        from pedidos.models import IntentoCobro
+        from pedidos.servicios.cobros import _destino
+
+        comercio = Comercio.objects.create(nombre="demo", es_demo=True)
+        crear_cuenta(comercio)
+        for importe in (0, 2, 2500):
+            with self.subTest(importe=importe), transaction.atomic():
+                with self.assertRaises(ErrorNucleo) as error:
+                    _destino(comercio, True, importe)
+                self.assertEqual(error.exception.codigo.value, "PAYLOAD_INVALIDO")
+        self.assertFalse(IntentoCobro.objects.exists())
+
+    def test_demo_descarta_importe_invalido_antes_de_red(self):
+        from unittest.mock import patch
+
+        from django.test import override_settings
+        from pedidos.servicios import despacho
+        from pedidos.tests.soporte_cobro import PuertoPeyFalso
+
+        with override_settings(PEDIDOS_COBRO_HABILITADO=True):
+            _, _, intento = self.preparar("demo", True)
+            bloquear = despacho._bloquear
+
+            def importe_invalido(referencia):
+                filas = bloquear(referencia)
+                filas[2].importe_efectivo_centavos = 2500
+                return filas
+
+            puerto = PuertoPeyFalso()
+            with patch.object(despacho, "_bloquear", side_effect=importe_invalido):
+                resultado = despacho.enviar_intento(intento.pk, puerto)
+            self.assertEqual(
+                (resultado.estado, resultado.motivo_descarte),
+                ("descartado", "destino_demo_invalido"),
+            )
+            self.assertEqual(puerto.llamadas, [])
+
+    def test_demo_cuenta_pending_no_envia(self):
+        from django.test import override_settings
+        from pedidos.servicios.despacho import enviar_intento
+        from pedidos.tests.soporte_cobro import PuertoPeyFalso
+
+        with override_settings(PEDIDOS_COBRO_HABILITADO=True):
+            _, cuenta, intento = self.preparar("demo", True)
+            cuenta.codi_status = "pending"
+            cuenta.save(update_fields=["codi_status"])
+            puerto = PuertoPeyFalso()
+            self.assertEqual(enviar_intento(intento.pk, puerto).estado, "reservado")
+            self.assertEqual(puerto.llamadas, [])

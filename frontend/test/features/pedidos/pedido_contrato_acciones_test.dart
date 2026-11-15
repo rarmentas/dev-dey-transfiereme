@@ -99,7 +99,6 @@ void main() {
   }
   for (final caso in [
     ('CUENTA_NO_ACTIVE', 'La cuenta no está activa para cobrar.'),
-    ('DEMO_DESTINO_NO_PERMITIDO', 'El destino no está permitido en demo.'),
     ('MODO_CAMBIO', 'Cambió el modo de cobro. Revisa el pedido.'),
     ('ACEPTACION_REQUERIDA', 'Se requiere una aceptación vigente.'),
     ('PROVEEDOR_NO_DISPONIBLE', 'El cobro no está habilitado todavía.'),

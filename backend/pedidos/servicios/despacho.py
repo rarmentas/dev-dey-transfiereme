@@ -7,8 +7,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from ambito.cuenta import cuenta_apta
-from ambito.models import CuentaCobro
-from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
+from config.modo import cobro_habilitado, modo_de_comercio
 from django.db import connection, transaction
 from django.db.models import F
 from django.utils import timezone
@@ -65,7 +64,10 @@ def enviar_intento(intento_id, puerto=None):
             modo_de_comercio(comercio)
         ):
             descartar(
-                intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+                intento,
+                "condiciones_cambiaron",
+                comercio=comercio,
+                pedido=pedido,
             )
             intento.refresh_from_db()
             return intento
@@ -77,32 +79,28 @@ def enviar_intento(intento_id, puerto=None):
                 or pedido.revision_vigente != cot.revision
             ):
                 descartar(
-                    intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+                    intento,
+                    "condiciones_cambiaron",
+                    comercio=comercio,
+                    pedido=pedido,
                 )
                 intento.refresh_from_db()
                 return intento
-        if intento.demo_mode:
-            if (
-                intento.importe_efectivo_centavos != 1
-                or not destino_demo()
-                or intento.pey_bank_account_id != destino_demo()
-                or cuenta is not None
-                or CuentaCobro.objects.filter(
-                    pey_bank_account_id=intento.pey_bank_account_id
-                ).exists()
-            ):
-                descartar(
-                    intento, "destino_demo_invalido", comercio=comercio, pedido=pedido
-                )
-                intento.refresh_from_db()
-                return intento
-        elif (
-            cuenta is None or intento.pey_bank_account_id != cuenta.pey_bank_account_id
+        if intento.demo_mode and intento.importe_efectivo_centavos != 1:
+            descartar(
+                intento, "destino_demo_invalido", comercio=comercio, pedido=pedido
+            )
+            intento.refresh_from_db()
+            return intento
+        if (
+            cuenta is None
+            or cuenta.comercio_id != comercio.pk
+            or intento.pey_bank_account_id != cuenta.pey_bank_account_id
         ):
             descartar(intento, "destino_invalido", comercio=comercio, pedido=pedido)
             intento.refresh_from_db()
             return intento
-        elif not cuenta_apta(cuenta):
+        if not cuenta_apta(cuenta):
             return intento
         token = uuid.uuid4()
         n = IntentoCobro.objects.filter(
@@ -156,10 +154,12 @@ def enviar_intento(intento_id, puerto=None):
                     else type(exc).__name__
                 ),
                 request_id=(
-                    exc.request_id
+                    exc.request_id[
+                        : IntentoCobro._meta.get_field("request_id").max_length
+                    ]
                     if isinstance(exc, ErrorPey)
                     and isinstance(exc.request_id, str)
-                    and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", exc.request_id)
+                    and re.fullmatch(r"[A-Za-z0-9_.+/=-]+", exc.request_id)
                     else ""
                 ),
                 telefono_bancario="" if definitivo else actual.telefono_bancario,

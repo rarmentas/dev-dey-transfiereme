@@ -271,7 +271,6 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         if (tipo == 'cobro' &&
             {
               'CUENTA_NO_ACTIVE',
-              'DEMO_DESTINO_NO_PERMITIDO',
               'MODO_CAMBIO',
               'ACEPTACION_REQUERIDA',
               'INTENCION_DISTINTA',

@@ -108,16 +108,11 @@ if linea_threads="$(grep -E '^[[:space:]]*STT_CPU_THREADS[[:space:]]*=' "$file_p
     exit 1
   fi
 fi
-for key in DEMO_MODE POLITICA_COBRO_VERSION; do
+for key in DEMO_MODE POLITICA_COBRO_VERSION DEMO_PEY_BANK_ACCOUNT_ID; do
   if grep -Eq "^[[:space:]]*${key}[[:space:]]*=" "$file_path"; then
     echo "${key} ignorada; el demo es por comercio (designar_comercio_demo)." >&2
   fi
 done
-demo_destino="$(env_val DEMO_PEY_BANK_ACCOUNT_ID)"
-if [[ -n "$demo_destino" && ! "$demo_destino" =~ ^[0-9A-HJKMNP-TV-Z]{26}$ ]]; then
-  echo "DEMO_PEY_BANK_ACCOUNT_ID debe ser un ULID válido." >&2
-  exit 1
-fi
 
 
 require_ci() {

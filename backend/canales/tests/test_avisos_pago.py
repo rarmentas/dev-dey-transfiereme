@@ -227,7 +227,6 @@ class AvisosPagoTests(TransactionTestCase):
             "incierto": mensajes.INCIERTO,
             "descartado": mensajes.OBSOLETA,
             "CUENTA_NO_ACTIVE": mensajes.COBRO_NO_DISPONIBLE,
-            "DEMO_DESTINO_NO_PERMITIDO": mensajes.COBRO_NO_DISPONIBLE,
             "PROVEEDOR_NO_DISPONIBLE": mensajes.ACEPTADO,
         }
         for indice, (estado, esperado) in enumerate(casos.items(), 1):

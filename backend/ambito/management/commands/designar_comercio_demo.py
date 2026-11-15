@@ -6,8 +6,8 @@ import sys
 from django.core.management.base import BaseCommand, CommandError
 from django.db import IntegrityError, transaction
 
-from ambito.models import Comercio, CuentaCobro
-from config.modo import destino_demo
+from ambito.models import Comercio
+from ambito.cuenta import cuenta_por_defecto
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +21,17 @@ class Command(BaseCommand):
         parser.add_argument("--si", action="store_true")
 
     def handle(self, *args, **options):
-        destino = destino_demo()
         if options["estado"]:
             comercio = Comercio.objects.filter(es_demo=True).first()
             self.stdout.write(
                 f"Demo: {comercio.pk} {comercio.nombre}" if comercio else "Sin demo"
             )
+            cuenta = cuenta_por_defecto(comercio) if comercio else None
+            destino = cuenta.pey_bank_account_id if cuenta else ""
             self.stdout.write(
-                f"Destino: ...{destino[-4:]}" if destino else "Sin destino"
+                f"Cuenta seleccionada: ...{destino[-4:]}"
+                if destino
+                else "Sin cuenta seleccionada"
             )
             return
         comercio = Comercio.objects.filter(pk=options["comercio"]).first()
@@ -55,22 +58,10 @@ class Command(BaseCommand):
                     raise CommandError("Quita el demo actual con --quitar.")
                 if plaza_ocupada(comercio):
                     raise CommandError("El comercio tiene una plaza ocupada.")
-                if (
-                    not quitar
-                    and destino
-                    and CuentaCobro.objects.filter(pey_bank_account_id=destino).exists()
-                ):
-                    raise CommandError(
-                        "El destino demo coincide con una cuenta registrada."
-                    )
                 comercio.es_demo = not quitar
                 comercio.save(update_fields=["es_demo"])
         except IntegrityError as exc:
             raise CommandError("Quita el demo actual con --quitar.") from exc
-        if not quitar and not destino:
-            self.stderr.write(
-                "El comercio no podrá cobrar hasta definir el destino demo."
-            )
         logger.warning(
             "comercio demo actualizado comercio_id=%s es_demo=%s",
             comercio.pk,
