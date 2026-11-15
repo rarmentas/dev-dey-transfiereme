@@ -7,10 +7,12 @@ abajo son conservadores y se actualizan solo con evidencia verificable.
 
 ## Preparación del tendero y del pagador
 
-1. Configurar `DEMO_PEY_BANK_ACCOUNT_ID` con el destino propio válido y designar el
-   comercio mediante `designar_comercio_demo --comercio <id>`. Verificar con
-   `designar_comercio_demo --estado` antes de habilitar cobros. El destino no debe
-   coincidir con una cuenta registrada de comercio. El importe efectivo es MXN 0.01.
+1. Configurar `DEMO_PEY_BANK_ACCOUNT_ID` (web, canal y cobros) con el destino propio
+   válido y designar el comercio mediante `designar_comercio_demo --comercio <id>`.
+   Verificar con `designar_comercio_demo --estado` antes de habilitar cobros. El
+   destino no debe coincidir con una cuenta registrada de comercio: si coincide, el
+   demo no cobra y ninguna cuenta puede registrarlo ni enlazarlo. El importe efectivo
+   es MXN 0.01.
 2. Confirmar sesión del comercio correcto, canal de WhatsApp operativo y consentimiento
    de los participantes. El tendero revisa artículos, cantidades y precios; el cliente
    acepta la revisión vigente antes de solicitar el cobro.
@@ -137,7 +139,8 @@ Revisar la grabación antes de compartirla para retirar secretos y datos persona
 ## Contingencias y prerrequisitos de servidor
 
 Antes de la demo verificar la designación con `designar_comercio_demo --estado` y el
-destino propio configurado en web y cobros; el demo no necesita cuenta ACTIVE propia.
+destino propio configurado en web, canal y cobros (el worker de canal solicita el
+cobro); el demo no necesita cuenta ACTIVE propia.
 Los comercios normales cobran a su cuenta y las rutas legacy se bloquean solo para el
 demo. Verificar total comercial visible, importe efectivo MXN 0.01, núcleo real, pey de
 producción, firmas pey y WAHA; WAHA con número real y soporte
