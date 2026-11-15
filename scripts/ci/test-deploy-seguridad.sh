@@ -127,4 +127,15 @@ if ! bash "$scratch/repo/scripts/ci/deploy.sh" prod >"$scratch/output" 2>&1; the
 fi
 [[ "$(grep -xc rsync "$CALLS")" == 1 ]]
 [[ "$(grep -xc scp "$CALLS")" == 1 ]]
+# El destino demo viene de CuentaCobro: el env residual no condiciona el deploy.
+for demo_residual in '' 'no-es-un-ulid'; do
+  printf 'DEMO_PEY_BANK_ACCOUNT_ID=%s\n' "$demo_residual" >>"$scratch/ci.env"
+  : >"$CALLS"
+  if ! bash "$scratch/repo/scripts/ci/deploy.sh" prod >"$scratch/output" 2>&1; then
+    cat "$scratch/output" >&2
+    exit 1
+  fi
+  [[ "$(grep -xc rsync "$CALLS")" == 1 ]]
+  [[ "$(grep -xc scp "$CALLS")" == 1 ]]
+done
 echo 'Ensayos del orquestador: rechazo de rutas/test/bloqueo y fallos SSH/rsync correctos.'

@@ -47,6 +47,11 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
       title: const Text('Pedidos'),
       actions: [
         IconButton(
+          onPressed: () => context.push('/pedidos/catalogo'),
+          icon: const Icon(Icons.storefront),
+          tooltip: 'Lista de precios',
+        ),
+        IconButton(
           onPressed: cargando ? null : cargar,
           icon: const Icon(Icons.refresh),
           tooltip: 'Actualizar',
@@ -166,9 +171,11 @@ class _PedidoTile extends StatelessWidget {
                     ),
                     const SizedBox(height: TfSpace.s3),
                     Text(
-                      pedido.total == null
-                          ? 'Por cotizar'
-                          : formatearCentavos(pedido.total!),
+                      pedido.total != null
+                          ? 'Total: ${formatearCentavos(pedido.total!)}'
+                          : pedido.propuesta != null
+                          ? 'Propuesta: ${formatearCentavos(pedido.propuesta!)}'
+                          : 'Pendiente de cotizar',
                       style: Theme.of(context).textTheme.titleMedium
                           ?.copyWith(),
                     ),

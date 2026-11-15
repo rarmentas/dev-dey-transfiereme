@@ -53,6 +53,10 @@ class DeploySeguridadTests(SimpleTestCase):
             "POSTGRES_PASSWORD=clave-ficticia-secreta\n"
             "POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
             "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
+            "AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n"
+            "OPENAI_API_KEY=ficticia-openai\n"
+            "AGENTE_PEDIDOS_MODELO=modelo-prueba\n"
+            "AGENTE_PEDIDOS_TIMEOUT_S=25\n"
             "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
             "NUCLEO_ADAPTADOR=real\nPEDIDOS_COBRO_HABILITADO=true\n"
             "WAHA_WEBHOOK_SECRET=ficticio\nEMAIL_HOST_PASSWORD=ficticia\n"
@@ -78,7 +82,7 @@ class DeploySeguridadTests(SimpleTestCase):
         }
         self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
         self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
-        self.stub("systemd-analyze", 'exit "${VERIFY_ERROR:-0}"')
+        self.stub("systemd-analyze", 'echo "systemd-analyze $*" >> "$LOG"\nexit "${VERIFY_ERROR:-0}"')
         self.stub("curl", 'echo "${HEALTH_CODE:-200}"')
         self.stub("sleep", 'if [[ "$1" != 1 ]]; then /usr/bin/sleep "$@"; fi')
         self.stub("ss", 'echo "127.0.0.1:5435"')
@@ -334,10 +338,42 @@ esac''')
             archivo.write("STT_HABILITADO=1\n")
         resultado = self.remoto()
         self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"Faltan venv, cach", resultado.stderr)
         acciones = self.log.read_text()
-        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+        for accion in ("systemd-analyze", "pg_dump", "manage manage.py migrate", "systemctl stop"):
             self.assertNotIn(accion, acciones)
         self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_stt_apagado_sin_recursos_permita_verificar_y_desplegar(self) -> None:
+        self.entrada.write_text(self.entrada.read_text() + "STT_HABILITADO=0\n")
+        resultado = self.remoto()
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        acciones = self.log.read_text()
+        self.assertIn("systemd-analyze verify", acciones)
+        self.assertNotIn("cody-stt.service", "\n".join(
+            linea for linea in acciones.splitlines()
+            if linea.startswith("systemd-analyze verify")
+        ))
+
+    def test_unit_con_ruta_invalida_aborta_antes_del_respaldo(self) -> None:
+        unit = self.destino / "deploy/cody.service.in"
+        unit.write_text(unit.read_text() + f"\nReadOnlyPaths={self.codi}/ajeno\n")
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"rutas no permitidas", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("systemd-analyze", "pg_dump", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
+
+    def test_fallo_de_sed_de_rutas_aborta_antes_del_respaldo(self) -> None:
+        self.stub("sed", '''if [[ "$1" == -E ]]; then exit 42; fi
+exec /usr/bin/sed "$@"''')
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"No se pudieron validar las rutas", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("systemd-analyze", "pg_dump", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
 
     def test_postgres_no_sano_no_se_repara(self) -> None:
         resultado = self.remoto(PG_HEALTH="unhealthy")
@@ -365,6 +401,7 @@ esac''')
         self.assertEqual(len(respaldos), 1)
         self.assertEqual(respaldos[0].read_bytes(), b"PGDMP contenido ficticio")
         self.assertNotIn(b"clave-ficticia-secreta", resultado.stdout + resultado.stderr)
+        self.assertNotIn(b"ficticia-modelo", resultado.stdout + resultado.stderr)
         self.assertLess(acciones.index("systemctl start cody.service"),
                         acciones.index("systemctl restart cody-canal.service"))
         self.assertIn("--desde 2026-01-01T00:00:00Z", acciones)
@@ -380,6 +417,10 @@ esac''')
         self.assertIn("WAHA_INSTANCIA=waha\n", contenido)
         self.assertIn("WAHA_BASE_URL=http://127.0.0.1:3004\n", contenido)
         self.assertIn("WAHA_API_KEY=ficticia\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n", contenido)
+        self.assertIn("OPENAI_API_KEY=ficticia-openai\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_MODELO=modelo-prueba\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_TIMEOUT_S=25\n", contenido)
         for secreto in (
             "PEY_API_KEY", "PEY_WEBHOOK_SECRET", "WAHA_WEBHOOK_SECRET",
             "EMAIL_HOST_PASSWORD",
@@ -393,6 +434,10 @@ esac''')
         self.assertNotIn("PEY_WEBHOOK_SECRET", cobros)
         self.assertIn("WAHA_API_KEY=ficticia", stt)
         self.assertNotIn("PEY_API_KEY", stt)
+        self.assertNotIn("AGENTE_PEDIDOS_API_KEY", stt)
+        self.assertNotIn("AGENTE_PEDIDOS_API_KEY", cobros)
+        self.assertNotIn("OPENAI_API_KEY", stt)
+        self.assertNotIn("OPENAI_API_KEY", cobros)
         for rol in ("canal", "cobros", "stt"):
             entorno = self.destino / f"backend/.env.{rol}"
             self.assertEqual(entorno.stat().st_mode & 0o777, 0o600)
@@ -429,6 +474,7 @@ esac''')
         )
         self.assertIn("systemctl enable --now cody-stt.service", acciones)
         self.assertIn("--proceso procesar_audio", acciones)
+        self.assertIn("MemoryMax=10G", (self.units / "cody-stt.service").read_text())
 
     def test_modelo_offline_invalido_no_respalda_ni_migra(self) -> None:
         (self.stt / "venv/bin").mkdir(parents=True)

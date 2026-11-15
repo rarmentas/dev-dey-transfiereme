@@ -11,6 +11,7 @@ class Comercio(models.Model):
 
     nombre = models.CharField(max_length=200)
     es_demo = models.BooleanField(default=False, help_text="Designado por operador.")
+    agente_pedidos_habilitado = models.BooleanField(default=False)
     semilla_active_dev = models.BooleanField(
         default=False,
         help_text=(

@@ -24,7 +24,7 @@ def contexto(conversacion):
     )
 
 
-def procesar_mensaje(mensaje, nucleo, lector, ahora):
+def procesar_mensaje(mensaje, nucleo, lector, ahora, lease_token=None, modelo=None):
     conversacion = mensaje.conversacion
     ctx = contexto(conversacion)
     texto = mensaje.texto.strip()
@@ -35,6 +35,24 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
     pedido_id = conversacion.pedido_id_actual
     ignorado = False
     datos = {"contrato_version": CONTRATO_VERSION}
+    if (
+        conversacion.sesion.comercio.agente_pedidos_habilitado
+        and lease_token is not None
+        and mensaje.tipo in ("texto", "audio")
+        and (mensaje.tipo != "audio" or (
+            hasattr(mensaje, "trabajoaudio") and mensaje.trabajoaudio.estado == "listo"
+        ))
+        and comando not in {"ACEPTAR", "AYUDA"}
+        and not (
+            pedido_id
+            and re.search(r"\b(?:ya\s+)?pagu[eé]\b", texto, re.IGNORECASE)
+        )
+        and not (texto.casefold() in {"sí", "si"} and SalidaCanal.objects.filter(
+            conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
+        ).exists())
+    ):
+        from asistente_pedidos.servicio import procesar
+        return procesar(mensaje, nucleo, lector, ahora, lease_token, modelo)
     if mensaje.tipo == "audio" and not hasattr(mensaje, "trabajoaudio"):
         if settings.STT_HABILITADO:
             salida = mensajes.AUDIO_FALLIDO
@@ -93,9 +111,7 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 )
                 if not cobro.ok and cobro.error.retryable:
                     respuesta = cobro
-                elif not cobro.ok and cobro.error.code.value in {
-                    "CUENTA_NO_ACTIVE", "DEMO_DESTINO_NO_PERMITIDO"
-                }:
+                elif not cobro.ok and cobro.error.code.value == "CUENTA_NO_ACTIVE":
                     salida = mensajes.COBRO_NO_DISPONIBLE
                 elif (
                     not cobro.ok and cobro.error.code.value != "PROVEEDOR_NO_DISPONIBLE"
@@ -178,13 +194,14 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 salida = mensajes.CORREGIDO
             else:
                 respuesta = consulta
-    elif not any(c.isalnum() for c in texto) or texto.casefold() in {
-        "hola", "gracias"
-    }:
+    elif not any(c.isalnum() for c in texto) or texto.casefold() in {"hola", "gracias"}:
         salida = mensajes.AYUDA
-    elif texto.casefold() in {"sí", "si"} and SalidaCanal.objects.filter(
-        conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
-    ).exists():
+    elif (
+        texto.casefold() in {"sí", "si"}
+        and SalidaCanal.objects.filter(
+            conversacion=conversacion, tipo="cotizacion_resumen", estado="enviada"
+        ).exists()
+    ):
         salida = mensajes.TOKEN_INVALIDO
     elif texto:
         if pedido_id:
@@ -223,13 +240,16 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
                 )
                 aviso = (
                     mensajes.REINTENTO_AGOTADO
-                    if mensaje.estado == "fallido" else mensajes.REINTENTO_ESPERA
+                    if mensaje.estado == "fallido"
+                    else mensajes.REINTENTO_ESPERA
                 )
                 if nucleo.ES_SIMULACION:
                     aviso = "[SIMULACIÓN] " + aviso
                 causa = "fallo" if mensaje.estado == "fallido" else "espera"
                 preparar(
-                    conversacion, f"{causa}:{mensaje.id}", "respuesta",
+                    conversacion,
+                    f"{causa}:{mensaje.id}",
+                    "respuesta",
                     {"texto": aviso},
                 )
             return

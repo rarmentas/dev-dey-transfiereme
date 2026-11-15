@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
 
-from config.modo import destino_demo, politica_de, validar_configuracion
+from config.modo import politica_de, validar_configuracion
 
 
 class ConfiguracionTests(SimpleTestCase):
@@ -33,9 +33,12 @@ class ConfiguracionTests(SimpleTestCase):
         DEMO_PEY_BANK_ACCOUNT_ID="invalido", PEDIDOS_COBRO_HABILITADO=False
     )
     def test_destino_invalido_no_impide_arranque(self):
-        with self.assertLogs("config.modo", level="WARNING"):
+        with (
+            patch.dict(os.environ, {"DEMO_PEY_BANK_ACCOUNT_ID": "invalido"}),
+            self.assertLogs("config.modo", level="WARNING") as logs,
+        ):
             validar_configuracion()
-        self.assertIsNone(destino_demo())
+        self.assertIn("DEMO_PEY_BANK_ACCOUNT_ID ignorada", logs.output[0])
 
     @override_settings(DEBUG=True, PEDIDOS_COBRO_HABILITADO=True)
     def test_cobro_no_disponible(self):

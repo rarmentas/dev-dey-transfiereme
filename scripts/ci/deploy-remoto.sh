@@ -244,8 +244,12 @@ for suffix in "" "-canal" "-cobros" "-stt"; do
   sed -e "s|@DEPLOY_PATH@|$dest|g" -e "s|@DEPLOY_USER@|$service_user|g" \
     -e 's|@UNIT_BASE@|cody|g' -e "s|@STT_HOME@|$stt_home|g" \
     "$dest/deploy/cody${suffix}.service.in" >"$unit_tmp"
+  if ! sed -E "s#${dest}(/|[[:space:]]|$)#\\1#g" "$unit_tmp" \
+      >"$backup_dir/unit-rutas"; then
+    echo 'No se pudieron validar las rutas de la unit.' >&2; exit 1
+  fi
   if grep -Eq '@[A-Z_]+@|/\.\.?(/|[[:space:]]|$)' "$unit_tmp" || \
-     sed -E "s|$dest(/| |$)|\\1|g" "$unit_tmp" | grep -q '/opt/codi'; then
+     grep -q '/opt/codi' "$backup_dir/unit-rutas"; then
     echo 'La unit contiene marcadores o rutas no permitidas.' >&2; exit 1
   fi
   grep -Fxq "WorkingDirectory=$dest/backend" "$unit_tmp"
@@ -253,9 +257,6 @@ for suffix in "" "-canal" "-cobros" "-stt"; do
     grep -Fxq "ReadWritePaths=$dest $stt_home" "$unit_tmp"
   else
     grep -Fxq "ReadWritePaths=$dest" "$unit_tmp"
-  fi
-  if [[ "$suffix" != -stt || "$stt_habilitado" == 1 ]]; then
-    systemd-analyze verify "$unit_tmp" >/dev/null
   fi
 done
 grep -Fxq "EnvironmentFile=$dest/backend/.env" "$backup_dir/cody.service"
@@ -272,10 +273,11 @@ grep -Fxq "ExecStart=$stt_home/venv/bin/python manage.py procesar_audio" "$backu
 grep -Fxq "Environment=CODY_ROL=stt HF_HOME=$stt_home/modelos HF_HUB_OFFLINE=1" "$backup_dir/cody-stt.service"
 # Las listas permitidas evitan propagar secretos o sobrescribir CODY_ROL.
 comunes='POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_HOST|POSTGRES_PORT|DJANGO_SECRET_KEY|DEBUG|ALLOWED_HOSTS|DEMO_MODE|DEMO_PEY_BANK_ACCOUNT_ID|NUCLEO_ADAPTADOR|POLITICA_COBRO_VERSION|PEDIDOS_COBRO_HABILITADO'
-canal_claves="$comunes|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY|STT_HABILITADO|STT_MODELO|STT_CPU_THREADS"
+stt_claves="$comunes|WAHA_INSTANCIA|WAHA_BASE_URL|WAHA_API_KEY|STT_HABILITADO|STT_MODELO|STT_CPU_THREADS"
+canal_claves="$stt_claves|AGENTE_PEDIDOS_API_KEY|OPENAI_API_KEY|AGENTE_PEDIDOS_MODELO|AGENTE_PEDIDOS_TIMEOUT_S"
 cobros_claves="$comunes|PEY_API_KEY|PEY_ADAPTADOR"
 grep -E "^[[:space:]]*($canal_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.canal" || [[ "$?" -eq 1 ]]
-cp "$backup_dir/env.canal" "$backup_dir/env.stt"
+grep -E "^[[:space:]]*($stt_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.stt" || [[ "$?" -eq 1 ]]
 grep -E "^[[:space:]]*($cobros_claves)[[:space:]]*=" "$incoming" >"$backup_dir/env.cobros" || [[ "$?" -eq 1 ]]
 
 chmod 600 "$backup_dir/env.canal" "$backup_dir/env.cobros" "$backup_dir/env.stt"
@@ -325,6 +327,12 @@ PYSTT
     exit 1
   fi
 fi
+
+for suffix in "" "-canal" "-cobros" "-stt"; do
+  if [[ "$suffix" != -stt || "$stt_habilitado" == 1 ]]; then
+    systemd-analyze verify "$backup_dir/cody${suffix}.service" >/dev/null
+  fi
+done
 
 
 # Respaldar y migrar solo después de validar la configuración entrante.

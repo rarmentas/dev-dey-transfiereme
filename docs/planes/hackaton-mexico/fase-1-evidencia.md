@@ -7,12 +7,13 @@ abajo son conservadores y se actualizan solo con evidencia verificable.
 
 ## Preparación del tendero y del pagador
 
-1. Configurar `DEMO_PEY_BANK_ACCOUNT_ID` (web, canal y cobros) con el destino propio
-   válido y designar el comercio mediante `designar_comercio_demo --comercio <id>`.
-   Verificar con `designar_comercio_demo --estado` antes de habilitar cobros. El
-   destino no debe coincidir con una cuenta registrada de comercio: si coincide, el
-   demo no cobra y ninguna cuenta puede registrarlo ni enlazarlo. El importe efectivo
-   es MXN 0.01.
+1. Seleccionar una `CuentaCobro` propia registrada y ACTIVE mediante
+   `comercio.cuenta_por_defecto` y designar el comercio con
+   `designar_comercio_demo --comercio <id>`. Verificar con
+   `designar_comercio_demo --estado` antes de habilitar cobros. El destino es el
+   `pey_bank_account_id` real de esa cuenta, también si hay varias cuentas.
+   El importe efectivo es MXN 0.01. `DEMO_PEY_BANK_ACCOUNT_ID` está obsoleta e
+   ignorada; no define el destino ni es requerida.
 2. Confirmar sesión del comercio correcto, canal de WhatsApp operativo y consentimiento
    de los participantes. El tendero revisa artículos, cantidades y precios; el cliente
    acepta la revisión vigente antes de solicitar el cobro.
@@ -25,9 +26,9 @@ abajo son conservadores y se actualizan solo con evidencia verificable.
 
 Un comercio con historial o QR general puede designarse demo. Su QR general existente
 sigue acreditando dinero real a su cuenta real, mientras la API de QR general queda
-bloqueada para el demo. El modo demo solo cambia el cobro de pedidos: MXN 0.01 a
-`DEMO_PEY_BANK_ACCOUNT_ID`, que no debe ser una cuenta registrada de ningún comercio,
-incluido el propio.
+bloqueada para el demo. Los pedidos demo cobran MXN 0.01 al destino real de la
+`CuentaCobro` seleccionada (`cuenta_por_defecto`). Su uso en demo no reserva ni
+bloquea el ID de esa cuenta para el registro, enlace o sincronización.
 
 ## Guion: texto y voz
 
@@ -102,7 +103,7 @@ extremo; `no cumplido` indica que aún no se ha demostrado el resultado exigido.
 | AC1-15 | Cambio de predeterminada no reasigna cobros históricos ni webhooks | parcial |
 | AC1-16 | Estado, sincronización e incertidumbre independientes por cuenta | parcial |
 
-Pendientes de infraestructura: cuenta pey propia y su id configurado, WAHA con número real,
+Pendientes de infraestructura: cuenta pey propia registrada, ACTIVE y seleccionada, WAHA con número real,
 modelo STT instalado en servidor y cobro habilitado allí. Ninguno se presume verificado.
 Para cambiar un estado, adjuntar referencia de prueba, fecha, SHA y resultado observado.
 
@@ -145,8 +146,8 @@ Revisar la grabación antes de compartirla para retirar secretos y datos persona
 ## Contingencias y prerrequisitos de servidor
 
 Antes de la demo verificar la designación con `designar_comercio_demo --estado` y el
-destino propio configurado en web, canal y cobros (el worker de canal solicita el
-cobro); el demo no necesita cuenta ACTIVE propia.
+destino real de la `CuentaCobro` propia seleccionada en `cuenta_por_defecto`
+(el worker de canal solicita el cobro); el demo sí necesita cuenta registrada y ACTIVE.
 Los comercios normales cobran a su cuenta y las rutas legacy se bloquean solo para el
 demo. Verificar total comercial visible, importe efectivo MXN 0.01, núcleo real, pey de
 producción, firmas pey y WAHA; WAHA con número real y soporte

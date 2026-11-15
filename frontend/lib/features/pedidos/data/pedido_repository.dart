@@ -24,6 +24,19 @@ class PedidoRepository {
   final Dio _dio;
   static const ruta = '/api/pedidos/';
 
+  Future<Map<String, dynamic>> catalogo() async =>
+      _solicitar('GET', '${ruta}catalogo/');
+  Future<Map<String, dynamic>> guardarProducto(
+    int? id,
+    Map<String, dynamic> cuerpo,
+  ) async => _solicitar(
+    id == null ? 'POST' : 'PUT',
+    id == null ? '${ruta}catalogo/' : '${ruta}catalogo/$id/',
+    cuerpo,
+  );
+  Future<Map<String, dynamic>> configurarAgente(bool habilitado) async =>
+      _solicitar('PUT', '${ruta}agente/', {'habilitado': habilitado});
+
   Future<List<PedidoResumen>> listar() async {
     final data = await _solicitar('GET', ruta);
     return (data['pedidos'] as List)
@@ -104,7 +117,6 @@ class PedidoRepository {
       'PAYLOAD_INVALIDO' => 'Revisa los datos de los renglones.',
       'PROVEEDOR_NO_DISPONIBLE' => 'El cobro no está habilitado todavía.',
       'CUENTA_NO_ACTIVE' => 'La cuenta no está activa para cobrar.',
-      'DEMO_DESTINO_NO_PERMITIDO' => 'El destino no está permitido en demo.',
       'MODO_CAMBIO' => 'Cambió el modo de cobro. Revisa el pedido.',
       'ACEPTACION_REQUERIDA' => 'Se requiere una aceptación vigente.',
       'INTENCION_DISTINTA' => 'Ya existe un cobro con otra intención.',

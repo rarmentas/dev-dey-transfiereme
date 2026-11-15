@@ -80,9 +80,11 @@ El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML
 ## Fase 1: pedidos y canal WhatsApp
 
 El demo se decide por comercio. Django usa `NUCLEO_ADAPTADOR` y
-`PEDIDOS_COBRO_HABILITADO`, que admite `true` o `false`; opcionalmente,
-`DEMO_PEY_BANK_ACCOUNT_ID` identifica el destino de la cuenta demo. Estas
-variables no modifican el mecanismo de deploy.
+`PEDIDOS_COBRO_HABILITADO`, que admite `true` o `false`. El cobro demo usa el
+`pey_bank_account_id` real de la `CuentaCobro` seleccionada en
+`comercio.cuenta_por_defecto`, registrada y ACTIVE, con importe MXN 0.01.
+`DEMO_PEY_BANK_ACCOUNT_ID` está obsoleta e ignorada: no define el destino ni
+se exige para el arranque o deploy, aunque esté vacía o sea inválida.
 
 Para WhatsApp, Django usa `WAHA_BASE_URL` (por defecto
 `http://127.0.0.1:3004`), `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET` y
@@ -143,8 +145,10 @@ no evita esos fallos ni se restaura automáticamente.
 ## Cobros y voz
 
 `PEDIDOS_COBRO_HABILITADO` admite `true` o `false`. El demo se decide por
-comercio; `DEMO_PEY_BANK_ACCOUNT_ID` es el destino opcional usado por web,
-canal y cobros. `DEMO_MODE` y `POLITICA_COBRO_VERSION` se ignoran.
+comercio y exige una `CuentaCobro` propia registrada y ACTIVE. Usa la cuenta
+seleccionada (`cuenta_por_defecto`), incluso con varias cuentas, y cobra MXN 0.01.
+`DEMO_PEY_BANK_ACCOUNT_ID`, `DEMO_MODE` y `POLITICA_COBRO_VERSION` se ignoran;
+no se reservan IDs de cuentas por su uso en demo.
 
 `STT_HABILITADO=0` deshabilita la unit STT; `STT_MODELO` y `STT_CPU_THREADS`
 configuran el modelo. Al habilitarlo, operación provisiona previamente

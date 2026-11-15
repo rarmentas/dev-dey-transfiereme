@@ -53,7 +53,8 @@ class ContratoProduccionTests(SimpleTestCase):
         self.assertEqual(timeout, 10)
         self.assertEqual(
             cuerpo,
-            b'{"amount": 0.01, "concept": "Transferencia", "expiration": 0, "numRef": "0"}',
+            b'{"amount": 0.01, "concept": "Transferencia", '
+            b'"expiration": 0, "numRef": "0"}',
         )
         self.assertNotIn(b"0.010000", cuerpo)
         self.assertIsInstance(json.loads(cuerpo)["amount"], float)
@@ -81,7 +82,8 @@ class ContratoProduccionTests(SimpleTestCase):
         self.assertEqual(timeout, 10)
         self.assertEqual(
             cuerpo,
-            b'{"amount": 0.01, "phoneNumber": "5512345678", "concept": "Transferencia", "expiration": 360, "numRef": "0"}',
+            b'{"amount": 0.01, "phoneNumber": "5512345678", '
+            b'"concept": "Transferencia", "expiration": 360, "numRef": "0"}',
         )
 
 
@@ -108,8 +110,10 @@ class BankAccountIdProduccionTests(SimpleTestCase):
         )
         self.assertEqual(
             transporte.llamadas[0][3],
-            b'{"amount": 0.01, "phoneNumber": "5512345678", "concept": "Transferencia", '
-            b'"expiration": 360, "numRef": "0", "bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}',
+            b'{"amount": 0.01, "phoneNumber": "5512345678", '
+            b'"concept": "Transferencia", '
+            b'"expiration": 360, "numRef": "0", '
+            b'"bankAccountId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}',
         )
 
     def test_ulid_invalido_no_llama_al_transporte(self) -> None:
@@ -165,6 +169,9 @@ class ErroresProduccionTests(SimpleTestCase):
         self.assertFalse(ctx.exception.puede_haberse_creado)
         texto = "\n".join(logs.output)
         self.assertIn("req_abc", texto)
+        self.assertIn("status=400", texto)
+        self.assertIn("error.type=INVALID_AMOUNT", texto)
+        self.assertIn("error.message=El monto no es válido", texto)
         self.assertNotIn(LLAVE, texto)
         self.assertNotIn("Authorization", texto)
         self.assertNotIn("Bearer", texto)
@@ -182,6 +189,39 @@ class ErroresProduccionTests(SimpleTestCase):
             self.assertTrue(ctx.exception.puede_haberse_creado)
             self.assertEqual(len(transporte.llamadas), 1)
             self.assertNotIn(LLAVE, "\n".join(logs.output))
+
+    def test_falla_http_loguea_campos_sin_cuerpo_ni_credenciales(self) -> None:
+        for status in (400, 401, 503):
+            cuerpo = json.dumps(
+                {
+                    "error": {
+                        "type": "INVALID_BANK_ACCOUNT",
+                        "message": f"Destino inválido {LLAVE} Bearer otra-credencial",
+                        "requestId": "req+/=",
+                        "credentials": "campo-no-permitido",
+                    },
+                    "apiKey": "cuerpo-no-permitido",
+                }
+            ).encode()
+            adaptador, _ = _adaptador(status, cuerpo)
+            with self.assertLogs("pey.produccion", level="WARNING") as logs:
+                with self.assertRaises(ErrorPey):
+                    adaptador.crear_qr(monto=Decimal("0.01"))
+            texto = "\n".join(logs.output)
+            for campo in (
+                f"status={status}",
+                "error.type=INVALID_BANK_ACCOUNT",
+                "error.message=Destino inválido",
+                "req+/=",
+            ):
+                self.assertIn(campo, texto)
+            for secreto in (
+                LLAVE,
+                "otra-credencial",
+                "campo-no-permitido",
+                "cuerpo-no-permitido",
+            ):
+                self.assertNotIn(secreto, texto)
 
     def test_excepcion_de_red_es_no_disponible(self) -> None:
         def transporte(*args, **kwargs):
@@ -234,6 +274,9 @@ class ErroresProduccionTests(SimpleTestCase):
             self.assertEqual(len(transporte.llamadas), 1)
             texto = "\n".join(logs.output)
             self.assertIn("req_estado", texto)
+            self.assertIn(f"status={status}", texto)
+            self.assertIn("error.type=NO", texto)
+            self.assertIn("error.message=no", texto)
             self.assertNotIn(LLAVE, texto)
             self.assertNotIn("Authorization", texto)
             self.assertNotIn("Bearer", texto)
@@ -293,7 +336,10 @@ class ValidacionCompartidaTests(SimpleTestCase):
             {"monto": Decimal("-0.00"), "telefono": "5512345678"},
             {"monto": Decimal("0.005"), "telefono": "5512345678"},
             {"monto": Decimal("1e27"), "telefono": "5512345678"},
-            {"monto": Decimal("12345678901234567890123456.789"), "telefono": "5512345678"},
+            {
+                "monto": Decimal("12345678901234567890123456.789"),
+                "telefono": "5512345678",
+            },
             {"monto": Decimal("1000000.01"), "telefono": "5512345678"},
             {"monto": Decimal("10"), "telefono": "551234567"},
             {"monto": Decimal("10"), "telefono": "5512345678", "expiracion_s": 100},

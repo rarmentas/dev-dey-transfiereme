@@ -67,6 +67,7 @@ def operar(comercio, pedido_id, operacion, datos, usuario=None):
                             else "",
                         ),
                     )
+                renglon.producto_catalogo = None
                 renglon.save()
             pedido.estado = "en_revision"
             pedido.save()

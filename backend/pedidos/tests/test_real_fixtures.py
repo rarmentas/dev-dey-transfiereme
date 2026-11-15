@@ -9,8 +9,8 @@ from pedidos.tests.fixtures_v1 import FixturesContratoV1
 
 
 @override_settings(
-    PEDIDOS_COBRO_HABILITADO=True, PEY_WEBHOOK_SECRET=SECRETO,
-    DEMO_PEY_BANK_ACCOUNT_ID="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    PEDIDOS_COBRO_HABILITADO=True,
+    PEY_WEBHOOK_SECRET=SECRETO,
 )
 class RealFixturesTests(FixturesContratoV1, TransactionTestCase):
     def setUp(self):

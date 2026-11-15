@@ -9,6 +9,7 @@ import '../../features/cuenta/presentation/cuentas_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
 import '../../features/pedidos/presentation/pedido_detalle_page.dart';
 import '../../features/pedidos/presentation/pedidos_page.dart';
+import '../../features/pedidos/presentation/catalogo_page.dart';
 import '../../features/sesion/presentation/home_autenticado_page.dart';
 import '../../features/sesion/presentation/login_page.dart';
 import '../../features/tablero/presentation/tablero_page.dart';
@@ -29,6 +30,7 @@ const kRutaRegistrarCuentaPey = '/cuenta/pey/registrar';
 const kRutaAjustes = '/ajustes';
 const kRutaMiQr = '/mi-qr';
 const kRutaPedidos = '/pedidos';
+const kRutaCatalogo = '/pedidos/catalogo';
 const kRutaPedido = '/pedidos/:id';
 const kRutaAsistente = '/asistente';
 
@@ -101,6 +103,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: kRutaAjustes,
                 builder: (context, state) => const AjustesPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaCatalogo,
+                builder: (context, state) => const CatalogoPage(),
               ),
             ],
           ),

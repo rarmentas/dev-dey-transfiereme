@@ -66,6 +66,7 @@ class DeployArtefactosTests(SimpleTestCase):
             self.assertNotIn("docker compose", texto)
         ci = (RAIZ / ".gitlab-ci.yml").read_text()
         for valor in ("requirements-canal.txt", "pedidos.tests canales.tests",
+                      "asistente_pedidos.tests",
                       "makemigrations --check --dry-run", "resource_group: codi-vps",
                       "when: never", "when: manual",
                       "flutter test test/widget_smoke_test.dart test/features/pedidos"):
@@ -81,6 +82,21 @@ class DeployArtefactosTests(SimpleTestCase):
         )
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
         self.assertEqual(resultado.stdout.strip(), b"waha http://127.0.0.1:3004")
+
+    def test_clave_openai_es_respaldo_de_clave_del_agente(self) -> None:
+        entorno = {**os.environ, "OPENAI_API_KEY": "clave-falsa-openai"}
+        entorno.pop("AGENTE_PEDIDOS_API_KEY", None)
+        comando = [sys.executable, "-c",
+                   "from config.settings import AGENTE_PEDIDOS_API_KEY; print(AGENTE_PEDIDOS_API_KEY)"]
+        resultado = subprocess.run(comando, cwd=RAIZ / "backend", env=entorno,
+                                   capture_output=True, check=False)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        self.assertEqual(resultado.stdout.strip(), b"clave-falsa-openai")
+        entorno["AGENTE_PEDIDOS_API_KEY"] = "clave-falsa-especifica"
+        resultado = subprocess.run(comando, cwd=RAIZ / "backend", env=entorno,
+                                   capture_output=True, check=False)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        self.assertEqual(resultado.stdout.strip(), b"clave-falsa-especifica")
 
     def test_helper_master_conserva_entorno_y_exige_llave_v2(self) -> None:
         script = (RAIZ / SCRIPTS[2]).read_text()
@@ -105,6 +121,7 @@ class DeployArtefactosTests(SimpleTestCase):
                 "PROD_DEPLOY_PATH": "/opt/codi/prod",
                 "PROD_SSH_PRIVATE_KEY_V2": "UFJJVkFURSBLRVk=",
             }
+            entorno.pop("OPENAI_API_KEY", None)
 
             def ejecutar(datos, env=None):
                 entrada.write_text("".join(f"{k}={v}\n" for k, v in datos.items()))
@@ -117,6 +134,15 @@ class DeployArtefactosTests(SimpleTestCase):
             self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
             self.assertEqual(destino.read_text(), entrada.read_text())
             self.assertEqual(destino.stat().st_mode & 0o777, 0o600)
+            con_clave = {**entorno, "OPENAI_API_KEY": "ficticia-openai"}
+            resultado = ejecutar(valores, con_clave)
+            self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+            self.assertIn("OPENAI_API_KEY=ficticia-openai\n", destino.read_text())
+            self.assertNotIn(b"ficticia-openai", resultado.stdout + resultado.stderr)
+            resultado = ejecutar({**valores, "OPENAI_API_KEY": "clave-archivo"}, con_clave)
+            self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+            self.assertEqual(destino.read_text().count("OPENAI_API_KEY="), 1)
+            self.assertIn("OPENAI_API_KEY=clave-archivo", destino.read_text())
             for clave in required:
                 with self.subTest(clave=clave):
                     self.assertNotEqual(ejecutar({**valores, clave: ""}).returncode, 0)

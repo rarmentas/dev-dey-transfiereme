@@ -447,7 +447,6 @@ void main() {
   });
   for (final codigo in [
     'CUENTA_NO_ACTIVE',
-    'DEMO_DESTINO_NO_PERMITIDO',
     'MODO_CAMBIO',
     'ACEPTACION_REQUERIDA',
     'PROVEEDOR_NO_DISPONIBLE',
