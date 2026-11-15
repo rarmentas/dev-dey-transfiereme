@@ -5,6 +5,7 @@ import json
 import re
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone as zona_utc
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ImproperlyConfigured
@@ -105,6 +106,19 @@ def _objeto_json(cuerpo: bytes) -> dict:
     return datos
 
 
+def _fecha_pago(valor):
+    """Lee una fecha informativa sin rechazar el pago."""
+    try:
+        if isinstance(valor, (int, float, Decimal)) and not isinstance(valor, bool):
+            return datetime.fromtimestamp(float(valor), tz=zona_utc.utc)
+        if isinstance(valor, str):
+            fecha = parse_datetime(valor)
+            return fecha if fecha is not None and not timezone.is_naive(fecha) else None
+    except (OverflowError, OSError, ValueError):
+        return None
+    return None
+
+
 def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
     datos = _objeto_json(cuerpo)
     tipo = datos.get("type")
@@ -145,16 +159,7 @@ def _leer_aviso(cuerpo: bytes) -> _AvisoEntrante:
         r"[0-9A-HJKMNP-TV-Z]{26}", bank
     )):
         raise _AvisoMalFormado
-    fecha = datos.get("datePaid")
-    if fecha is not None:
-        if not isinstance(fecha, str):
-            raise _AvisoMalFormado
-        try:
-            fecha = parse_datetime(fecha)
-        except ValueError as exc:
-            raise _AvisoMalFormado from exc
-        if fecha is None or timezone.is_naive(fecha):
-            raise _AvisoMalFormado
+    fecha = _fecha_pago(datos.get("datePaid"))
 
     return _AvisoEntrante(
         tipo=tipo,

@@ -325,7 +325,10 @@ class NotificacionVentaTests(TransactionTestCase):
         sin_llamada = _Espia()
         cuenta = self._post(sin_llamada)
         self.assertEqual(cuenta.status_code, 409)
-        self.assertEqual(cuenta.json(), {"detail": "La cuenta no está ACTIVE."})
+        self.assertEqual(
+            cuenta.json(),
+            {"detail": "La cuenta no está ACTIVE.", "codigo": "CUENTA_NO_ACTIVE"},
+        )
         self.assertEqual(sin_llamada.notificaciones, [])
 
         self.client.force_login(self.usuario)

@@ -72,10 +72,10 @@ def corregir_borrador(self, ctx, **datos):
             raise ErrorNucleo(CodigoError.VERSION_OBSOLETA)
         if pedido.estado == "cerrado":
             raise ErrorNucleo(CodigoError.PEDIDO_CONGELADO)
+        tenia_cotizacion = pedido.revision_vigente is not None
         exigir_editable(comercio, pedido)
         self._renglones(pedido, datos["renglones"])
         pedido.version += 1
-        tenia_cotizacion = pedido.revision_vigente is not None
         invalidar(comercio, pedido)
         pedido.estado = "en_revision" if tenia_cotizacion else "borrador"
         pedido.secuencia_conversacion_aplicada = datos["secuencia_conversacion"]

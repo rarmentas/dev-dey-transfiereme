@@ -341,3 +341,236 @@ class InboxPagoTests(CasoReal):
             Movimiento.objects.get(cobro=intento.cobro).estado, "pendiente"
         )
         self.assertFalse(EventoPedido.objects.filter(tipo="pago.confirmado").exists())
+
+    def test_i1_worker_reaplica_fallo_aun_con_compuerta_cerrada(self):
+        from pedidos.servicios.despacho import ciclo
+
+        intento = self.reservar()
+        self.assertEqual(
+            self.post(self.cuerpo()).json()["estado"], "pendiente_correlacion"
+        )
+        with patch(
+            "pedidos.servicios.pagos.emitir", side_effect=RuntimeError("evento")
+        ):
+            enviar_intento(intento.pk, self.puerto)
+        with (
+            override_settings(PEDIDOS_COBRO_HABILITADO=False),
+            patch("ambito.operaciones_cuenta.recuperar_abandonadas"),
+            patch("ambito.operaciones_cuenta.ejecutar_pendientes"),
+        ):
+            ciclo(self.puerto)
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        self.assertEqual(Movimiento.objects.get(cobro=intento.cobro).estado, "pagado")
+        self.assertEqual(EventoPedido.objects.filter(tipo="pago.confirmado").count(), 1)
+        self.assertEqual(len(self.puerto.llamadas), 1)
+
+    def test_i1_carrera_aviso_no_visible_se_recupera_con_ciclo(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event, current_thread, main_thread
+
+        from django.db import connections
+
+        from pedidos.servicios import pagos
+        from pedidos.servicios.despacho import ciclo
+
+        intento = self.reservar()
+        cuerpo = self.cuerpo()
+        localizado = Event()
+        continuar = Event()
+        original = pagos._localizar
+
+        def localizar(aviso):
+            resultado = original(aviso)
+            if current_thread() is not main_thread():
+                localizado.set()
+                if not continuar.wait(10):
+                    raise TimeoutError("No se liberó el aviso")
+            return resultado
+
+        def recibir():
+            try:
+                return post_firmado(Client(), cuerpo, "carrera-commit").json()["estado"]
+            finally:
+                connections.close_all()
+
+        with patch("pedidos.servicios.pagos._localizar", side_effect=localizar):
+            with ThreadPoolExecutor(max_workers=1) as ejecutor:
+                futuro = ejecutor.submit(recibir)
+                try:
+                    self.assertTrue(localizado.wait(10))
+                    enviar_intento(intento.pk, self.puerto)
+                finally:
+                    continuar.set()
+                self.assertEqual(futuro.result(timeout=10), "pendiente_correlacion")
+        with (
+            override_settings(PEDIDOS_COBRO_HABILITADO=False),
+            patch("ambito.operaciones_cuenta.recuperar_abandonadas"),
+            patch("ambito.operaciones_cuenta.ejecutar_pendientes"),
+        ):
+            ciclo(self.puerto)
+            ciclo(self.puerto)
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        self.assertEqual(Movimiento.objects.get(cobro=intento.cobro).estado, "pagado")
+        self.assertEqual(EventoPedido.objects.filter(tipo="pago.confirmado").count(), 1)
+        self.assertEqual(len(self.puerto.llamadas), 1)
+
+    def test_i2_datepaid_unix_iso_e_ilegible_no_impiden_pago(self):
+        from datetime import datetime, timezone
+
+        intento = self.reservar()
+        enviar_intento(intento.pk, self.puerto)
+        datos = json.loads(self.cuerpo())
+        datos["datePaid"] = 1767268800
+        respuesta = self.post(json.dumps(datos), "unix")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "aplicado")
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        self.assertEqual(
+            AvisoRecibido.objects.get(webhook_id="unix").fecha_pago,
+            datetime.fromtimestamp(1767268800, tz=timezone.utc),
+        )
+        for indice, fecha in enumerate(("2026-01-01T12:00:00Z", "ilegible", 10**30)):
+            datos["datePaid"] = fecha
+            respuesta = self.post(json.dumps(datos), f"fecha-{indice}")
+            self.assertEqual(respuesta.status_code, 200)
+            recibido = AvisoRecibido.objects.get(webhook_id=f"fecha-{indice}")
+            self.assertEqual(recibido.resultado, "duplicado_transaccion")
+            if indice == 0:
+                self.assertEqual(
+                    recibido.fecha_pago, datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+                )
+            else:
+                self.assertIsNone(recibido.fecha_pago)
+
+    def test_i1_un_aviso_fallido_no_impide_aplicar_el_siguiente(self):
+        from pedidos.servicios import pagos
+        from pedidos.servicios.despacho import ciclo
+
+        intento = self.reservar()
+        primero = self.cuerpo(tx="primero")
+        segundo = self.cuerpo(tx="segundo")
+        self.post(primero, "primero")
+        self.post(segundo, "segundo")
+        with patch(
+            "pedidos.servicios.pagos.emitir", side_effect=RuntimeError("evento")
+        ):
+            enviar_intento(intento.pk, self.puerto)
+        original = pagos.aplicar_pago
+
+        def aplicar(aviso):
+            if aviso.webhook_id == "primero":
+                raise RuntimeError("fallo transitorio")
+            return original(aviso)
+
+        with (
+            override_settings(PEDIDOS_COBRO_HABILITADO=False),
+            patch("ambito.operaciones_cuenta.recuperar_abandonadas"),
+            patch("ambito.operaciones_cuenta.ejecutar_pendientes"),
+            patch("pedidos.servicios.pagos.aplicar_pago", side_effect=aplicar),
+            self.assertLogs("pedidos.servicios.pagos", level="WARNING"),
+        ):
+            ciclo(self.puerto)
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        self.assertEqual(
+            AvisoRecibido.objects.get(webhook_id="primero").correlacion, "pendiente"
+        )
+        self.assertEqual(
+            AvisoRecibido.objects.get(webhook_id="segundo").resultado, "aplicado"
+        )
+        self.assertEqual(EventoPedido.objects.filter(tipo="pago.confirmado").count(), 1)
+
+    def test_i2_notificacion_acepta_unix_y_activacion_de_cuenta_no_cambia(self):
+        from datetime import datetime, timezone
+
+        resultado = self.nucleo.solicitar_cobro(
+            self.ctx,
+            contrato_version="1.0",
+            command_key="notificacion",
+            pedido_id=self.pedido.id,
+            expected_version=self.pedido.version,
+            aceptacion_id=self.pedido.aceptacion.id,
+            canal="notificacion",
+            telefono_bancario_confirmado="1234567890",
+        )
+        self.assertTrue(resultado.ok, resultado.error)
+        intento = IntentoCobro.objects.get(pedido_id=self.pedido.id)
+        enviar_intento(intento.pk, self.puerto)
+        intento.refresh_from_db()
+        cuerpo = json.dumps(
+            {
+                "type": "codi.pn.payment_received",
+                "amount": 25,
+                "transactionId": intento.cobro.pey_transaction_id,
+                "bankAccountId": intento.pey_bank_account_id,
+                "datePaid": 1767268800,
+            },
+            separators=(",", ":"),
+        )
+        respuesta = self.post(cuerpo, "pn-unix")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "aplicado")
+        self.assertEqual(
+            AvisoRecibido.objects.get(webhook_id="pn-unix").fecha_pago,
+            datetime.fromtimestamp(1767268800, tz=timezone.utc),
+        )
+        intento.refresh_from_db()
+        self.assertEqual(intento.estado, "pagado")
+        cuenta = json.dumps(
+            {
+                "type": "bank.account.updated",
+                "codiStatus": "ACTIVE",
+                "bankAccountId": self.cuenta.pey_bank_account_id,
+                "datePaid": 1767268800,
+            },
+            separators=(",", ":"),
+        )
+        with patch("webhooks.views.encolar_sync") as encolar:
+            respuesta = self.post(cuenta, "activacion-unix")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "aplicado")
+        encolar.assert_called_once()
+
+    def test_i2_payload_pey_de_un_centavo_confirma_venta_legacy(self):
+        from decimal import Decimal
+
+        from movimientos.models import Cobro
+
+        cobro = Cobro.objects.create(
+            comercio=self.comercio,
+            cuenta=self.cuenta,
+            canal="qr_venta",
+            monto=Decimal("0.01"),
+            concepto="Venta",
+            pey_qr_id="qr-un-centavo",
+            qr_string="qr",
+            pey_bank_account_id=self.cuenta.pey_bank_account_id,
+        )
+        movimiento = Movimiento.objects.create(
+            comercio=self.comercio,
+            cobro=cobro,
+            canal="qr_venta",
+            monto=Decimal("0.01"),
+            concepto="Venta",
+            origen="origen_pey",
+        )
+        cuerpo = json.dumps(
+            {
+                "type": "codi.qr.payment_received",
+                "amount": 0.01,
+                "transactionId": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                "codiQrId": cobro.pey_qr_id,
+                "bankAccountId": cobro.pey_bank_account_id,
+                "datePaid": 1767268800,
+            },
+            separators=(",", ":"),
+        )
+        respuesta = self.post(cuerpo, "centavo-unix")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "aplicado")
+        movimiento.refresh_from_db()
+        self.assertEqual(movimiento.estado, "pagado")
+        self.assertIsNotNone(AvisoRecibido.objects.get(webhook_id="centavo-unix").fecha_pago)

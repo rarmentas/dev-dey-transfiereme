@@ -141,4 +141,9 @@ def reaplicar_pendientes(cobro):
 
 def reaplicar_avisos_pendientes():
     for aviso in AvisoRecibido.objects.filter(correlacion="pendiente").iterator():
-        aplicar_pago(aviso)
+        try:
+            aplicar_pago(aviso)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "No se pudo reaplicar aviso_id=%s", aviso.pk
+            )

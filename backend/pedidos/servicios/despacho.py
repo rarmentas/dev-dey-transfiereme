@@ -63,7 +63,9 @@ def enviar_intento(intento_id, puerto=None):
             demo_activo(),
             politica_cobro_version(),
         ):
-            descartar(intento, "condiciones_cambiaron")
+            descartar(
+                intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+            )
             intento.refresh_from_db()
             return intento
         if intento.origen == "pedido":
@@ -73,7 +75,9 @@ def enviar_intento(intento_id, puerto=None):
                 or pedido.estado != "aceptado"
                 or pedido.revision_vigente != cot.revision
             ):
-                descartar(intento, "condiciones_cambiaron")
+                descartar(
+                intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+            )
                 intento.refresh_from_db()
                 return intento
         if intento.demo_mode:
@@ -84,7 +88,9 @@ def enviar_intento(intento_id, puerto=None):
                 or intento.importe_efectivo_centavos != 1
                 or intento.pey_bank_account_id != settings.DEMO_PEY_BANK_ACCOUNT_ID
             ):
-                descartar(intento, "destino_demo_invalido")
+                descartar(
+                    intento, "destino_demo_invalido", comercio=comercio, pedido=pedido,
+                )
                 intento.refresh_from_db()
                 return intento
         token = uuid.uuid4()
@@ -250,11 +256,14 @@ def recuperar_intentos_abandonados():
                 )
 
 
-def ciclo(puerto=None):
+def ciclo(puerto=None, detener=None):
     from ambito.operaciones_cuenta import ejecutar_pendientes, recuperar_abandonadas
+    from pedidos.servicios.pagos import reaplicar_avisos_pendientes
 
+    detener = detener or (lambda: False)
+    reaplicar_avisos_pendientes()
     recuperar_abandonadas()
-    ejecutar_pendientes()
+    ejecutar_pendientes(detener=detener)
     recuperar_intentos_abandonados()
     from ambito.models import Comercio
     from canales.models import LatidoCanal
@@ -286,4 +295,6 @@ def ciclo(puerto=None):
         .values_list("pk", flat=True)
     )
     for pk in ids:
+        if detener():
+            break
         enviar_intento(pk, puerto)

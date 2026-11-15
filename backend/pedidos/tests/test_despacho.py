@@ -312,7 +312,8 @@ class DespachoTests(CasoReal):
             patch("pedidos.management.commands.procesar_cobros.ciclo") as ciclo,
         ):
             call_command("procesar_cobros", una_vez=True)
-        ciclo.assert_called_once_with()
+        ciclo.assert_called_once()
+        self.assertFalse(ciclo.call_args.kwargs["detener"]())
 
     def test_reserva_congela_edicion(self):
         from pedidos.contratos.v1 import CodigoError

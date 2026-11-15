@@ -172,7 +172,7 @@ def solicitar(comercio, pedido, datos, huella):
         return resultado
 
 
-def descartar(intento, motivo):
+def descartar(intento, motivo, *, comercio=None, pedido=None):
     if not IntentoCobro.objects.filter(
         pk=intento.pk, estado__in=["en_espera", "reservado"], version=intento.version
     ).update(
@@ -183,8 +183,8 @@ def descartar(intento, motivo):
     ):
         return False
     if intento.pedido_id:
-        pedido = intento.pedido
-        comercio = intento.comercio
+        pedido = pedido or intento.pedido
+        comercio = comercio or intento.comercio
         invalidar(comercio, pedido)
         pedido.version += 1
         pedido.save()
@@ -226,7 +226,9 @@ def activar_espera(comercio, pedido_id, intento_id, datos):
             or (intento.demo_mode, intento.politica_cobro_version)
             != (demo_activo(), politica_cobro_version())
         ):
-            descartar(intento, "condiciones_cambiaron")
+            descartar(
+                intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
+            )
             pedido.refresh_from_db()
         else:
             if not cobro_habilitado():

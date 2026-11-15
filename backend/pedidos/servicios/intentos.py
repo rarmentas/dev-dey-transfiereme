@@ -33,5 +33,5 @@ def exigir_editable(comercio, pedido):
     if intento and intento.estado == "en_espera":
         from pedidos.servicios.cobros import descartar
 
-        descartar(intento, "revision_editada")
+        descartar(intento, "revision_editada", comercio=comercio, pedido=pedido)
         pedido.refresh_from_db()

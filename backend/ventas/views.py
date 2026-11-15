@@ -206,7 +206,9 @@ def _respuesta_fallo(
     if isinstance(exc, ValidacionVenta):
         return Response({exc.campo: [str(exc)]}, status=400)
     if isinstance(exc, CuentaNoActive):
-        return Response({"detail": _MENSAJE_CUENTA}, status=409)
+        return Response(
+            {"detail": _MENSAJE_CUENTA, "codigo": "CUENTA_NO_ACTIVE"}, status=409
+        )
     if isinstance(exc, VentaPendiente):
         return Response(_venta_pendiente(exc), status=409)
     if isinstance(exc, ParametroInvalido):

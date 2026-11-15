@@ -81,3 +81,22 @@ class FachadaLegacyTests(TransactionTestCase):
         self.assertEqual(repetida.json(), primera.json())
         self.assertEqual(self.post("otra").status_code, 409)
         self.assertEqual(len(self.puerto.llamadas), 1)
+
+    def test_i8_cuenta_inactiva_ambas_rutas_incluyen_codigo(self):
+        self.comercio.cuenta_por_defecto = None
+        self.comercio.save(update_fields=["cuenta_por_defecto"])
+        casos = (
+            ("/api/ventas/", {"monto": "25.00"}),
+            ("/api/ventas/notificacion/", {"monto": "25.00", "telefono": "1234567890"}),
+        )
+        for ruta, datos in casos:
+            with self.subTest(ruta=ruta):
+                respuesta = self.cliente.post(
+                    ruta, datos, format="json", HTTP_IDEMPOTENCY_KEY="clave-i8"
+                )
+                self.assertEqual(respuesta.status_code, 409)
+                self.assertEqual(respuesta.json()["codigo"], "CUENTA_NO_ACTIVE")
+                self.assertEqual(
+                    respuesta.json()["detail"], "La cuenta no está ACTIVE."
+                )
+        self.assertFalse(IntentoCobro.objects.exists())

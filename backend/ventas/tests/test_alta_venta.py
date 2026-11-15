@@ -282,7 +282,10 @@ class AltaVentaApiTests(TransactionTestCase):
                     format="json",
                 )
         self.assertEqual(respuesta.status_code, 409)
-        self.assertEqual(respuesta.json(), {"detail": "La cuenta no está ACTIVE."})
+        self.assertEqual(
+            respuesta.json(),
+            {"detail": "La cuenta no está ACTIVE.", "codigo": "CUENTA_NO_ACTIVE"},
+        )
         self.assertEqual(crear_qr.call_count, 0)
         self.assertEqual(Cobro.objects.count(), 0)
         self.assertEqual(Movimiento.objects.count(), 0)

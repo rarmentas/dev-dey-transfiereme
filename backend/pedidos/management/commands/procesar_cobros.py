@@ -31,7 +31,7 @@ class Command(BaseCommand):
         try:
             cantidad = 0
             while not detenido:
-                ciclo()
+                ciclo(detener=lambda: detenido)
                 cantidad += 1
                 if opciones["una_vez"] or (
                     opciones["max_ciclos"] and cantidad >= opciones["max_ciclos"]
