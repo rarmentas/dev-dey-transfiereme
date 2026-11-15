@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:cody/core/ui/tf_tokens.dart';
+
 import '../../data/pedido.dart';
 
 class RenglonEditor extends StatelessWidget {
@@ -37,21 +39,57 @@ class RenglonEditor extends StatelessWidget {
     return Card(
       color: resaltar ? Theme.of(context).colorScheme.errorContainer : null,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(TfSpace.s4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Solicitado: $solicitado'),
+            Text(
+              'Artículo solicitado',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: TfSpace.s1),
+            Text(
+              'Solicitado: $solicitado',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            if (resaltar) ...[
+              const SizedBox(height: TfSpace.s3),
+              Row(
+                children: [
+                  Icon(
+                    Icons.error_rounded,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                  const SizedBox(width: TfSpace.s2),
+                  Expanded(
+                    child: Text(
+                      'Revisa este artículo para publicar la cotización',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: TfSpace.s4),
             DropdownButtonFormField<String>(
               initialValue: renglon.resolucion,
               decoration: InputDecoration(
-                labelText: 'Resolución',
+                labelText: '¿Se incluye en el pedido?',
                 errorText: error('resolucion'),
+                errorMaxLines: 3,
               ),
               items: const [
-                DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
+                DropdownMenuItem(
+                  value: 'pendiente',
+                  child: Text('Por revisar'),
+                ),
                 DropdownMenuItem(value: 'incluido', child: Text('Incluir')),
-                DropdownMenuItem(value: 'excluido', child: Text('Excluir')),
+                DropdownMenuItem(
+                  value: 'excluido',
+                  child: Text('No disponible'),
+                ),
               ],
               onChanged: editable
                   ? (v) {
@@ -60,6 +98,7 @@ class RenglonEditor extends StatelessWidget {
                     }
                   : null,
             ),
+            const SizedBox(height: TfSpace.s4),
             TextFormField(
               initialValue: renglon.descripcion,
               enabled: editable,
@@ -67,6 +106,7 @@ class RenglonEditor extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Descripción',
                 errorText: error('descripcion'),
+                errorMaxLines: 3,
               ),
               onChanged: (v) {
                 renglon.descripcion = v;
@@ -76,6 +116,7 @@ class RenglonEditor extends StatelessWidget {
                   ? 'Escribe una descripción.'
                   : null,
             ),
+            const SizedBox(height: TfSpace.s4),
             TextFormField(
               initialValue: renglon.cantidad,
               enabled: editable,
@@ -85,6 +126,7 @@ class RenglonEditor extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Cantidad',
                 errorText: error('cantidad'),
+                errorMaxLines: 3,
               ),
               onChanged: (v) {
                 renglon.cantidad = v.trim();
@@ -101,6 +143,7 @@ class RenglonEditor extends StatelessWidget {
                 return null;
               },
             ),
+            const SizedBox(height: TfSpace.s4),
             TextFormField(
               initialValue: renglon.unidad,
               enabled: editable,
@@ -108,12 +151,14 @@ class RenglonEditor extends StatelessWidget {
               decoration: InputDecoration(
                 labelText: 'Unidad (opcional)',
                 errorText: error('unidad'),
+                errorMaxLines: 3,
               ),
               onChanged: (v) {
                 renglon.unidad = v;
                 alCambiar();
               },
             ),
+            const SizedBox(height: TfSpace.s4),
             TextFormField(
               initialValue: renglon.precio == null
                   ? ''
@@ -124,7 +169,11 @@ class RenglonEditor extends StatelessWidget {
               ),
               decoration: InputDecoration(
                 labelText: 'Precio unitario en pesos',
+                helperText: 'Pesos mexicanos, por ejemplo 12.50',
+                prefixText: r'$ ',
                 errorText: error('precio_unitario_centavos'),
+                errorMaxLines: 3,
+                helperMaxLines: 3,
               ),
               onChanged: (v) {
                 renglon.precio = precioCentavos(v);
@@ -137,13 +186,15 @@ class RenglonEditor extends StatelessWidget {
                     : null;
               },
             ),
+            const SizedBox(height: TfSpace.s4),
             TextFormField(
               initialValue: renglon.motivo,
               enabled: editable,
               maxLength: 200,
               decoration: InputDecoration(
-                labelText: 'Motivo de exclusión',
+                labelText: '¿Por qué no está disponible?',
                 errorText: error('motivo_exclusion'),
+                errorMaxLines: 3,
               ),
               onChanged: (v) {
                 renglon.motivo = v;
@@ -156,7 +207,13 @@ class RenglonEditor extends StatelessWidget {
                   : null,
             ),
             if (renglon.subtotal != null)
-              Text('Subtotal: ${formatearCentavos(renglon.subtotal!)}'),
+              Padding(
+                padding: const EdgeInsets.only(top: TfSpace.s3),
+                child: Text(
+                  'Subtotal guardado: ${formatearCentavos(renglon.subtotal!)}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
           ],
         ),
       ),
