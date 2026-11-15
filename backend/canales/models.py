@@ -119,6 +119,7 @@ class SalidaCanal(models.Model):
     class Tipo(models.TextChoices):
         RESPUESTA = "respuesta", "Respuesta"
         COTIZACION = "cotizacion_resumen", "Cotización"
+        AVISO = "aviso", "Aviso"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     conversacion = models.ForeignKey(ConversacionCanal, on_delete=models.PROTECT)
@@ -182,3 +183,50 @@ class LatidoCanal(models.Model):
     class Meta:
         verbose_name = "latido de canal"
         verbose_name_plural = "latidos de canal"
+
+
+class TrabajoAudio(models.Model):
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        PROCESANDO = "procesando", "Procesando"
+        LISTO = "listo", "Listo"
+        FALLIDO = "fallido", "Fallido"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    mensaje = models.OneToOneField(MensajeEntrante, on_delete=models.PROTECT)
+    estado = models.CharField(
+        max_length=10, choices=Estado.choices, default="pendiente"
+    )
+    media_url = models.CharField(max_length=500, blank=True)
+    mimetype = models.CharField(max_length=80, blank=True)
+    duracion_declarada_s = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True
+    )
+    intentos = models.PositiveSmallIntegerField(default=0)
+    lease_token = models.UUIDField(null=True)
+    lease_hasta = models.DateTimeField(null=True)
+    vence_en = models.DateTimeField()
+    iniciado_en = models.DateTimeField(null=True)
+    terminado_en = models.DateTimeField(null=True)
+    transcripcion = models.TextField(blank=True)
+    motivo = models.CharField(max_length=40, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(estado__in=["pendiente", "procesando", "listo", "fallido"]),
+                name="trabajo_estado_valido",
+            ),
+            models.CheckConstraint(
+                condition=~Q(estado="listo") | ~Q(transcripcion=""),
+                name="trabajo_listo_con_texto",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["vence_en"],
+                condition=Q(estado__in=["pendiente", "procesando"]),
+                name="trabajo_audio_vigente",
+            )
+        ]

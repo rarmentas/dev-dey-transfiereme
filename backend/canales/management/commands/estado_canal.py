@@ -12,6 +12,7 @@ class Command(BaseCommand):
         parser.add_argument("--max-edad", type=int, default=30)
         parser.add_argument("--mensajes", type=int, default=0)
         parser.add_argument("--desde")
+        parser.add_argument("--proceso", default="procesar_canal")
 
     def handle(self, *args, **opciones):
         desde = None
@@ -22,7 +23,7 @@ class Command(BaseCommand):
                 desde = None
             if desde is None or timezone.is_naive(desde):
                 raise CommandError("Fecha de inicio inválida; indique zona horaria.")
-        latido = LatidoCanal.objects.filter(pk="procesar_canal").first()
+        latido = LatidoCanal.objects.filter(pk=opciones["proceso"]).first()
         edad = (
             (timezone.now() - latido.ultimo_ciclo).total_seconds() if latido else None
         )

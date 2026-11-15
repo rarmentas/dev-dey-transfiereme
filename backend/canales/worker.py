@@ -9,6 +9,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
+from canales import audio
 from canales.avisos import procesar_avisos
 from canales.conversacion import contexto, procesar_mensaje
 from canales.models import ConversacionCanal, LatidoCanal, MensajeEntrante, SalidaCanal
@@ -37,6 +38,8 @@ def reclamar(excluir=()):
                 .order_by("secuencia")
                 .first()
             )
+            if mensaje and audio.esperando(mensaje, ahora):
+                continue
             if (
                 mensaje
                 and mensaje.pk not in excluir
@@ -65,6 +68,7 @@ def ciclo():
         nucleo = obtener_nucleo()
         if nucleo.ES_SIMULACION:
             _nucleo_stub = nucleo
+    audio.expirar_trabajos()
     recuperar_abandonadas()
     vistos = set()
     while True:

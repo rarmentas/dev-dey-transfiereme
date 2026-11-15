@@ -19,3 +19,7 @@ ERROR = "No pudimos procesar tu mensaje. Intenta de nuevo."
 TOKEN_INVALIDO = "Para aceptar escribe exactamente ACEPTAR <token del último resumen>."
 REINTENTO_ESPERA = "Estamos en espera del servicio; reintentaremos tu mensaje."
 REINTENTO_AGOTADO = "No pudimos procesar tu mensaje. Intenta de nuevo más tarde."
+
+AUDIO_FALLIDO = "No pudimos escuchar el audio. Escribe tu pedido por texto."
+AUDIO_NO_DISPONIBLE = "El audio no está disponible. Escribe tu pedido por texto."
+ACEPTAR_POR_TEXTO = "Para aceptar, escribe ACEPTAR y el token por texto."

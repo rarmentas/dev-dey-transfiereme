@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 
 from canales import mensajes
@@ -33,7 +34,16 @@ def procesar_mensaje(mensaje, nucleo, lector, ahora):
     pedido_id = conversacion.pedido_id_actual
     ignorado = False
     datos = {"contrato_version": CONTRATO_VERSION}
-    if mensaje.tipo != "texto":
+    if mensaje.tipo == "audio" and not hasattr(mensaje, "trabajoaudio"):
+        if settings.STT_HABILITADO:
+            salida = mensajes.AUDIO_FALLIDO
+        else:
+            salida, ignorado = mensajes.SOLO_TEXTO, True
+    elif mensaje.tipo == "audio" and mensaje.trabajoaudio.estado != "listo":
+        salida = mensajes.AUDIO_FALLIDO
+    elif mensaje.tipo == "audio" and comando == "ACEPTAR":
+        salida = mensajes.ACEPTAR_POR_TEXTO
+    elif mensaje.tipo not in ("texto", "audio"):
         salida, ignorado = mensajes.SOLO_TEXTO, True
     elif comando == "AYUDA":
         salida = mensajes.AYUDA

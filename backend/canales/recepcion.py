@@ -94,7 +94,7 @@ def recibir(datos: dict, entrega: str = "") -> str:
                 pk=conversacion.pk
             )
             conversacion.secuencia_recibida += 1
-            MensajeEntrante.objects.create(
+            mensaje = MensajeEntrante.objects.create(
                 conversacion=conversacion,
                 instancia_id=sesion.instancia_id,
                 sesion_id=sesion_id,
@@ -106,6 +106,10 @@ def recibir(datos: dict, entrega: str = "") -> str:
                 texto=texto,
                 timestamp_proveedor=fecha,
             )
+            if tipo == "audio" and settings.STT_HABILITADO:
+                from canales.audio import crear_trabajo
+
+                crear_trabajo(mensaje, payload, media)
             conversacion.save(update_fields=["secuencia_recibida"])
     except IntegrityError:
         anterior = MensajeEntrante.objects.filter(

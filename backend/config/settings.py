@@ -192,3 +192,10 @@ WAHA_API_KEY = os.environ.get("WAHA_API_KEY", "")
 WAHA_WEBHOOK_SECRET = os.environ.get("WAHA_WEBHOOK_SECRET", "")
 WAHA_INSTANCIA = os.environ.get("WAHA_INSTANCIA", "").strip() or "waha"
 CANAL_TRANSPORTE = "canales.waha.AdaptadorWaha"
+
+STT_HABILITADO = os.environ.get("STT_HABILITADO", "0") == "1"
+STT_MODELO = os.environ.get("STT_MODELO", "small")
+STT_CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "2"))
+STT_PRESUPUESTO_S = 45
+WHATSAPP_AUDIO_MAX_BYTES = 5_000_000
+WHATSAPP_AUDIO_MAX_SEGUNDOS = 90
