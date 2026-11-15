@@ -28,7 +28,7 @@ Plantilla: `.env.example` (también en `backend/.env.example`). `scripts/dev-sta
 
 ## GitLab CI
 
-Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en `.gitlab-ci.yml`. Proteja las ramas `master` y `test`. El ámbito `production` solo entra al job de `master`; el ámbito `test`, solo al de la rama `test`. Los merge requests no las reciben.
+Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en `.gitlab-ci.yml`. El inventario del 2026-11-14 encontró `master` protegida y `test` sin protección ni variables `TEST_*` de proyecto o grupo. `deploy:test` queda deshabilitado hasta disponer de recursos propios. Las variables `PROD_*` existentes tienen ámbito `*`; se debe pasar al ámbito `production` durante la preparación operativa, sin mostrar ni rotar valores en este cambio. Los merge requests actuales no reciben estas variables ni ejecutan CI.
 
 ### Archivo de la app
 
@@ -57,7 +57,7 @@ Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en 
 | `DEFAULT_FROM_EMAIL` | No | Remitente |
 | `EMAIL_BACKEND` | No | Backend Django (SMTP en despliegue) |
 
-Las siete secretas (`POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY`, `PEY_WEBHOOK_SECRET`, `EMAIL_HOST_PASSWORD`, `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET`) no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
+Esas cinco secretas (`POSTGRES_PASSWORD`, `DJANGO_SECRET_KEY`, `PEY_API_KEY`, `PEY_WEBHOOK_SECRET`, `EMAIL_HOST_PASSWORD`) no se repiten como variables sueltas. `scripts/ci-install-env.sh` copia el archivo a `backend/.env` con modo `600` y no imprime su contenido.
 
 ### Deploy
 
@@ -69,46 +69,52 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 | `PROD_DEPLOY_USER` | Variable, protegida | `production` | `master` |
 | `PROD_DEPLOY_PORT` | Variable, protegida | `production` | `master` |
 | `PROD_DEPLOY_PATH` | Variable, protegida | `production` | `master` |
-| `PROD_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `production` | `master` |
-| `TEST_DEPLOY_HOST` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_USER` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_PORT` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_PATH` | Variable, protegida | `test` | `test` |
-| `TEST_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `test` | `test` |
+| `PROD_SSH_PRIVATE_KEY_V2` | Variable, protegida y oculta, valor en base64 | `production` | `master` |
 
-`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH y `DEPLOY_PATH` exactamente `/opt/codi/prod` para producción, sin barra final. `PROD_SSH_PRIVATE_KEY` y `TEST_SSH_PRIVATE_KEY` son la llave privada en base64 de una sola línea (`base64 -w 0`). El job la decodifica a un archivo temporal y no la copia al `.env`. El script rechaza el archivo de la app si trae esas claves o un bloque `PRIVATE KEY`.
+`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH. El camino nuevo exige `PROD_DEPLOY_PATH=/opt/codi/prod` exactamente y conserva host `100.120.112.112`, puerto `30022`. La clave pública del host está fijada en `deploy/known_hosts.prod`; un cambio de identidad SSH detiene el job hasta verificarlo y actualizar ese archivo. `PROD_SSH_PRIVATE_KEY_V2` es la llave privada nueva en base64 de una sola línea (`base64 -w 0`); el job la decodifica a un archivo temporal y no la copia al `.env`. La antigua `PROD_SSH_PRIVATE_KEY` queda revocada para que los jobs de commits anteriores no puedan entrar al VPS. El script rechaza el archivo de la app si trae claves de deploy o un bloque `PRIVATE KEY`.
 
-El deploy de test está deshabilitado hasta aislar sus recursos. Producción utiliza
-`/opt/codi/prod`, las units `cody` y `cody-canal` y el bind existente de Gunicorn.
-El usuario necesita sudo sin contraseña para systemctl e install y acceso a Docker.
-No necesita escritura sobre `/opt/codi`, que administra root. Operación precrea
-`/opt/codi/.deploy.lock` como archivo regular persistente, sin symlink, con
-lectura y escritura para la identidad de deploy (propietario, grupo o ACL). No se
-borra ni se recrea mientras se usa: flock protege el inode, no el nombre. Sin ese
-archivo el deploy falla antes de transferir; no se abren permisos del padre para
-sortearlo. Operación puede impedir despliegues creando `/opt/codi/.maintenance`
-bajo el mismo candado en modo exclusivo. El guard toma el candado exclusivo,
-escribe un token y pasa a compartido; rsync, la escritura del env y
-`deploy-remoto.sh` sostienen su propio flock compartido y validan ese token, así
-que un deploy o mantenimiento nuevo espera a que terminen. Los jobs antiguos deben
-deshabilitarse aparte. Revise los drop-ins de ambas units.
-
-PostgreSQL `codi-postgres` del proyecto `codi`, servicio `postgres`, debe estar
-operativo en `127.0.0.1:5435`; operación administra su ciclo de vida y datos.
-El venv existente debe incluir psycopg para verificar la conexión antes de parar
-servicios. El Postgres local usa 5433. El deploy no administra contenedores.
-
-WAHA se administra por separado en `/opt/codi/waha-prod` (proyecto
-`codi-waha-prod`). Django usa `WAHA_BASE_URL=http://127.0.0.1:3004`,
-`WAHA_API_KEY`, `WAHA_INSTANCIA=waha` y `WAHA_WEBHOOK_SECRET`. La configuración independiente de WAHA define `WHATSAPP_HOOK_URL` como URL
-pública completa terminada en `/api/webhooks/waha/`, `WHATSAPP_HOOK_EVENTS=message`
-y `WHATSAPP_HOOK_HMAC_KEY` igual a `WAHA_WEBHOOK_SECRET`. El callback debe ser
-alcanzable desde el contenedor; loopback dentro de WAHA apunta al contenedor.
-Django verifica la firma HMAC SHA-512 sobre el cuerpo original.
-La API key y el HMAC son diferentes. `WEBHOOK_BASE_URL` sigue disponible para
-pey y su callback `/api/webhooks/pey/` usa `PEY_WEBHOOK_SECRET` independiente.
-El worker recibe solo configuración de base, modo y API WAHA; su `.env.canal`
-tiene modo 600 y excluye secretos pey, HMAC y SMTP. El latido solo indica que
-el worker funciona, no que WAHA esté conectado o tenga sesión vinculada.
+El pipeline se crea en push o lanzamiento manual a `master` o `test`. `deploy:test` está bloqueado y `deploy:prod` requiere lanzamiento manual. El deploy productivo exige que la migración a `/opt/codi/prod` ya haya sido aceptada: valida la ruta, la unit activa y PostgreSQL antes de sincronizar; mantiene un `flock` remoto durante rsync y el reinicio; no crea PostgreSQL ni ejecuta migraciones. Instala dependencias y estáticos antes de detener `cody`, y falla si hay migraciones pendientes. Al reiniciar comprueba `/api/salud/`. `codi-postgres` debe seguir sano en `127.0.0.1:5435`, con datos en `/var/lib/codi/postgres`; el `.env` debe traer `POSTGRES_PORT=5435`. El usuario de deploy necesita acceso Docker y `sudo` sin contraseña para `systemctl` e `install`. `PROD_PYTHON` es opcional (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`; un `GUNICORN_BIND` en `.env` lo sustituye. `DEBUG` debe ser `False`. El bloqueo nuevo no detiene scripts de commits antiguos: durante el corte se revoca su acceso SSH efectivo y se comprueba que no quedan jobs activos antes de crear hijos en `/opt/codi`.
 
 El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`. `obtener_puerto()` lo rechaza cuando `PEY_API_KEY` tiene valor, para que un `DEBUG` encendido por error no conviva con la llave real.
+
+## Fase 1: pedidos y canal WhatsApp
+
+La aplicación conserva `DEMO_MODE`, `NUCLEO_ADAPTADOR`,
+`POLITICA_COBRO_VERSION`, `PEDIDOS_COBRO_HABILITADO=false` y, si corresponde,
+`DEMO_PEY_BANK_ACCOUNT_ID`. El release MR-1 aún no habilita cobros de pedidos.
+Estas variables pertenecen a Django; no modifican el mecanismo de deploy.
+
+Para WhatsApp, Django usa `WAHA_BASE_URL` (por defecto
+`http://127.0.0.1:3004`), `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET` y
+`WAHA_INSTANCIA` (por defecto `waha`, identificador lógico). Las claves API
+y HMAC son secretas distintas. `WEBHOOK_BASE_URL` permanece para pey y su
+callback, con secreto independiente. `WAHA_IMAGE` y `WHATSAPP_HOOK_*` no
+pertenecen al env de la app ni a su CI.
+
+WAHA vive en `deploy/waha-prod/` y se instala a mano mediante
+`scripts/infra/instalar-waha-prod.sh`, con configuración instalada en
+`/opt/codi/waha-prod` y proyecto `codi-waha-prod`. El deploy Django no ejecuta
+ese instalador ni gestiona contenedores. Configurar el callback público
+`/api/webhooks/waha/`, evento `message` y HMAC SHA-512 compatible con Django
+es una operación independiente, al igual que vincular el número.
+
+El remoto instala `requirements-canal.txt`, que incluye los requisitos de
+la app. Antes de detener servicios prepara dependencias, checks, estáticos,
+las dos units y `backend/.env.canal` filtrado, modo 600, sin llaves pey,
+secretos de firma ni contraseña SMTP. Conserva URL/API/instancia WAHA y
+configuración Django/BD/modo. El File común completo sigue en `backend/.env`.
+Rsync protege ambos env, el venv y staticfiles.
+
+`cody-canal.service` ejecuta `manage.py procesar_canal` desde
+`/opt/codi/prod/backend`, con el mismo usuario y venv de la app. Tras reiniciar
+web y comprobar salud HTTP 200, reinicia canal y exige un latido posterior
+al reinicio más unit activa. Solo entonces habilita la unit canal y acepta
+el deploy. Si falla el arranque, restaura units/env previos, vuelve a arrancar
+web y recupera el estado previo del canal, incluida su primera instalación.
+Esta recuperación no revierte código ni dependencias sincronizadas.
+
+Las migraciones nuevas de pedidos/canales deben aplicarse mediante una
+operación de esquema separada, coordinada y respaldada. El deploy conserva
+`migrate --check --noinput` de master: si hay pendientes, falla antes del stop,
+sin aplicarlas. El mecanismo de exclusión sigue siendo únicamente el de master:
+flock remoto sostenido por SSH y comprobaciones `guardian_alive`.

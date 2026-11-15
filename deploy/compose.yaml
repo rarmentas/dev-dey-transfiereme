@@ -1,7 +1,8 @@
-# Postgres de Cody en el VPS; su mantenimiento es operación explícita.
+# PostgreSQL existente de CoDi. Operación de infraestructura separada;
+# el deploy habitual solo comprueba su salud y nunca ejecuta compose up.
 # El puerto 5435 es el de este servicio: 5432 es el del sistema,
 # 5433 es denti-demo y 5434 es denti-prod.
-# Uso operativo: docker compose --env-file backend/.env -f deploy/compose.yaml up -d
+# Uso: docker compose --env-file backend/.env -f deploy/compose.yaml up -d --wait
 
 name: codi
 

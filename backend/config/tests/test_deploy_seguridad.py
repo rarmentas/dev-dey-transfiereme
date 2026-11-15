@@ -1,8 +1,8 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
-import time
 from pathlib import Path
 
 from django.conf import settings
@@ -18,429 +18,252 @@ class DeploySeguridadTests(SimpleTestCase):
         self.raiz = Path(self.temporal.name)
         self.codi = self.raiz / "codi"
         self.destino = self.codi / "prod"
+        self.units = self.raiz / "units"
+        self.units.mkdir()
+        self.lock = self.raiz / "codi-deploy.lock"
+        self.maintenance = self.raiz / "maintenance"
+        self.log = self.raiz / "acciones"
+        self.bin = self.raiz / "bin"
+        self.bin.mkdir()
         for carpeta in (
-            "backend/.venv/bin",
-            "scripts/ci",
-            "deploy",
-            "frontend",
-            "landing",
+            "backend/.venv/bin", "backend/staticfiles", "scripts/ci",
+            "deploy", "frontend", "landing",
         ):
             (self.destino / carpeta).mkdir(parents=True, exist_ok=True)
-        for nombre in ("deploy-guard.sh", "deploy-remoto.sh"):
+        for nombre in ("preflight-remoto.sh", "deploy-remoto.sh"):
             contenido = (RAIZ / "scripts/ci" / nombre).read_text()
-            contenido = contenido.replace("/opt/codi", str(self.codi))
+            for origen, destino in (
+                ("/opt/codi", self.codi),
+                ("/run/lock/codi-deploy.lock", self.lock),
+                ("/run/codi-maintenance", self.maintenance),
+                ("/etc/systemd/system", self.units),
+            ):
+                contenido = contenido.replace(origen, str(destino))
             (self.destino / "scripts/ci" / nombre).write_text(contenido)
         for nombre in ("cody.service.in", "cody-canal.service.in"):
             shutil.copy(RAIZ / "deploy" / nombre, self.destino / "deploy" / nombre)
-        (self.destino / "backend/.env.incoming").write_text("POSTGRES_PORT=5435\n")
-        self.bin = self.raiz / "bin"
-        self.bin.mkdir()
-        self.log = self.raiz / "log"
-        self.entorno = os.environ.copy()
-        self.entorno.update(
-            PATH=f"{self.bin}:{os.environ['PATH']}",
-            HOME=str(self.raiz),
-            LOG=str(self.log),
-            UNITS=str(self.raiz / "units"),
+        self.entrada = self.destino / "backend/.env.incoming"
+        self.activo = self.destino / "backend/.env"
+        self.canal = self.destino / "backend/.env.canal"
+        self.entrada.write_text(
+            "POSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
+            "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
+            "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
+            "WAHA_WEBHOOK_SECRET=ficticio\nEMAIL_HOST_PASSWORD=ficticia\n"
         )
-        self.stub(
-            "docker",
-            """echo "docker $*" >> "$LOG"
+        self.activo.write_text("ANTERIOR=1\n")
+        self.canal.write_text("CANAL_ANTERIOR=1\n")
+        (self.units / "cody.service").write_text("unit web previa\n")
+        (self.units / "cody-canal.service").write_text("unit canal previa\n")
+        self.entorno = {
+            **os.environ,
+            "PATH": f"{self.bin}:{os.environ['PATH']}",
+            "LOG": str(self.log),
+            "DEST": str(self.destino),
+            "UNITS": str(self.units),
+            "STARTED": str(self.raiz / "canal-arrancado"),
+        }
+        self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
+        self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
+        self.stub("systemd-analyze", 'exit "${VERIFY_ERROR:-0}"')
+        self.stub("curl", 'echo "${HEALTH_CODE:-200}"')
+        self.stub("sleep", 'if [[ "$1" != 1 ]]; then /usr/bin/sleep "$@"; fi')
+        self.stub("ss", 'echo "127.0.0.1:5435"')
+        self.stub("stat", 'echo cody')
+        self.stub("systemctl", '''echo "systemctl $*" >> "$LOG"
+if [[ "$1" == show ]]; then echo "$DEST/backend"; fi
+if [[ "$1 $2" == "restart cody-canal.service" ]]; then touch "$STARTED"; fi
+if [[ "$1" == is-active || "$1" == is-enabled ]]; then
+  nombre="${@: -1}"
+  [[ -f "$UNITS/${nombre%.service}.service" ]] || exit 1
+  if [[ "$nombre" == cody-canal.service && -e "$STARTED" &&
+        "${CANAL_INACTIVO:-0}" == 1 ]]; then exit 1; fi
+fi
+exit 0''')
+        self.stub("docker", '''echo "docker $*" >> "$LOG"
 case "$*" in
-  *State.Running*) echo "${IDENTIDAD:-true codi postgres}" ;;
-  *) echo "127.0.0.1:5435" ;;
-esac""",
+  *State.Health.Status*) echo "${PG_HEALTH:-healthy}" ;;
+  *State.Running*) echo true ;;
+  *com.docker.compose.project*) echo codi ;;
+  *com.docker.compose.service*) echo postgres ;;
+  *) exit 2 ;;
+esac''')
+        self.python = self.destino / "backend/.venv/bin/python"
+        self.python.write_text(
+            '#!/bin/bash\n'
+            'if [[ "$1" == -c ]]; then\n'
+            '  if [[ "$2" == *"import shlex"* ]]; then\n'
+            f'    exec {sys.executable} "$@"\n'
+            '  fi\n'
+            '  echo 2026-01-01T00:00:00Z; exit 0\n'
+            'fi\n'
+            'echo "manage $*" >> "$LOG"\n'
+            'case "$2" in\n'
+            '  check) exit "${CHECK_ERROR:-0}" ;;\n'
+            '  migrate) [[ "$3" == --check ]] || exit 99; '
+            'exit "${MIGRATIONS_PENDING:-0}" ;;\n'
+            '  collectstatic) exit "${STATIC_ERROR:-0}" ;;\n'
+            '  estado_canal) [[ "$*" == *"--desde 2026-01-01T00:00:00Z"* ]] '
+            '|| exit 2; exit "${LATIDO_ANTERIOR:-0}" ;;\n'
+            'esac\n'
         )
-        self.stub("sudo", 'shift; "$@"')
-        self.stub("systemctl", 'echo "systemctl $*" >> "$LOG"; exit 0')
-        self.stub(
-            "install",
-            """echo "install $*" >> "$LOG"
-if [[ "$4" == /etc/systemd/system/* ]]; then
-  mkdir -p "$UNITS"; cp "$3" "$UNITS/$(basename "$4")"
-else
-  cp "$3" "$4"
-fi""",
+        self.python.chmod(0o755)
+        pip = self.python.parent / "pip"
+        pip.write_text(
+            '#!/bin/bash\necho "pip $*" >> "$LOG"\nexit "${PIP_ERROR:-0}"\n'
         )
-        python = self.destino / "backend/.venv/bin/python"
-        python.write_text("""#!/bin/bash
-if [[ "$1" == - ]]; then exit "${DB_ERROR:-0}"; fi
-if [[ "$1" == -c ]]; then
-  case "$2" in
-    *urllib.request*) echo 200 ;;
-    *datetime*) echo 2026-01-01T00:00:00Z ;;
-  esac
-fi
-exit 0
-""")
-        python.chmod(0o755)
-        pip = python.parent / "pip"
-        pip.write_text("""#!/bin/bash
-echo "pip $*" >> "$LOG"
-if [[ -n "${ESPERA:-}" ]]; then
-  touch "$ESPERA.dentro"
-  while [[ ! -e "$ESPERA" ]]; do sleep 0.05; done
-fi
-exit "${PIP_ERROR:-0}"
-""")
         pip.chmod(0o755)
-        self.lock = self.codi / ".deploy.lock"
-        self.entorno["LOCK"] = str(self.lock)
-        # Simula el receptor remoto: ejecuta --rsync-path como lo haría el VPS.
-        self.stub(
-            "rsync",
-            """if [[ "$1" == --server ]]; then
-  echo "rsync servidor" >> "$LOG"
-  if [[ -n "${ESPERA:-}" ]]; then
-    touch "$ESPERA.dentro"
-    while [[ ! -e "$ESPERA" ]]; do sleep 0.05; done
-  fi
-  if flock -n "$LOCK" true; then exit 1; fi
-  exit 0
-fi
-echo rsync >> "$LOG"
-while [[ $# -gt 0 && "$1" != --rsync-path ]]; do shift; done
-eval "$2 --server ."
-""",
-        )
 
     def stub(self, nombre: str, cuerpo: str) -> None:
         archivo = self.bin / nombre
         archivo.write_text(f"#!/bin/bash\n{cuerpo}\n")
         archivo.chmod(0o755)
 
-    def guard(self, scope: str, ruta: Path) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            [
-                "bash",
-                str(self.destino / "scripts/ci/deploy-guard.sh"),
-                "check",
-                scope,
-                str(ruta),
-            ],
-            env=self.entorno,
-            capture_output=True,
-            check=False,
-        )
-
-    def bloquear(self) -> tuple[subprocess.Popen, str]:
-        guard = subprocess.Popen(
-            [
-                "bash",
-                str(self.destino / "scripts/ci/deploy-guard.sh"),
-                "lock",
-                "prod",
-                str(self.destino),
-            ],
-            env=self.entorno,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        linea = guard.stdout.readline().strip().split()
-        if linea[:1] != ["READY"]:
-            guard.communicate(input="fin\n", timeout=5)
-            self.fail(f"el guard no tomó el candado: {linea}")
-        return guard, linea[1]
-
-    def comando_remoto(self, token: str) -> list[str]:
+    def comando_remoto(self, destino=None) -> list[str]:
         return [
-            "bash",
-            str(self.destino / "scripts/ci/deploy-remoto.sh"),
-            "prod",
-            str(self.destino),
-            "/bin/true",
-            "cody",
-            "localhost",
+            "bash", str(self.destino / "scripts/ci/deploy-remoto.sh"),
+            str(destino or self.destino), str(self.python), "cody", "localhost",
             "8000",
-            "cody",
-            token,
         ]
 
     def remoto(self, **variables: str) -> subprocess.CompletedProcess:
-        guard, token = self.bloquear()
+        # El mismo flock exclusivo sostenido por SSH de master, solo en /tmp.
+        guardian = subprocess.Popen(
+            ["bash", "-c", 'exec 9>"$1"; flock -x 9; echo READY; cat >/dev/null',
+             "ensayo", str(self.lock)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
+        )
         try:
+            self.assertEqual(guardian.stdout.readline().strip(), "READY")
             return subprocess.run(
-                self.comando_remoto(token),
-                env={**self.entorno, **variables},
-                capture_output=True,
-                check=False,
+                self.comando_remoto(), env={**self.entorno, **variables},
+                capture_output=True, check=False, timeout=15,
             )
         finally:
-            guard.communicate(input="fin\n", timeout=5)
+            guardian.communicate(input="fin\n", timeout=5)
 
-    def esperar(self, archivo: Path, proceso: subprocess.Popen) -> None:
-        limite = time.monotonic() + 15
-        while not archivo.exists():
-            self.assertIsNone(proceso.poll(), "la operación terminó antes de tiempo")
-            self.assertLess(time.monotonic(), limite, f"no apareció {archivo}")
-            time.sleep(0.05)
+    def preflight(self, destino=None) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bash", str(self.destino / "scripts/ci/preflight-remoto.sh"),
+             str(destino or self.destino), "cody", str(self.python)],
+            env=self.entorno, capture_output=True, check=False,
+        )
 
-    def test_rechaza_destinos_scope_y_symlink(self) -> None:
+    def test_preflight_rechaza_padre_hermanos_y_symlink(self) -> None:
         hermano = self.codi / "waha-prod"
         hermano.mkdir()
         centinela = hermano / "centinela"
         centinela.write_text("intacto")
-        for scope, ruta in (
-            ("prod", self.codi),
-            ("prod", hermano),
-            ("test", self.destino),
-            ("prod", self.codi / "test"),
-        ):
-            self.assertNotEqual(self.guard(scope, ruta).returncode, 0)
-        shutil.rmtree(self.destino / "frontend")
+        for destino in (self.codi, hermano, self.codi / "test"):
+            self.assertNotEqual(self.preflight(destino).returncode, 0)
+        (self.destino / "frontend").rmdir()
         (self.destino / "frontend").symlink_to(hermano, target_is_directory=True)
-        self.assertNotEqual(self.guard("prod", self.destino).returncode, 0)
+        self.assertNotEqual(self.preflight().returncode, 0)
         self.assertEqual(centinela.read_text(), "intacto")
+
+    def test_preflight_correcto_y_mantenimiento(self) -> None:
+        resultado = self.preflight()
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        self.maintenance.touch()
+        self.assertNotEqual(self.preflight().returncode, 0)
+        self.assertNotEqual(self.remoto().returncode, 0)
+        self.assertNotIn("systemctl stop", self.log.read_text())
+
+    def test_remoto_sin_candado_o_destino_invalido_no_modifica(self) -> None:
+        for destino in (self.destino, self.codi, self.codi / "test"):
+            resultado = subprocess.run(
+                self.comando_remoto(destino), env=self.entorno,
+                capture_output=True, check=False,
+            )
+            self.assertNotEqual(resultado.returncode, 0)
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
         self.assertFalse(self.log.exists())
 
-    def test_candado_y_mantenimiento(self) -> None:
-        comando = [
-            "bash",
-            str(self.destino / "scripts/ci/deploy-guard.sh"),
-            "lock",
-            "prod",
-            str(self.destino),
-        ]
-        proceso = subprocess.Popen(
-            comando,
-            env=self.entorno,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        try:
-            self.assertTrue(proceso.stdout.readline().startswith("READY "))
-            self.assertNotEqual(
-                subprocess.run(
-                    comando, env=self.entorno, capture_output=True, check=False
-                ).returncode,
-                0,
-            )
-        finally:
-            proceso.communicate(input="fin\n", timeout=5)
-        (self.codi / ".maintenance").touch()
-        self.assertNotEqual(
-            subprocess.run(
-                comando, env=self.entorno, capture_output=True, check=False
-            ).returncode,
-            0,
-        )
+    def test_preparacion_fallida_no_para_ni_reemplaza_env(self) -> None:
+        contenido = self.entrada.read_text()
+        for variable in (
+            "PIP_ERROR", "MIGRATIONS_PENDING", "CHECK_ERROR", "STATIC_ERROR",
+            "VERIFY_ERROR",
+        ):
+            with self.subTest(variable=variable):
+                self.log.unlink(missing_ok=True)
+                self.entrada.write_text(contenido)
+                resultado = self.remoto(**{variable: "1"})
+                self.assertNotEqual(resultado.returncode, 0)
+                self.assertNotIn("systemctl stop", self.log.read_text())
+                self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
 
-    def test_remoto_directo_sin_candado_se_rechaza(self) -> None:
-        resultado = subprocess.run(
-            [
-                "bash",
-                str(self.destino / "scripts/ci/deploy-remoto.sh"),
-                "prod",
-                str(self.destino),
-                "/bin/true",
-                "cody",
-                "localhost",
-                "8000",
-                "cody",
-            ],
-            env=self.entorno,
-            capture_output=True,
-            check=False,
-        )
+    def test_postgres_no_sano_no_se_repara(self) -> None:
+        resultado = self.remoto(PG_HEALTH="unhealthy")
         self.assertNotEqual(resultado.returncode, 0)
-        self.assertFalse(self.log.exists())
-
-    def test_bd_fallida_no_para_ni_modifica_contenedores(self) -> None:
-        for variables in ({"IDENTIDAD": "false codi postgres"}, {"DB_ERROR": "1"}):
-            with self.subTest(variables=variables):
-                self.assertNotEqual(self.remoto(**variables).returncode, 0)
-                acciones = self.log.read_text()
-                self.assertNotIn("systemctl", acciones)
-                self.assertNotIn("docker up", acciones)
-                self.assertTrue((self.destino / "backend/.env.incoming").exists())
-
-    def test_pip_fallido_no_para_servicios_ni_reemplaza_env(self) -> None:
-        activo = self.destino / "backend/.env"
-        activo.write_text("ANTERIOR=1\n")
-        self.assertNotEqual(self.remoto(PIP_ERROR="1").returncode, 0)
         acciones = self.log.read_text()
-        self.assertIn("pip install", acciones)
         self.assertNotIn("systemctl stop", acciones)
-        self.assertEqual(activo.read_text(), "ANTERIOR=1\n")
-        self.assertEqual(
-            (self.destino / "backend/.env.incoming").read_text(),
-            "POSTGRES_PORT=5435\n",
-        )
+        self.assertTrue(all("docker inspect" in linea
+                            for linea in acciones.splitlines()
+                            if linea.startswith("docker")))
 
-    def test_operacion_activa_retiene_candado_sin_guard(self) -> None:
-        guard_sh = str(self.destino / "scripts/ci/deploy-guard.sh")
-        espera = self.raiz / "soltar"
-        dentro = self.raiz / "soltar.dentro"
-        entrante = self.destino / "backend/.env.incoming"
-        entorno = {**self.entorno, "ESPERA": str(espera)}
-
-        def iniciar(modo: str, token: str) -> subprocess.Popen:
-            if modo == "remoto":
-                comando = self.comando_remoto(token)
-            else:
-                comando = ["bash", guard_sh, modo, "prod", str(self.destino), token]
-                if modo == "rsync":
-                    comando += ["--server", "."]
-            return subprocess.Popen(
-                comando,
-                env=entorno,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-
-        for modo in ("rsync", "env", "remoto"):
-            with self.subTest(modo=modo):
-                espera.unlink(missing_ok=True)
-                dentro.unlink(missing_ok=True)
-                if modo == "env":
-                    entrante.unlink(missing_ok=True)
-                else:
-                    entrante.write_text("POSTGRES_PORT=5435\n")
-                marca = entrante if modo == "env" else dentro
-                guard, token = self.bloquear()
-                operacion = iniciar(modo, token)
-                try:
-                    self.esperar(marca, operacion)
-                    # Termina solo la conexión del guard.
-                    guard.communicate(input="fin\n", timeout=5)
-                    segundo = subprocess.run(
-                        ["bash", guard_sh, "lock", "prod", str(self.destino)],
-                        env=self.entorno,
-                        capture_output=True,
-                        check=False,
-                        timeout=10,
-                    )
-                    self.assertNotEqual(segundo.returncode, 0)
-                    self.assertIn(b"Ya hay un deploy en curso", segundo.stderr)
-                    mantenimiento = subprocess.run(
-                        ["flock", "-n", "-x", str(self.lock), "true"], check=False
-                    )
-                    self.assertNotEqual(mantenimiento.returncode, 0)
-                finally:
-                    espera.touch()
-                    _, error = operacion.communicate(input=b"NUEVO=1\n", timeout=20)
-                    if guard.poll() is None:
-                        guard.communicate(input="fin\n", timeout=5)
-                self.assertEqual(operacion.returncode, 0, error.decode())
-                if modo == "env":
-                    self.assertEqual(entrante.read_text(), "NUEVO=1\n")
-
-                # Otro deploy toma el candado; el token anterior queda rechazado.
-                espera.unlink()
-                dentro.unlink(missing_ok=True)
-                entrante.write_text("POSTGRES_PORT=5435\n")
-                nuevo, token_nuevo = self.bloquear()
-                try:
-                    self.assertNotEqual(token_nuevo, token)
-                    viejo = iniciar(modo, token)
-                    _, error = viejo.communicate(input=b"VIEJO=1\n", timeout=20)
-                    self.assertNotEqual(viejo.returncode, 0)
-                    self.assertIn(b"Falta la protecci", error)
-                    self.assertFalse(dentro.exists())
-                    self.assertEqual(entrante.read_text(), "POSTGRES_PORT=5435\n")
-                finally:
-                    nuevo.communicate(input="fin\n", timeout=5)
-
-    def test_deploy_correcto_renderiza_units_sin_mutar_docker(self) -> None:
+    def test_deploy_correcto_units_env_y_orden(self) -> None:
         resultado = self.remoto()
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
         acciones = self.log.read_text()
-        self.assertIn("systemctl restart cody-canal", acciones)
-        self.assertLess(acciones.index("pip install"), acciones.index("systemctl stop"))
-        self.assertTrue(
-            all(
-                "docker inspect" in x
-                for x in acciones.splitlines()
-                if x.startswith("docker")
-            )
-        )
-        for nombre in ("cody.service", "cody-canal.service"):
-            unit = (self.raiz / "units" / nombre).read_text()
+        primer_stop = acciones.index("systemctl stop")
+        self.assertLess(acciones.index("pip install"), primer_stop)
+        self.assertIn("requirements-canal.txt", acciones)
+        for comando in ("check", "migrate --check --noinput", "collectstatic"):
+            self.assertLess(acciones.index("manage manage.py " + comando), primer_stop)
+        self.assertLess(acciones.index("systemctl start cody.service"),
+                        acciones.index("systemctl restart cody-canal.service"))
+        self.assertIn("--desde 2026-01-01T00:00:00Z", acciones)
+        self.assertTrue(all("--check" in linea for linea in acciones.splitlines()
+                            if "manage.py migrate" in linea))
+        self.assertTrue(all("docker inspect" in linea
+                            for linea in acciones.splitlines()
+                            if linea.startswith("docker")))
+        for nombre, ejecutable in (
+            ("cody", "gunicorn"), ("cody-canal", "python manage.py procesar_canal"),
+        ):
+            unit = (self.units / f"{nombre}.service").read_text()
+            self.assertNotIn("@", unit)
             self.assertIn(f"WorkingDirectory={self.destino}/backend", unit)
-            self.assertIn(f"ReadWritePaths={self.destino}", unit)
-            self.assertNotIn("@DEPLOY", unit)
-        canal = (self.raiz / "units/cody-canal.service").read_text()
-        self.assertIn(f"EnvironmentFile={self.destino}/backend/.env.canal", canal)
-        self.assertIn(f"ExecStart={self.destino}/backend/.venv/bin/python", canal)
+            self.assertIn(f"ExecStart={self.python.parent}/{ejecutable}", unit)
+        contenido = self.canal.read_text()
+        self.assertIn("WAHA_INSTANCIA=waha\n", contenido)
+        self.assertIn("WAHA_BASE_URL=http://127.0.0.1:3004\n", contenido)
+        self.assertIn("WAHA_API_KEY=ficticia\n", contenido)
+        for secreto in (
+            "PEY_API_KEY", "PEY_WEBHOOK_SECRET", "WAHA_WEBHOOK_SECRET",
+            "EMAIL_HOST_PASSWORD",
+        ):
+            self.assertNotIn(secreto, contenido)
+        self.assertEqual(self.canal.stat().st_mode & 0o777, 0o600)
 
-    def test_transferencias_bajo_candado_con_ssh_y_rsync_simulados(self) -> None:
-        checkout = self.raiz / "checkout"
-        (checkout / "scripts/ci").mkdir(parents=True)
-        (checkout / "backend").mkdir()
-        (checkout / "frontend/build/web").mkdir(parents=True)
-        (checkout / "landing/dist").mkdir(parents=True)
-        (checkout / "landing/dist/index.html").touch()
-        for nombre in ("deploy.sh", "deploy-guard.sh"):
-            texto = (RAIZ / "scripts/ci" / nombre).read_text()
-            (checkout / "scripts/ci" / nombre).write_text(
-                texto.replace("/opt/codi", str(self.codi))
-            )
-        texto = (RAIZ / "scripts/ci-install-env.sh").read_text()
-        (checkout / "scripts/ci-install-env.sh").write_text(
-            texto.replace("/opt/codi", str(self.codi))
-        )
-        env_file = self.raiz / "entrada"
-        claves = (
-            "POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT "
-            "DJANGO_SECRET_KEY DEBUG ALLOWED_HOSTS WEBHOOK_BASE_URL PEY_API_KEY "
-            "PEY_WEBHOOK_SECRET DEMO_MODE NUCLEO_ADAPTADOR POLITICA_COBRO_VERSION "
-            "PEDIDOS_COBRO_HABILITADO WAHA_INSTANCIA WAHA_BASE_URL WAHA_API_KEY "
-            "WAHA_WEBHOOK_SECRET"
-        ).split()
-        valores = dict.fromkeys(claves, "x")
-        valores.update(
-            DEBUG="False",
-            ALLOWED_HOSTS="localhost",
-            DEMO_MODE="false",
-            NUCLEO_ADAPTADOR="real",
-            PEDIDOS_COBRO_HABILITADO="false",
-        )
-        env_file.write_text("".join(f"{k}={v}\n" for k, v in valores.items()))
-        self.entorno.update(
-            PROD_ENV_FILE=str(env_file),
-            PROD_PYTHON="/bin/true",
-            PROD_DEPLOY_HOST="x",
-            PROD_DEPLOY_USER="cody",
-            PROD_DEPLOY_PORT="22",
-            PROD_DEPLOY_PATH=str(self.destino),
-            PROD_SSH_PRIVATE_KEY="UFJJVkFURSBLRVk=",
-        )
-        self.stub("ssh-keyscan", 'echo "host key"')
-        self.stub(
-            "ssh",
-            """while [[ "$1" == -* ]]; do shift 2; done
-shift
-if [[ $# == 1 ]]; then exec bash -c "$1"; fi
-exec "$@"
-""",
-        )
-        self.stub("scp", 'echo scp >> "$LOG"; exit 1')
-        (self.destino / "backend/.env.incoming").unlink()
-        resultado = subprocess.run(
-            ["bash", str(checkout / "scripts/ci/deploy.sh"), "prod"],
-            env=self.entorno,
-            capture_output=True,
-            check=False,
-            timeout=20,
-        )
-        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
-        acciones = self.log.read_text()
-        self.assertNotIn("scp", acciones)
-        self.assertLess(
-            acciones.index("rsync servidor"), acciones.index("systemctl restart cody")
-        )
-        self.assertEqual(
-            (self.destino / "backend/.env").read_text(),
-            (checkout / "backend/.env").read_text(),
-        )
-        self.assertEqual(
-            subprocess.run(
-                ["flock", "-n", str(self.lock), "true"], check=False
-            ).returncode,
-            0,
-        )
+    def test_latido_viejo_o_unit_inactiva_restaura_ambos(self) -> None:
+        contenido = self.entrada.read_text()
+        for variable in ("LATIDO_ANTERIOR", "CANAL_INACTIVO", "HEALTH_CODE"):
+            with self.subTest(variable=variable):
+                self.entrada.write_text(contenido)
+                self.log.unlink(missing_ok=True)
+                (self.raiz / "canal-arrancado").unlink(missing_ok=True)
+                resultado = self.remoto(**{variable: "503" if variable ==
+                                           "HEALTH_CODE" else "1"})
+                self.assertNotEqual(resultado.returncode, 0)
+                self.assertIn(b"restaurando units y entornos", resultado.stderr)
+                self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+                self.assertEqual(self.canal.read_text(), "CANAL_ANTERIOR=1\n")
+                self.assertEqual((self.units / "cody.service").read_text(),
+                                 "unit web previa\n")
+                self.assertEqual((self.units / "cody-canal.service").read_text(),
+                                 "unit canal previa\n")
+                self.assertIn("systemctl start cody-canal.service",
+                              self.log.read_text())
+
+    def test_primera_instalacion_fallida_no_deja_canal_nuevo(self) -> None:
+        (self.units / "cody-canal.service").unlink()
+        self.canal.unlink()
+        resultado = self.remoto(LATIDO_ANTERIOR="1")
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertFalse(self.canal.exists())
+        self.assertFalse((self.units / "cody-canal.service").exists())
+        self.assertNotIn("systemctl start cody-canal.service", self.log.read_text())
+        self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")

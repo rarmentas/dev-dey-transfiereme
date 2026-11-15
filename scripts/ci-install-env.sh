@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copia el .env de la app (variable File) y comprueba el acceso de deploy.
 # Los secretos de la app van dentro del archivo. Host, usuario, puerto y ruta
-# quedan en variables de CI. PROD_SSH_PRIVATE_KEY y TEST_SSH_PRIVATE_KEY
+# quedan en variables de CI. PROD_SSH_PRIVATE_KEY_V2 y TEST_SSH_PRIVATE_KEY
 # llegan en base64 y se decodifican a un archivo temporal. Nada de eso se
 # copia a backend/.env. No imprime valores.
 # Uso: bash scripts/ci-install-env.sh prod|test [destino]
@@ -43,14 +43,6 @@ required=(
   WEBHOOK_BASE_URL
   PEY_API_KEY
   PEY_WEBHOOK_SECRET
-  DEMO_MODE
-  NUCLEO_ADAPTADOR
-  POLITICA_COBRO_VERSION
-  PEDIDOS_COBRO_HABILITADO
-  WAHA_INSTANCIA
-  WAHA_BASE_URL
-  WAHA_API_KEY
-  WAHA_WEBHOOK_SECRET
 )
 for key in "${required[@]}"; do
   if ! grep -Eq "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[^[:space:]#]+" "$file_path"; then
@@ -58,41 +50,6 @@ for key in "${required[@]}"; do
     exit 1
   fi
 done
-
-env_val() {
-  local line
-  line="$(grep -E "^[[:space:]]*$1[[:space:]]*=" "$file_path" | tail -1 || true)"
-  line="${line#*=}"
-  line="${line%%#*}"
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-  printf '%s' "$line"
-}
-
-for key in "${required[@]}"; do
-  if [[ -z "$(env_val "$key")" ]]; then
-    echo "Falta ${key} en ${file_var}." >&2
-    exit 1
-  fi
-done
-
-if [[ "$(env_val NUCLEO_ADAPTADOR)" != "real" ]]; then
-  echo "NUCLEO_ADAPTADOR debe ser real." >&2
-  exit 1
-fi
-if [[ "$(env_val PEDIDOS_COBRO_HABILITADO)" != "false" ]]; then
-  echo "PEDIDOS_COBRO_HABILITADO debe ser false." >&2
-  exit 1
-fi
-demo_mode="$(env_val DEMO_MODE)"
-if [[ "$demo_mode" != "true" && "$demo_mode" != "false" ]]; then
-  echo "DEMO_MODE debe ser true o false." >&2
-  exit 1
-fi
-if [[ "$demo_mode" == "true" && -z "$(env_val DEMO_PEY_BANK_ACCOUNT_ID)" ]]; then
-  echo "Falta DEMO_PEY_BANK_ACCOUNT_ID para el modo demo." >&2
-  exit 1
-fi
 
 require_ci() {
   local ci_var="$1"
@@ -106,16 +63,6 @@ require_ci "${prefix}_DEPLOY_HOST"
 require_ci "${prefix}_DEPLOY_USER"
 require_ci "${prefix}_DEPLOY_PATH"
 require_ci "${prefix}_DEPLOY_PORT"
-path_var="${prefix}_DEPLOY_PATH"
-if [[ "$scope" == prod && "${!path_var}" != /opt/codi/prod ]]; then
-  echo "PROD_DEPLOY_PATH debe ser /opt/codi/prod." >&2
-  exit 1
-fi
-if [[ "$scope" == test && "${!path_var}" != /opt/codi/test ]]; then
-  echo "TEST_DEPLOY_PATH debe ser /opt/codi/test." >&2
-  exit 1
-fi
-
 
 port_var="${prefix}_DEPLOY_PORT"
 if ! [[ "${!port_var}" =~ ^[0-9]+$ ]]; then
@@ -123,7 +70,13 @@ if ! [[ "${!port_var}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-key_var="${prefix}_SSH_PRIVATE_KEY"
+if [[ "$scope" == prod ]]; then
+  # La llave anterior permanece revocada para que un Retry de un job viejo
+  # nunca pueda desplegar con la credencial del pipeline nuevo.
+  key_var=PROD_SSH_PRIVATE_KEY_V2
+else
+  key_var=TEST_SSH_PRIVATE_KEY
+fi
 key_b64="${!key_var:-}"
 key_b64="${key_b64//[[:space:]]/}"
 if [[ -z "$key_b64" ]]; then

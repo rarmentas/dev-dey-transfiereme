@@ -16,7 +16,7 @@
 # Opcional: TEST_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 #
 # Prod (prefijo PROD_):
-#   PROD_SSH_PRIVATE_KEY (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
+#   PROD_SSH_PRIVATE_KEY_V2 (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
 #   PROD_DEPLOY_PORT, PROD_DEPLOY_PATH, PROD_ENV_FILE (File)
 # Opcional: PROD_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 
@@ -225,7 +225,7 @@ deploy:test:
   extends: .deploy_template
   environment:
     name: test
-  resource_group: codi-deploy
+  resource_group: codi-vps
   variables:
     DEPLOY_SCOPE: test
   needs:
@@ -237,6 +237,7 @@ deploy:test:
     - job: build:landing
       artifacts: true
   rules:
+    # No existe unit, BD ni puerto aislado para test.
     - when: never
 
 deploy:prod:
@@ -244,7 +245,7 @@ deploy:prod:
   environment:
     name: production
     url: https://transfiereme.asware.com.mx
-  resource_group: codi-deploy
+  resource_group: codi-vps
   variables:
     DEPLOY_SCOPE: prod
   needs:
@@ -256,4 +257,6 @@ deploy:prod:
     - job: build:landing
       artifacts: true
   rules:
+    # El primer deploy nuevo se lanza solo después del traslado y respaldo.
     - if: $CI_COMMIT_BRANCH == "master"
+      when: manual
