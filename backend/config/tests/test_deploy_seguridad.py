@@ -81,7 +81,7 @@ class DeploySeguridadTests(SimpleTestCase):
         }
         self.stub("sudo", '[[ "$1" == -n ]] || exit 2; shift; exec "$@"')
         self.stub("install", 'echo "install $*" >> "$LOG"; /usr/bin/install "$@"')
-        self.stub("systemd-analyze", 'exit "${VERIFY_ERROR:-0}"')
+        self.stub("systemd-analyze", 'echo "systemd-analyze $*" >> "$LOG"\nexit "${VERIFY_ERROR:-0}"')
         self.stub("curl", 'echo "${HEALTH_CODE:-200}"')
         self.stub("sleep", 'if [[ "$1" != 1 ]]; then /usr/bin/sleep "$@"; fi')
         self.stub("ss", 'echo "127.0.0.1:5435"')
@@ -337,10 +337,42 @@ esac''')
             archivo.write("STT_HABILITADO=1\n")
         resultado = self.remoto()
         self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"Faltan venv, cach", resultado.stderr)
         acciones = self.log.read_text()
-        for accion in ("pg_dump", "manage manage.py migrate", "systemctl stop"):
+        for accion in ("systemd-analyze", "pg_dump", "manage manage.py migrate", "systemctl stop"):
             self.assertNotIn(accion, acciones)
         self.assertEqual(self.activo.read_text(), "ANTERIOR=1\n")
+
+    def test_stt_apagado_sin_recursos_permita_verificar_y_desplegar(self) -> None:
+        self.entrada.write_text(self.entrada.read_text() + "STT_HABILITADO=0\n")
+        resultado = self.remoto()
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+        acciones = self.log.read_text()
+        self.assertIn("systemd-analyze verify", acciones)
+        self.assertNotIn("cody-stt.service", "\n".join(
+            linea for linea in acciones.splitlines()
+            if linea.startswith("systemd-analyze verify")
+        ))
+
+    def test_unit_con_ruta_invalida_aborta_antes_del_respaldo(self) -> None:
+        unit = self.destino / "deploy/cody.service.in"
+        unit.write_text(unit.read_text() + f"\nReadOnlyPaths={self.codi}/ajeno\n")
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"rutas no permitidas", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("systemd-analyze", "pg_dump", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
+
+    def test_fallo_de_sed_de_rutas_aborta_antes_del_respaldo(self) -> None:
+        self.stub("sed", '''if [[ "$1" == -E ]]; then exit 42; fi
+exec /usr/bin/sed "$@"''')
+        resultado = self.remoto()
+        self.assertNotEqual(resultado.returncode, 0)
+        self.assertIn(b"No se pudieron validar las rutas", resultado.stderr)
+        acciones = self.log.read_text()
+        for accion in ("systemd-analyze", "pg_dump", "systemctl stop"):
+            self.assertNotIn(accion, acciones)
 
     def test_postgres_no_sano_no_se_repara(self) -> None:
         resultado = self.remoto(PG_HEALTH="unhealthy")

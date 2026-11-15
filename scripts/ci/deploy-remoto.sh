@@ -244,8 +244,12 @@ for suffix in "" "-canal" "-cobros" "-stt"; do
   sed -e "s|@DEPLOY_PATH@|$dest|g" -e "s|@DEPLOY_USER@|$service_user|g" \
     -e 's|@UNIT_BASE@|cody|g' -e "s|@STT_HOME@|$stt_home|g" \
     "$dest/deploy/cody${suffix}.service.in" >"$unit_tmp"
+  if ! sed -E "s#${dest}(/|[[:space:]]|$)#\\1#g" "$unit_tmp" \
+      >"$backup_dir/unit-rutas"; then
+    echo 'No se pudieron validar las rutas de la unit.' >&2; exit 1
+  fi
   if grep -Eq '@[A-Z_]+@|/\.\.?(/|[[:space:]]|$)' "$unit_tmp" || \
-     sed -E "s|$dest(/| |$)|\\1|g" "$unit_tmp" | grep -q '/opt/codi'; then
+     grep -q '/opt/codi' "$backup_dir/unit-rutas"; then
     echo 'La unit contiene marcadores o rutas no permitidas.' >&2; exit 1
   fi
   grep -Fxq "WorkingDirectory=$dest/backend" "$unit_tmp"
@@ -253,9 +257,6 @@ for suffix in "" "-canal" "-cobros" "-stt"; do
     grep -Fxq "ReadWritePaths=$dest $stt_home" "$unit_tmp"
   else
     grep -Fxq "ReadWritePaths=$dest" "$unit_tmp"
-  fi
-  if [[ "$suffix" != -stt || "$stt_habilitado" == 1 ]]; then
-    systemd-analyze verify "$unit_tmp" >/dev/null
   fi
 done
 grep -Fxq "EnvironmentFile=$dest/backend/.env" "$backup_dir/cody.service"
@@ -326,6 +327,12 @@ PYSTT
     exit 1
   fi
 fi
+
+for suffix in "" "-canal" "-cobros" "-stt"; do
+  if [[ "$suffix" != -stt || "$stt_habilitado" == 1 ]]; then
+    systemd-analyze verify "$backup_dir/cody${suffix}.service" >/dev/null
+  fi
+done
 
 
 # Respaldar y migrar solo después de validar la configuración entrante.
