@@ -3,7 +3,7 @@
 from django.db import transaction
 
 from ambito.candados import bloquear_comercio
-from config.modo import demo_activo, politica_cobro_version
+from config.modo import modo_de_comercio
 from pedidos.contratos.v1 import CodigoError, TipoEvento
 from pedidos.errores import ErrorNucleo
 from pedidos.models import Aceptacion
@@ -31,10 +31,10 @@ def aceptar_cotizacion(self, ctx, **datos):
             or cot.token_resumen != datos["token_resumen"]
         ):
             raise ErrorNucleo(CodigoError.REVISION_OBSOLETA)
-        if (cot.demo_mode, cot.politica_cobro_version) != (
-            demo_activo(),
-            politica_cobro_version(),
-        ) or datos["politica_cobro_version"] != cot.politica_cobro_version:
+        if (
+            (cot.demo_mode, cot.politica_cobro_version) != modo_de_comercio(comercio)
+            or datos["politica_cobro_version"] != cot.politica_cobro_version
+        ):
             raise ErrorNucleo(CodigoError.MODO_CAMBIO)
         if datos["importe_efectivo_mostrado_centavos"] != cot.importe_efectivo_centavos:
             raise ErrorNucleo(CodigoError.IMPORTE_NO_COINCIDE)

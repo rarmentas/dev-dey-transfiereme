@@ -4,7 +4,7 @@ from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from ambito.tests.soporte import crear_comercio_con_cuenta_activa, crear_cuenta
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from ventas.servicio import crear_venta_notificacion, crear_venta_qr
 
 from movimientos.alta_qr_general import alta_qr_general
@@ -15,8 +15,8 @@ class GuardasL2Tests(TestCase):
     def setUp(self):
         self.comercio = crear_comercio_con_cuenta_activa()
 
-    @override_settings(DEMO_MODE="true")
     def test_demo_bloquea_servicios_sin_llamar_al_puerto(self):
+        type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
         puerto = Mock()
         with patch("movimientos.alta_qr_general.obtener_puerto") as obtener:
             with self.assertRaises(DemoBloqueado):
@@ -37,10 +37,25 @@ class GuardasL2Tests(TestCase):
         puerto.assert_not_called()
         self.assertEqual(puerto.method_calls, [])
 
-    @override_settings(DEMO_MODE="false")
     def test_varias_cuentas_bloquean_qr_general_sin_red(self):
         crear_cuenta(self.comercio, predeterminada=False)
         with patch("movimientos.alta_qr_general.obtener_puerto") as obtener:
             with self.assertRaises(QrGeneralNoDisponible):
                 alta_qr_general(self.comercio)
             obtener.assert_not_called()
+
+    def test_cambio_a_demo_durante_solicitud_qr_no_guarda_cobro(self):
+        from movimientos.models import Cobro
+        from pey.tipos import QrCreado
+
+        puerto = Mock()
+
+        def crear(**kwargs):
+            type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
+            return QrCreado(id="qr", qr_string="contenido")
+
+        puerto.crear_qr.side_effect = crear
+        with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with self.assertRaises(DemoBloqueado):
+                alta_qr_general(self.comercio)
+        self.assertFalse(Cobro.objects.exists())

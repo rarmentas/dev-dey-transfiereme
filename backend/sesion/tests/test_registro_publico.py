@@ -64,6 +64,8 @@ class RegistroPublicoTests(TestCase):
         self.assertFalse(comercio.cuentas.exists())
         self.assertIsNone(comercio.cuenta_por_defecto_id)
         self.assertFalse(comercio.semilla_active_dev)
+        self.assertFalse(comercio.es_demo)
+        self.assertNotIn("es_demo", confirmar.json())
 
         entrar = self.client.post(
             "/api/sesion/entrar/",

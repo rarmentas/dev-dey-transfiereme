@@ -145,15 +145,60 @@ class DespachoTests(CasoReal):
         self.assertEqual(espera.estado, "reservado")
         self.assertEqual(espera.cuenta_id, segunda.pk)
 
+    def test_cambio_modo_descarta_intento_en_espera(self):
+        from pedidos.servicios.cobros import activar_espera
+
+        cuenta = self.comercio.cuenta_por_defecto
+        IntentoCobro.objects.create(
+            origen="legado", comercio=self.comercio, canal="qr_venta",
+            estado="reservado", importe_efectivo_centavos=100, demo_mode=False,
+            politica_cobro_version="normal-1", cuenta=cuenta,
+            pey_bank_account_id=cuenta.pey_bank_account_id, concepto="venta",
+            expiracion_s=600, clave_legado="ocupado",
+        )
+        resultado = self.solicitar()
+        self.assertTrue(resultado.ok)
+        espera = IntentoCobro.objects.get(origen="pedido")
+        self.assertEqual(espera.estado, "en_espera")
+        type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
+        activar_espera(
+            self.comercio, espera.pedido_id, espera.pk,
+            {
+                "command_key": "activar",
+                "expected_version": resultado.data["pedido"].version,
+            },
+        )
+        espera.refresh_from_db()
+        self.assertEqual(espera.estado, "descartado")
+        self.assertEqual(espera.motivo_descarte, "condiciones_cambiaron")
+
     def test_cambio_modo_descarta_sin_llamada(self):
         self.assertTrue(self.solicitar().ok)
         intento = IntentoCobro.objects.get()
         puerto = PuertoPeyFalso()
-        with override_settings(DEMO_MODE="true"):
-            enviar_intento(intento.pk, puerto)
+        type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
+        enviar_intento(intento.pk, puerto)
         intento.refresh_from_db()
         self.assertEqual(intento.estado, "descartado")
         self.assertEqual(puerto.llamadas, [])
+
+    def test_cambio_modo_no_altera_intento_ya_enviado(self):
+        self.assertTrue(self.solicitar().ok)
+        intento = IntentoCobro.objects.get()
+        puerto = PuertoPeyFalso()
+        enviar_intento(intento.pk, puerto)
+        intento.refresh_from_db()
+        anterior = (intento.estado, intento.importe_efectivo_centavos,
+                    intento.pey_bank_account_id, intento.demo_mode)
+        self.assertEqual(anterior[0], "pendiente")
+        type(self.comercio).objects.filter(pk=self.comercio.pk).update(es_demo=True)
+        enviar_intento(intento.pk, puerto)
+        intento.refresh_from_db()
+        self.assertEqual(
+            (intento.estado, intento.importe_efectivo_centavos,
+             intento.pey_bank_account_id, intento.demo_mode), anterior,
+        )
+        self.assertEqual(len(puerto.llamadas), 1)
 
     @override_settings(PEDIDOS_COBRO_HABILITADO=False)
     def test_compuerta_cerrada_no_crea_intento(self):
@@ -177,9 +222,8 @@ class DespachoTests(CasoReal):
     def test_demo_solo_un_centavo_al_destino_permitido(self):
         from ambito.models import Comercio
 
-        self.driver.cambiar_modo(True, "demo-1")
-        self.comercio = Comercio.objects.create(nombre="Demo")
-        crear_cuenta(self.comercio)
+        self.comercio = Comercio.objects.create(nombre="Demo", es_demo=True)
+        cuenta = crear_cuenta(self.comercio)
         self.driver.comercios["comercio"] = self.comercio
         ctx, _, pedido = self.crear("demo")
         pedido = self.cotizar(ctx, pedido)
@@ -194,28 +238,45 @@ class DespachoTests(CasoReal):
             aceptacion_id=pedido.aceptacion.id,
             canal="qr_venta",
         )
-        cuenta = self.comercio.cuenta_por_defecto
         puerto = PuertoPeyFalso()
         from unittest.mock import patch
 
-        with (
-            override_settings(DEMO_PEY_BANK_ACCOUNT_ID="no-permitido"),
-            patch("pedidos.servicios.despacho.obtener_puerto") as obtener,
-        ):
-            resultado = self.nucleo.solicitar_cobro(ctx, **datos)
-            obtener.assert_not_called()
-            self.assertEqual(resultado.error.code.value, "DEMO_DESTINO_NO_PERMITIDO")
-            self.assertFalse(IntentoCobro.objects.exists())
-            self.assertEqual(puerto.llamadas, [])
-        with override_settings(DEMO_PEY_BANK_ACCOUNT_ID=cuenta.pey_bank_account_id):
+        for destino in ("", "no-permitido"):
+            with (
+                self.subTest(destino=destino),
+                override_settings(DEMO_PEY_BANK_ACCOUNT_ID=destino),
+                patch("pedidos.servicios.despacho.obtener_puerto") as obtener,
+            ):
+                resultado = self.nucleo.solicitar_cobro(ctx, **datos)
+                obtener.assert_not_called()
+                self.assertEqual(
+                    resultado.error.code.value, "DEMO_DESTINO_NO_PERMITIDO"
+                )
+                self.assertFalse(IntentoCobro.objects.exists())
+                self.assertEqual(puerto.llamadas, [])
+        with override_settings(DEMO_PEY_BANK_ACCOUNT_ID="01ARZ3NDEKTSV4RRFFQ69G5FAV"):
             resultado = self.nucleo.solicitar_cobro(ctx, **datos)
             self.assertTrue(resultado.ok, resultado.error)
             intento = IntentoCobro.objects.get()
+            self.assertIsNone(intento.cuenta_id)
+            self.assertNotEqual(intento.pey_bank_account_id, cuenta.pey_bank_account_id)
             enviar_intento(intento.pk, puerto)
         self.assertEqual(puerto.llamadas[0][1]["monto"], Decimal("0.01"))
         self.assertEqual(
-            puerto.llamadas[0][1]["bank_account_id"], cuenta.pey_bank_account_id
+            puerto.llamadas[0][1]["bank_account_id"], "01ARZ3NDEKTSV4RRFFQ69G5FAV"
         )
+
+    def test_destino_normal_alterado_se_descarta_sin_red(self):
+        self.assertTrue(self.solicitar().ok)
+        intento = IntentoCobro.objects.get()
+        IntentoCobro.objects.filter(pk=intento.pk).update(
+            pey_bank_account_id="01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        )
+        puerto = PuertoPeyFalso()
+        intento = enviar_intento(intento.pk, puerto)
+        self.assertEqual(intento.estado, "descartado")
+        self.assertEqual(intento.motivo_descarte, "destino_invalido")
+        self.assertEqual(puerto.llamadas, [])
 
     def test_worker_no_envia_legado_y_descarta_reserva_abandonada(self):
         from datetime import timedelta
@@ -417,7 +478,10 @@ class DespachoTests(CasoReal):
         self.assertTrue(self.solicitar().ok)
         anterior = IntentoCobro.objects.get()
         puerto = PuertoPeyFalso()
-        with override_settings(POLITICA_COBRO_VERSION="normal-2"):
+        from unittest.mock import patch
+        from config import modo
+
+        with patch.object(modo, "POLITICA_NORMAL", "normal-2"):
             enviar_intento(anterior.pk, puerto)
             nueva_cotizacion = self.cotizar(self.ctx, self.pedido)
             datos = self.datos_aceptacion(self.ctx, nueva_cotizacion)

@@ -14,7 +14,7 @@ from canales.avisos import procesar_avisos
 from canales.conversacion import contexto, procesar_mensaje
 from canales.models import ConversacionCanal, LatidoCanal, MensajeEntrante, SalidaCanal
 from canales.salidas import enviar, recuperar_abandonadas
-from config.modo import demo_activo, politica_cobro_version
+from config.modo import modo_de_comercio
 from pedidos.contratos.v1 import CONTRATO_VERSION
 from pedidos.fabrica import obtener_lector, obtener_nucleo
 
@@ -109,8 +109,8 @@ def ciclo():
             if (
                 not cot
                 or cot.id != salida.payload["cotizacion_id"]
-                or cot.demo_mode != demo_activo()
-                or cot.politica_cobro_version != politica_cobro_version()
+                or (cot.demo_mode, cot.politica_cobro_version)
+                != modo_de_comercio(salida.conversacion.sesion.comercio_id)
             ):
                 SalidaCanal.objects.filter(pk=salida.pk, estado="preparada").update(
                     estado="fallida", error="Cotización obsoleta"

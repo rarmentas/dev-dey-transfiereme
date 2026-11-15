@@ -31,6 +31,8 @@ from .contratos.validacion import ErrorContrato, hash_canonico, validar_comando
 
 @dataclass(frozen=True)
 class ModoStub:
+    """Modo del comercio simulado."""
+
     demo: bool = False
     politica: str = "normal-1"
 

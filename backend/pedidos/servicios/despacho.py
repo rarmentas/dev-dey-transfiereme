@@ -6,7 +6,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-from config.modo import cobro_habilitado, demo_activo, politica_cobro_version
+from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
 from django.db import connection, transaction
 from django.db.models import F
 from django.utils import timezone
@@ -60,8 +60,7 @@ def enviar_intento(intento_id, puerto=None):
         if intento.origen == "pedido" and not cobro_habilitado():
             return intento
         if (intento.demo_mode, intento.politica_cobro_version) != (
-            demo_activo(),
-            politica_cobro_version(),
+            modo_de_comercio(comercio)
         ):
             descartar(
                 intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
@@ -81,18 +80,23 @@ def enviar_intento(intento_id, puerto=None):
                 intento.refresh_from_db()
                 return intento
         if intento.demo_mode:
-            from django.conf import settings
-
             if (
-                not demo_activo()
-                or intento.importe_efectivo_centavos != 1
-                or intento.pey_bank_account_id != settings.DEMO_PEY_BANK_ACCOUNT_ID
+                intento.importe_efectivo_centavos != 1
+                or not destino_demo()
+                or intento.pey_bank_account_id != destino_demo()
+                or cuenta is not None
             ):
                 descartar(
-                    intento, "destino_demo_invalido", comercio=comercio, pedido=pedido,
+                    intento, "destino_demo_invalido", comercio=comercio, pedido=pedido
                 )
                 intento.refresh_from_db()
                 return intento
+        elif (
+            cuenta is None or intento.pey_bank_account_id != cuenta.pey_bank_account_id
+        ):
+            descartar(intento, "destino_invalido", comercio=comercio, pedido=pedido)
+            intento.refresh_from_db()
+            return intento
         token = uuid.uuid4()
         n = IntentoCobro.objects.filter(
             pk=intento.pk, estado="reservado", version=intento.version

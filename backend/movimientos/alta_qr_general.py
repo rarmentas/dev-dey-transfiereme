@@ -9,7 +9,8 @@ from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from movimientos.cobro_qr import preparar_alta_qr_general
-from config.modo import demo_activo
+from config.modo import modo_de_comercio
+from ambito.candados import bloquear_comercio
 from movimientos.exceptions import DemoBloqueado, QrGeneralNoDisponible
 from movimientos.models import Cobro, Movimiento
 from pey.produccion import AdaptadorProduccion
@@ -26,7 +27,7 @@ class ResultadoAltaQrGeneral:
 
 
 def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
-    if demo_activo():
+    if modo_de_comercio(comercio).demo:
         raise DemoBloqueado()
     preparar_alta_qr_general(comercio)
     if comercio.cuentas.count() > 1:
@@ -45,6 +46,9 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
     qr = _pedir_qr(puerto, cuenta)
     try:
         with transaction.atomic():
+            comercio = bloquear_comercio(comercio)
+            if modo_de_comercio(comercio).demo:
+                raise DemoBloqueado()
             cobro = Cobro.objects.create(
                 comercio=comercio,
                 canal=Movimiento.Canal.QR_GENERAL,

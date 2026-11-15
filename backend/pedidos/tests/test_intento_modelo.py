@@ -53,3 +53,16 @@ class IntentoModeloTests(TestCase):
         with self.assertRaises(IntegrityError), transaction.atomic():
             self.crear_intento(demo_mode=True)
         self.assertFalse(IntentoCobro.objects.exists())
+
+    def test_destino_sin_cuenta_solo_para_demo(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.crear_intento(cuenta=None)
+        intento = self.crear_intento(
+            cuenta=None, demo_mode=True, importe_efectivo_centavos=1,
+            politica_cobro_version="demo-1",
+        )
+        self.assertIsNone(intento.cuenta_id)
+        self.assertEqual(intento.importe_efectivo_centavos, 1)
+        intento.demo_mode = False
+        with self.assertRaises(ValueError):
+            intento.save()

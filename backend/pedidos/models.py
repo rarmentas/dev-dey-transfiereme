@@ -406,7 +406,10 @@ class IntentoCobro(models.Model):
                         "pagado",
                     ]
                 )
-                | (Q(cuenta__isnull=False) & ~Q(pey_bank_account_id="")),
+                | (
+                    ~Q(pey_bank_account_id="")
+                    & (Q(cuenta__isnull=False) | Q(demo_mode=True))
+                ),
                 name="intento_destino_fijado",
             ),
             models.CheckConstraint(

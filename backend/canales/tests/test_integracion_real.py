@@ -549,7 +549,7 @@ class IntegracionRealTests(TestCase):
         self.assertEqual(Pedido.objects.count(), 1)
         nucleo.registrar_solicitud.assert_not_called()
 
-    @override_settings(PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false")
+    @override_settings(PEDIDOS_COBRO_HABILITADO=True)
     def test_aceptar_real_reservado_informa_pendiente(self):
         from ambito.tests.soporte import crear_cuenta
         from canales import mensajes
@@ -570,6 +570,41 @@ class IntegracionRealTests(TestCase):
 
 
 
+    def test_resumen_normal_y_salida_obsoleta_al_pasar_a_demo(self):
+        self.webhook("m1", "leche")
+        ciclo()
+        self.cotizar()
+        with patch("canales.worker.enviar") as enviar:
+            ciclo()
+            resumen = SalidaCanal.objects.get(tipo="cotizacion_resumen")
+            self.assertEqual(resumen.estado, "preparada")
+            self.assertNotIn("Importe efectivo", resumen.payload["texto"])
+            Comercio.objects.filter(pk=self.comercio.pk).update(es_demo=True)
+            enviar.reset_mock()
+            ciclo()
+            resumen.refresh_from_db()
+            self.assertEqual((resumen.estado, resumen.error),
+                             ("fallida", "Cotización obsoleta"))
+            enviar.assert_not_called()
+
+    def test_resumen_demo_y_salida_obsoleta_al_pasar_a_normal(self):
+        Comercio.objects.filter(pk=self.comercio.pk).update(es_demo=True)
+        self.webhook("m1", "leche")
+        ciclo()
+        self.cotizar()
+        with patch("canales.worker.enviar") as enviar:
+            ciclo()
+            resumen = SalidaCanal.objects.get(tipo="cotizacion_resumen")
+            self.assertIn("Importe efectivo: $0.01", resumen.payload["texto"])
+            Comercio.objects.filter(pk=self.comercio.pk).update(es_demo=False)
+            enviar.reset_mock()
+            ciclo()
+            resumen.refresh_from_db()
+            self.assertEqual((resumen.estado, resumen.error),
+                             ("fallida", "Cotización obsoleta"))
+            enviar.assert_not_called()
+
+
 @override_settings(WAHA_WEBHOOK_SECRET="prueba", NUCLEO_ADAPTADOR="real")
 class IntegracionPagoRealTests(TransactionTestCase):
     setUp = IntegracionRealTests.setUp
@@ -577,7 +612,7 @@ class IntegracionPagoRealTests(TransactionTestCase):
     cotizar = IntegracionRealTests.cotizar
 
     @override_settings(
-        PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false", PEY_WEBHOOK_SECRET=SECRETO
+        PEDIDOS_COBRO_HABILITADO=True, PEY_WEBHOOK_SECRET=SECRETO
     )
     def test_pago_real_no_avanza_preparacion_y_avisa(self):
         from unittest.mock import Mock
@@ -619,7 +654,7 @@ class IntegracionPagoRealTests(TransactionTestCase):
         self.assertNotIn("listo", aviso.payload["texto"].lower())
 
     @override_settings(
-        PEDIDOS_COBRO_HABILITADO=True, DEMO_MODE="false", PEY_WEBHOOK_SECRET=SECRETO
+        PEDIDOS_COBRO_HABILITADO=True, PEY_WEBHOOK_SECRET=SECRETO
     )
     def test_i5_nuevo_pedido_en_mismo_chat_despues_de_entrega(self):
         from unittest.mock import Mock

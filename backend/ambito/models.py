@@ -10,6 +10,7 @@ class Comercio(models.Model):
         ACTIVE = "active", "Activa"
 
     nombre = models.CharField(max_length=200)
+    es_demo = models.BooleanField(default=False, help_text="Designado por operador.")
     semilla_active_dev = models.BooleanField(
         default=False,
         help_text=(
@@ -51,6 +52,12 @@ class Comercio(models.Model):
         verbose_name = "comercio"
         verbose_name_plural = "comercios"
         ordering = ["nombre"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["es_demo"], condition=models.Q(es_demo=True),
+                name="comercio_un_solo_demo",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.nombre

@@ -1,6 +1,6 @@
 """Publicación e invalidación de cotizaciones."""
 
-from config.modo import demo_activo, politica_cobro_version
+from config.modo import modo_de_comercio
 from pedidos.contratos.calculo import (
     importe_efectivo,
     subtotal_centavos,
@@ -45,7 +45,7 @@ def publicar(comercio, pedido, usuario=None):
     pedido.version += 1
     invalidar(comercio, pedido)
     revision = pedido.ultima_revision + 1
-    demo = demo_activo()
+    modo = modo_de_comercio(comercio)
     cot = Cotizacion.objects.create(
         comercio=comercio,
         pedido=pedido,
@@ -53,9 +53,9 @@ def publicar(comercio, pedido, usuario=None):
         pedido_version_publicada=pedido.version,
         snapshot=snapshot,
         total_comercial_centavos=total,
-        importe_efectivo_centavos=importe_efectivo(total, demo),
-        demo_mode=demo,
-        politica_cobro_version=politica_cobro_version(),
+        importe_efectivo_centavos=importe_efectivo(total, modo.demo),
+        demo_mode=modo.demo,
+        politica_cobro_version=modo.politica,
         token_resumen=f"P{pedido.numero}-R{revision}",
         publicada_por=usuario,
     )

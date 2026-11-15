@@ -7,10 +7,10 @@ abajo son conservadores y se actualizan solo con evidencia verificable.
 
 ## Preparación del tendero y del pagador
 
-1. Usar una cuenta demo registrada y **ACTIVE** en pey, seleccionada como predeterminada;
-   comprobar que coincide con el destino permitido de demo. La validación de una CLABE
-   no demuestra titularidad ni activación. Confirmar modo demo y política coherentes
-   en todos los procesos; el importe efectivo debe ser **MXN 0.01**.
+1. Configurar `DEMO_PEY_BANK_ACCOUNT_ID` con el destino propio válido y designar el
+   comercio mediante `designar_comercio_demo --comercio <id>`. Verificar con
+   `designar_comercio_demo --estado` antes de habilitar cobros. El destino no debe
+   coincidir con una cuenta registrada de comercio. El importe efectivo es MXN 0.01.
 2. Confirmar sesión del comercio correcto, canal de WhatsApp operativo y consentimiento
    de los participantes. El tendero revisa artículos, cantidades y precios; el cliente
    acepta la revisión vigente antes de solicitar el cobro.
@@ -94,7 +94,7 @@ extremo; `no cumplido` indica que aún no se ha demostrado el resultado exigido.
 | AC1-15 | Cambio de predeterminada no reasigna cobros históricos ni webhooks | parcial |
 | AC1-16 | Estado, sincronización e incertidumbre independientes por cuenta | parcial |
 
-Pendientes de infraestructura: cuenta demo ACTIVE en pey, WAHA con número real,
+Pendientes de infraestructura: cuenta pey propia y su id configurado, WAHA con número real,
 modelo STT instalado en servidor y cobro habilitado allí. Ninguno se presume verificado.
 Para cambiar un estado, adjuntar referencia de prueba, fecha, SHA y resultado observado.
 
@@ -136,8 +136,11 @@ Revisar la grabación antes de compartirla para retirar secretos y datos persona
 
 ## Contingencias y prerrequisitos de servidor
 
-Antes de la demo verificar cuenta demo ACTIVE y destino permitido; núcleo real, pey de
-producción y modo/política comunes; firmas pey y WAHA; WAHA con número real y soporte
+Antes de la demo verificar la designación con `designar_comercio_demo --estado` y el
+destino propio configurado en web y cobros; el demo no necesita cuenta ACTIVE propia.
+Los comercios normales cobran a su cuenta y las rutas legacy se bloquean solo para el
+demo. Verificar total comercial visible, importe efectivo MXN 0.01, núcleo real, pey de
+producción, firmas pey y WAHA; WAHA con número real y soporte
 de media con origen coincidente; ffmpeg/ffprobe, venv STT y modelo precargado local;
 capacidad CPU/memoria; migraciones y latidos recientes de web, canal, cobros y STT.
 El responsable habilita el cobro en el servidor solo tras estas comprobaciones y

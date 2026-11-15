@@ -4,8 +4,7 @@ import re
 
 from ambito.candados import bloquear_comercio, bloquear_cuenta
 from ambito.cuenta import cuenta_apta
-from config.modo import cobro_habilitado, demo_activo, politica_cobro_version
-from django.conf import settings
+from config.modo import cobro_habilitado, destino_demo, modo_de_comercio
 from django.db import transaction
 from django.db.models import F
 
@@ -19,17 +18,18 @@ from pedidos.servicios.eventos import emitir
 from pedidos.servicios.intentos import plaza_ocupada
 
 
-def _cuenta(comercio, demo, importe):
+def _destino(comercio, demo, importe):
+    if demo:
+        destino = destino_demo()
+        if importe != 1 or not destino:
+            raise ErrorNucleo(CodigoError.DEMO_DESTINO_NO_PERMITIDO)
+        return None, destino
     cuenta = comercio.cuenta_por_defecto
     if cuenta:
         cuenta = bloquear_cuenta(cuenta)
     if not cuenta_apta(cuenta) or cuenta.comercio_id != comercio.pk:
         raise ErrorNucleo(CodigoError.CUENTA_NO_ACTIVE)
-    if demo and (
-        importe != 1 or cuenta.pey_bank_account_id != settings.DEMO_PEY_BANK_ACCOUNT_ID
-    ):
-        raise ErrorNucleo(CodigoError.DEMO_DESTINO_NO_PERMITIDO)
-    return cuenta
+    return cuenta, cuenta.pey_bank_account_id
 
 
 def _requiere_vencimiento(comercio, pedido, datos, huella):
@@ -69,8 +69,7 @@ def _requiere_vencimiento(comercio, pedido, datos, huella):
         if pedido.version != datos["expected_version"]:
             raise ErrorNucleo(CodigoError.VERSION_OBSOLETA)
         if (aceptacion.demo_mode, aceptacion.politica_cobro_version) != (
-            demo_activo(),
-            politica_cobro_version(),
+            modo_de_comercio(comercio)
         ):
             raise ErrorNucleo(CodigoError.MODO_CAMBIO)
         if not cobro_habilitado():
@@ -125,13 +124,12 @@ def solicitar(comercio, pedido, datos, huella):
         if pedido.version != datos["expected_version"]:
             raise ErrorNucleo(CodigoError.VERSION_OBSOLETA)
         if (aceptacion.demo_mode, aceptacion.politica_cobro_version) != (
-            demo_activo(),
-            politica_cobro_version(),
+            modo_de_comercio(comercio)
         ):
             raise ErrorNucleo(CodigoError.MODO_CAMBIO)
         if not cobro_habilitado():
             raise ErrorNucleo(CodigoError.PROVEEDOR_NO_DISPONIBLE)
-        cuenta = _cuenta(
+        cuenta, pey_id = _destino(
             comercio, aceptacion.demo_mode, aceptacion.importe_efectivo_centavos
         )
         if datos["canal"] not in ("qr_venta", "notificacion") or (
@@ -155,7 +153,7 @@ def solicitar(comercio, pedido, datos, huella):
             demo_mode=aceptacion.demo_mode,
             politica_cobro_version=aceptacion.politica_cobro_version,
             cuenta=None if ocupado else cuenta,
-            pey_bank_account_id="" if ocupado else cuenta.pey_bank_account_id,
+            pey_bank_account_id="" if ocupado else pey_id,
             concepto=f"Pedido {pedido.numero}",
             referencia="0",
             expiracion_s=600,
@@ -224,7 +222,7 @@ def activar_espera(comercio, pedido_id, intento_id, datos):
             pedido.estado != "aceptado"
             or pedido.revision_vigente != intento.cotizacion.revision
             or (intento.demo_mode, intento.politica_cobro_version)
-            != (demo_activo(), politica_cobro_version())
+            != modo_de_comercio(comercio)
         ):
             descartar(
                 intento, "condiciones_cambiaron", comercio=comercio, pedido=pedido,
@@ -233,7 +231,7 @@ def activar_espera(comercio, pedido_id, intento_id, datos):
         else:
             if not cobro_habilitado():
                 raise ErrorNucleo(CodigoError.PROVEEDOR_NO_DISPONIBLE)
-            cuenta = _cuenta(
+            cuenta, pey_id = _destino(
                 comercio, intento.demo_mode, intento.importe_efectivo_centavos
             )
             if not plaza_ocupada(comercio):
@@ -242,7 +240,7 @@ def activar_espera(comercio, pedido_id, intento_id, datos):
                 ).update(
                     estado="reservado",
                     cuenta=cuenta,
-                    pey_bank_account_id=cuenta.pey_bank_account_id,
+                    pey_bank_account_id=pey_id,
                     version=F("version") + 1,
                 )
                 pedido.version += 1

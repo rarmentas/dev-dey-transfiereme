@@ -1,20 +1,39 @@
 """Validación de la configuración del modo de pedidos."""
 
+import logging
+import os
+import re
+from typing import NamedTuple
+
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 
-def demo_activo() -> bool:
-    valor = settings.DEMO_MODE.strip().lower()
-    if valor not in ("", "true", "false"):
-        raise ImproperlyConfigured("DEMO_MODE debe ser true o false")
-    return valor == "true"
+POLITICA_NORMAL = "normal-1"
+POLITICA_DEMO = "demo-1"
+logger = logging.getLogger(__name__)
 
 
-def politica_cobro_version() -> str:
-    return settings.POLITICA_COBRO_VERSION or (
-        "demo-1" if demo_activo() else "normal-1"
-    )
+class ModoCobro(NamedTuple):
+    demo: bool
+    politica: str
+
+
+def politica_de(demo: bool) -> str:
+    return POLITICA_DEMO if demo else POLITICA_NORMAL
+
+
+def modo_de_comercio(comercio) -> ModoCobro:
+    from ambito.models import Comercio
+
+    pk = getattr(comercio, "pk", comercio)
+    demo = Comercio.objects.values_list("es_demo", flat=True).get(pk=pk)
+    return ModoCobro(demo, politica_de(demo))
+
+
+def destino_demo() -> str | None:
+    valor = settings.DEMO_PEY_BANK_ACCOUNT_ID.strip()
+    return valor if re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", valor) else None
 
 
 def cobro_habilitado() -> bool:
@@ -28,17 +47,12 @@ def validar_stub_sin_credenciales() -> None:
 
 
 def validar_configuracion() -> None:
-    demo = demo_activo()
     adaptador = settings.NUCLEO_ADAPTADOR.strip().lower()
     if adaptador == "stub":
         validar_stub_sin_credenciales()
     if not settings.DEBUG:
-        if not settings.DEMO_MODE.strip():
-            raise ImproperlyConfigured("DEMO_MODE debe declararse explícitamente")
         if adaptador not in ("", "real"):
             raise ImproperlyConfigured("NUCLEO_ADAPTADOR debe ser real")
-        if not settings.POLITICA_COBRO_VERSION.strip():
-            raise ImproperlyConfigured("POLITICA_COBRO_VERSION es requerida")
     from pey.seleccion import modo_adaptador
 
     rol = settings.CODY_ROL.strip().lower()
@@ -53,14 +67,13 @@ def validar_configuracion() -> None:
             raise ImproperlyConfigured("Configuración de cobro inválida")
         if rol in ("web", "cobros") and not settings.PEY_API_KEY:
             raise ImproperlyConfigured("PEY_API_KEY es requerida para este rol")
-    if demo:
-        if (
-            settings.DEBUG
-            or adaptador not in ("", "real")
-            or modo_adaptador() != "produccion"
-            or not settings.DEMO_PEY_BANK_ACCOUNT_ID.strip()
-        ):
-            raise ImproperlyConfigured("Configuración de demostración inválida")
+    for clave in ("DEMO_MODE", "POLITICA_COBRO_VERSION"):
+        if clave in os.environ:
+            logger.warning(
+                "%s ignorada; el demo es por comercio (designar_comercio_demo)", clave
+            )
+    if settings.DEMO_PEY_BANK_ACCOUNT_ID.strip() and not destino_demo():
+        logger.warning("DEMO_PEY_BANK_ACCOUNT_ID no es un ULID válido")
 
 
 def respuesta_bloqueada_en_demo():

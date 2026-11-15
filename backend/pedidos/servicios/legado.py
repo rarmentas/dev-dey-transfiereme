@@ -4,7 +4,7 @@ import re
 
 from ambito.candados import bloquear_comercio, bloquear_cuenta
 from ambito.cuenta import cuenta_apta
-from config.modo import demo_activo, politica_cobro_version
+from config.modo import modo_de_comercio
 from django.db import transaction
 from movimientos.exceptions import DemoBloqueado
 from pey.tipos import ErrorPey, ParametroInvalido
@@ -54,8 +54,6 @@ def _resultado(intento):
 def emitir_legado(
     comercio, canal, monto, concepto, referencia, telefono, clave, puerto
 ):
-    if demo_activo():
-        raise DemoBloqueado()
     if not isinstance(clave, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", clave):
         raise ValueError("Idempotency-Key es obligatoria.")
     huella = hash_canonico(
@@ -72,6 +70,9 @@ def emitir_legado(
     vencer_pendientes(comercio)
     with transaction.atomic():
         comercio = bloquear_comercio(comercio)
+        modo = modo_de_comercio(comercio)
+        if modo.demo:
+            raise DemoBloqueado()
         anterior = IntentoCobro.objects.filter(
             comercio=comercio, clave_legado=clave
         ).first()
@@ -103,7 +104,7 @@ def emitir_legado(
             estado="reservado",
             importe_efectivo_centavos=int(monto * 100),
             demo_mode=False,
-            politica_cobro_version=politica_cobro_version(),
+            politica_cobro_version=modo.politica,
             cuenta=cuenta,
             pey_bank_account_id=cuenta.pey_bank_account_id,
             concepto=concepto,

@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from ambito.exceptions import AmbitoError, ComercioEnCuerpoError, SinAmbitoError
 from ambito.scope import preparar_operacion_cobro, rechazar_comercio_en_query
-from config.modo import demo_activo, respuesta_bloqueada_en_demo
+from config.modo import modo_de_comercio, respuesta_bloqueada_en_demo
 from movimientos.exceptions import DemoBloqueado
 from pey.tipos import ErrorPey, ParametroInvalido
 from ventas.canal import VentaPendiente
@@ -84,20 +84,23 @@ class CrearVentaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if demo_activo():
-            return respuesta_bloqueada_en_demo()
-        try:
-            datos = _leer_cuerpo(request)
-        except _CuerpoInvalido as exc:
-            return Response({"detail": str(exc)}, status=400)
-
         try:
             rechazar_comercio_en_query(request.GET)
-            comercio = preparar_operacion_cobro(request, datos)
+            comercio = preparar_operacion_cobro(request, {})
         except ComercioEnCuerpoError as exc:
             return _respuesta_ambito(exc, 400)
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
+
+        if modo_de_comercio(comercio).demo:
+            return respuesta_bloqueada_en_demo()
+        try:
+            datos = _leer_cuerpo(request)
+            preparar_operacion_cobro(request, datos)
+        except _CuerpoInvalido as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
 
         clave = request.headers.get("Idempotency-Key", "")
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", clave):
@@ -130,20 +133,23 @@ class CrearNotificacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if demo_activo():
-            return respuesta_bloqueada_en_demo()
-        try:
-            datos = _leer_cuerpo(request)
-        except _CuerpoInvalido as exc:
-            return Response({"detail": str(exc)}, status=400)
-
         try:
             rechazar_comercio_en_query(request.GET)
-            comercio = preparar_operacion_cobro(request, datos)
+            comercio = preparar_operacion_cobro(request, {})
         except ComercioEnCuerpoError as exc:
             return _respuesta_ambito(exc, 400)
         except SinAmbitoError as exc:
             return _respuesta_ambito(exc, 403)
+
+        if modo_de_comercio(comercio).demo:
+            return respuesta_bloqueada_en_demo()
+        try:
+            datos = _leer_cuerpo(request)
+            preparar_operacion_cobro(request, datos)
+        except _CuerpoInvalido as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except ComercioEnCuerpoError as exc:
+            return _respuesta_ambito(exc, 400)
 
         clave = request.headers.get("Idempotency-Key", "")
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", clave):

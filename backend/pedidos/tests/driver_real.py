@@ -6,7 +6,9 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import Client
-from django.test import override_settings
+from unittest.mock import patch
+
+from config import modo
 from django.utils import timezone
 
 from ambito.models import Comercio
@@ -37,31 +39,40 @@ class DriverReal(DriverFixtureV1):
         self.lector = lector
         self.comercios = {}
         self.modo = None
-        self.cambiar_modo(False, "normal-1")
+        self.demo_actual = False
+
 
     def cerrar(self):
         if self.modo:
-            self.modo.disable()
+            self.modo.stop()
+            self.modo = None
 
     def cambiar_modo(self, demo, politica):
         self.cerrar()
-        self.modo = override_settings(
-            DEMO_MODE="true" if demo else "false", POLITICA_COBRO_VERSION=politica
+        self.demo_actual = demo
+        Comercio.objects.filter(pk__in=[c.pk for c in self.comercios.values()]).update(
+            es_demo=False
         )
-        self.modo.enable()
+        comercio = self.comercios.get("comercio")
+        if comercio:
+            Comercio.objects.filter(pk=comercio.pk).update(es_demo=demo)
+        if politica != modo.politica_de(demo):
+            self.modo = patch.object(
+                modo, "POLITICA_DEMO" if demo else "POLITICA_NORMAL", politica
+            )
+            self.modo.start()
         if self.cobros and self.comercios:
             self.despachar()
 
     def _comercio(self, nombre):
         if nombre not in self.comercios:
-            self.comercios[nombre] = Comercio.objects.create(nombre=nombre)
+            self.comercios[nombre] = Comercio.objects.create(
+                nombre=nombre, es_demo=self.demo_actual and nombre == "comercio"
+            )
             if self.cobros:
                 from ambito.tests.soporte import crear_cuenta
 
-                cuenta = crear_cuenta(self.comercios[nombre])
-                if nombre == "comercio":
-                    cuenta.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-                    cuenta.save(update_fields=["pey_bank_account_id"])
+                crear_cuenta(self.comercios[nombre])
         return self.comercios[nombre]
 
     def contexto(self, sufijo="", comercio="comercio"):

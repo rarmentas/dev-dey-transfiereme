@@ -136,9 +136,7 @@ PEY_BASE_URL = "https://api.pey.mx"
 
 CODY_ROL = os.environ.get("CODY_ROL", "web")
 
-DEMO_MODE = os.environ.get("DEMO_MODE", "")
 DEMO_PEY_BANK_ACCOUNT_ID = os.environ.get("DEMO_PEY_BANK_ACCOUNT_ID", "")
-POLITICA_COBRO_VERSION = os.environ.get("POLITICA_COBRO_VERSION", "")
 NUCLEO_ADAPTADOR = os.environ.get("NUCLEO_ADAPTADOR", "")
 NUCLEO_STUB_PERMITIDO = DEBUG or "test" in sys.argv
 PEDIDOS_COBRO_HABILITADO = _env_bool("PEDIDOS_COBRO_HABILITADO", False)
