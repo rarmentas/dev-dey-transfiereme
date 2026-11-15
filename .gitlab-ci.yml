@@ -16,7 +16,7 @@
 # Opcional: TEST_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 #
 # Prod (prefijo PROD_):
-#   PROD_SSH_PRIVATE_KEY (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
+#   PROD_SSH_PRIVATE_KEY_V2 (base64), PROD_DEPLOY_HOST, PROD_DEPLOY_USER,
 #   PROD_DEPLOY_PORT, PROD_DEPLOY_PATH, PROD_ENV_FILE (File)
 # Opcional: PROD_PYTHON (/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12)
 

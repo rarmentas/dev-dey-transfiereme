@@ -60,8 +60,8 @@ export PATH="$scratch/bin:$PATH"
 export CALLS="$scratch/calls"
 export PROD_ENV_FILE="$scratch/ci.env"
 export PROD_DEPLOY_HOST=100.120.112.112 PROD_DEPLOY_USER=rarme PROD_DEPLOY_PORT=30022
-export PROD_SSH_PRIVATE_KEY
-PROD_SSH_PRIVATE_KEY="$(printf '%s\n' '-----BEGIN PRIVATE KEY-----' 'fake' '-----END PRIVATE KEY-----' | base64 -w 0)"
+export PROD_SSH_PRIVATE_KEY_V2
+PROD_SSH_PRIVATE_KEY_V2="$(printf '%s\n' '-----BEGIN PRIVATE KEY-----' 'fake' '-----END PRIVATE KEY-----' | base64 -w 0)"
 
 expect_failure_without_transfer() {
   local label="$1"
@@ -84,6 +84,12 @@ PROD_DEPLOY_PATH=/opt/codi/test
 expect_failure_without_transfer scope_cruzado bash "$scratch/repo/scripts/ci/deploy.sh" prod
 PROD_DEPLOY_PATH=/opt/codi/prod
 expect_failure_without_transfer test bash "$scratch/repo/scripts/ci/deploy.sh" test
+export PROD_SSH_PRIVATE_KEY="$PROD_SSH_PRIVATE_KEY_V2"
+unset PROD_SSH_PRIVATE_KEY_V2
+expect_failure_without_transfer clave_antigua bash "$scratch/repo/scripts/ci/deploy.sh" prod
+grep -q 'PROD_SSH_PRIVATE_KEY_V2' "$scratch/output"
+export PROD_SSH_PRIVATE_KEY_V2="$PROD_SSH_PRIVATE_KEY"
+unset PROD_SSH_PRIVATE_KEY
 PROD_PYTHON='/tmp/python;exit 0'
 export PROD_PYTHON
 expect_failure_without_transfer python_inseguro bash "$scratch/repo/scripts/ci/deploy.sh" prod

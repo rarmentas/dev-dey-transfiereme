@@ -12,8 +12,8 @@ Release de referencia: pipeline 1517, commit `effbdcd54c625e4ad616eb00eb4cc973b4
    aislada. Guardar la unit, `.env`, release, builds, roles y permisos en
    `/var/backups/codi/production` con `umask 077`. Registrar checksum y hora.
 3. Comprobar en GitLab jobs activos y pendientes de CoDi, cancelar/esperar los
-   pertinentes y detener reintentos/schedules. Revocar temporalmente en el VPS
-   la clave SSH que usan los jobs antiguos, tras identificar su fingerprint.
+   pertinentes y detener reintentos/schedules. Revocar en el VPS la clave SSH
+   que usan los jobs antiguos, tras identificar su fingerprint.
    Conservar acceso administrativo independiente y probar que la clave vieja
    ya no entra. Cambiar solo `PROD_DEPLOY_PATH` no protege del job anterior.
 4. Con el bloqueo de deploy adquirido, crear el marcador
@@ -120,8 +120,13 @@ de incidente aparte.
 
 ## Primer deploy nuevo
 
-Después de aceptar el corte, fusionar el commit revisado y lanzar manualmente
-`deploy:prod` con `PROD_DEPLOY_PATH=/opt/codi/prod`. Confirmar antes/después
+Después de aceptar el corte, fusionar el commit revisado. Crear una clave SSH
+nueva y guardar su privada en la variable protegida y oculta
+`PROD_SSH_PRIVATE_KEY_V2` con ámbito `production`; instalar solo su pública en
+el VPS. Mantener revocada la antigua `PROD_SSH_PRIVATE_KEY`, pues un Retry de
+un pipeline anterior todavía ejecuta sus scripts viejos. Con el nuevo pipeline
+validado, retirar el marcador de mantenimiento bajo `flock` y lanzar
+manualmente `deploy:prod` con `PROD_DEPLOY_PATH=/opt/codi/prod`. Confirmar antes/después
 que ni PostgreSQL ni WAHA cambiaron ID, StartedAt, imagen o mounts. `deploy:test`
 queda bloqueado. Los jobs antiguos no se reintentan. Solo después de aceptar
 el deploy nuevo se retira el release antiguo con lista explícita, sin usar
