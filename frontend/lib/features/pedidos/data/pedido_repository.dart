@@ -1,0 +1,109 @@
+import 'package:dio/dio.dart';
+
+import 'pedido.dart';
+
+class PedidoException implements Exception {
+  PedidoException(
+    this.codigo,
+    this.status,
+    this.mensaje, {
+    this.pedidoVersion,
+    this.errores = const {},
+  });
+  final String codigo;
+  final int? status;
+  final String mensaje;
+  final int? pedidoVersion;
+  final Map<String, dynamic> errores;
+  @override
+  String toString() => mensaje;
+}
+
+class PedidoRepository {
+  PedidoRepository(this._dio);
+  final Dio _dio;
+  static const ruta = '/api/pedidos/';
+
+  Future<List<PedidoResumen>> listar() async {
+    final data = await _solicitar('GET', ruta);
+    return (data['pedidos'] as List)
+        .map((e) => PedidoResumen.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<Pedido> obtener(String id) async =>
+      Pedido.fromJson(await _solicitar('GET', '$ruta$id/'));
+  Future<Pedido> revisar(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(await _solicitar('PUT', '$ruta$id/renglones/', cuerpo));
+  Future<Pedido> publicar(String id, Map<String, dynamic> cuerpo) async =>
+      Pedido.fromJson(
+        await _solicitar('POST', '$ruta$id/cotizaciones/', cuerpo),
+      );
+
+  Future<Map<String, dynamic>> _solicitar(
+    String metodo,
+    String path, [
+    Map<String, dynamic>? cuerpo,
+  ]) async {
+    try {
+      final respuesta = await _dio.request<dynamic>(
+        path,
+        data: cuerpo,
+        options: Options(method: metodo),
+      );
+      return _leer(respuesta.statusCode, respuesta.data);
+    } on DioException catch (error) {
+      if (error.response != null) {
+        return _leer(error.response!.statusCode, error.response!.data);
+      }
+      throw PedidoException(
+        'RED',
+        null,
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
+      );
+    }
+  }
+
+  Map<String, dynamic> _leer(int? status, dynamic cuerpo) {
+    final mapa = cuerpo is Map
+        ? Map<String, dynamic>.from(cuerpo)
+        : <String, dynamic>{};
+    if (status != null &&
+        status >= 200 &&
+        status < 300 &&
+        mapa['data'] is Map) {
+      return Map<String, dynamic>.from(mapa['data'] as Map);
+    }
+    final codigo =
+        mapa['codigo'] as String? ??
+        (status == 401 || status == 403
+            ? 'SESION_TERMINADA'
+            : status != null && status >= 500
+            ? 'SERVICIO_NO_DISPONIBLE'
+            : 'ERROR');
+    final mensaje = status != null && status >= 500
+        ? 'El servidor no está disponible. Intenta de nuevo.'
+        : switch (codigo) {
+            'SESION_TERMINADA' => 'Tu sesión terminó. Vuelve a entrar.',
+            'PERMISO_DENEGADO' => 'No tienes permiso para este comercio.',
+            'PEDIDO_NO_ACCESIBLE' => 'Este pedido ya no está disponible.',
+            'VERSION_OBSOLETA' => 'El pedido cambió. Cargamos la versión más reciente; revisa y guarda de nuevo.',
+            'RENGLON_PENDIENTE' => 'Faltan renglones por resolver.',
+            'PEDIDO_CONGELADO' => 'Este pedido ya no se puede editar.',
+            'CLAVE_REUTILIZADA' => 'No pudimos guardar. Intenta de nuevo.',
+            'PAYLOAD_INVALIDO' => 'Revisa los datos de los renglones.',
+            'SERVICIO_NO_DISPONIBLE' =>
+              'El servidor no está disponible. Intenta de nuevo.',
+            _ => 'No pudimos completar la solicitud. Intenta de nuevo.',
+          };
+    throw PedidoException(
+      codigo,
+      status,
+      mensaje,
+      pedidoVersion: mapa['pedido_version'] as int?,
+      errores: mapa['errores'] is Map
+          ? Map<String, dynamic>.from(mapa['errores'] as Map)
+          : {},
+    );
+  }
+}
