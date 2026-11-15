@@ -94,3 +94,36 @@ class DuenoYEnlaceTests(TestCase):
             (cuenta.registro_estado, cuenta.pey_bank_account_id), ("registrado", ident)
         )
         self.assertEqual(cuenta.codi_status, "active")
+
+    def test_enlazar_rechaza_uuid_invalido_sin_consultar(self) -> None:
+        ident = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
+        with patch(
+            "ambito.management.commands.enlazar_cuenta_pey.consultar_cuenta"
+        ) as consulta:
+            with self.assertRaises(CommandError) as error:
+                call_command("enlazar_cuenta_pey", cuenta="no-es-uuid", pey_id=ident)
+        consulta.assert_not_called()
+        self.assertNotIn(ident, str(error.exception))
+        self.assertNotIn("no-es-uuid", str(error.exception))
+
+    def test_enlazar_rechaza_id_duplicado_sin_exponer_datos(self) -> None:
+        cuenta = crear_cuenta(self.comercio, estado="pending", predeterminada=False)
+        cuenta.pey_bank_account_id = ""
+        cuenta.registro_estado = "incierto"
+        cuenta.save(update_fields=["pey_bank_account_id", "registro_estado"])
+        otra = crear_cuenta(Comercio.objects.create(nombre="Otro"))
+        ident = otra.pey_bank_account_id
+        with patch(
+            "ambito.management.commands.enlazar_cuenta_pey.consultar_cuenta",
+            return_value=CuentaPey(ident, "ACTIVE", cuenta.clabe),
+        ):
+            with self.assertRaises(CommandError) as error:
+                call_command("enlazar_cuenta_pey", cuenta=str(cuenta.pk), pey_id=ident)
+        self.assertIn("ya asignado", str(error.exception))
+        self.assertNotIn(ident, str(error.exception))
+        self.assertNotIn(cuenta.clabe, str(error.exception))
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.registro_estado, "incierto")
+        self.assertEqual(cuenta.pey_bank_account_id, "")
+        otra.refresh_from_db()
+        self.assertEqual(otra.pey_bank_account_id, ident)

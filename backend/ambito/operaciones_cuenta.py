@@ -138,10 +138,14 @@ def registrar(
 
 def _aplicar(op, campos, estado, error="", obtenido="", request_id=""):
     with transaction.atomic():
+        CuentaCobro.objects.select_for_update().get(pk=op.cuenta_id)
+        actual = OperacionCuenta.objects.select_for_update().get(pk=op.pk)
+        if actual.estado != "en_curso":
+            return
         actualizadas = CuentaCobro.objects.filter(
-            pk=op.cuenta_id, version=op.version_reclamada
+            pk=actual.cuenta_id, version=actual.version_reclamada
         ).update(**campos, version=F("version") + 1)
-        OperacionCuenta.objects.filter(pk=op.pk, estado="en_curso").update(
+        OperacionCuenta.objects.filter(pk=actual.pk).update(
             estado=estado if actualizadas else "descartada",
             error=error,
             request_id=request_id,
@@ -149,6 +153,13 @@ def _aplicar(op, campos, estado, error="", obtenido="", request_id=""):
             terminado_en=timezone.now(),
             lease_hasta=None,
         )
+        if actual.tipo == "sync" and actual.sync_posterior:
+            OperacionCuenta.objects.create(
+                cuenta_id=actual.cuenta_id,
+                tipo="sync",
+                origen="webhook",
+                estado="pendiente",
+            )
 
 
 def encolar_sync(cuenta: CuentaCobro, origen: str = "webhook"):
@@ -162,6 +173,9 @@ def encolar_sync(cuenta: CuentaCobro, origen: str = "webhook"):
                 estado__in=["pendiente", "en_curso"],
                 defaults={"estado": "pendiente", "origen": origen},
             )
+            if op.estado == "en_curso" and not op.sync_posterior:
+                op.sync_posterior = True
+                op.save(update_fields=["sync_posterior"])
             return op
     except IntegrityError:
         return cuenta.operaciones.get(tipo="sync", estado__in=["pendiente", "en_curso"])
@@ -247,7 +261,10 @@ def recuperar_abandonadas():
             _aplicar(op, {"ultimo_error": "LEASE_VENCIDO"}, "fallida")
 
 
-def ejecutar_pendientes():
+def ejecutar_pendientes(detener=None):
+    detener = detener or (lambda: False)
     recuperar_abandonadas()
     for op in OperacionCuenta.objects.filter(tipo="sync", estado="pendiente"):
+        if detener():
+            break
         sincronizar(op.cuenta, op=op)

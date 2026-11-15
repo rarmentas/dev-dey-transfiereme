@@ -3,10 +3,13 @@
 import json
 from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.test import TestCase, TransactionTestCase, override_settings
 
 from ambito.models import Comercio, OperacionCuenta
+from ambito.operaciones_cuenta import ejecutar_pendientes, sincronizar
 from ambito.tests.soporte import crear_cuenta
+from pey.cuentas import CuentaPey
 from webhooks.models import AvisoRecibido
 from webhooks.tests.support.pey_webhook import SECRETO, post_firmado
 
@@ -59,3 +62,53 @@ class AvisoCuentaPeyTests(TestCase):
         self.assertEqual(respuesta.status_code, 401)
         self.assertFalse(AvisoRecibido.objects.exists())
         self.assertFalse(OperacionCuenta.objects.exists())
+
+
+@override_settings(PEY_WEBHOOK_SECRET=SECRETO)
+class ActivacionDuranteSyncTests(TransactionTestCase):
+    def test_activacion_durante_get_requiere_consulta_posterior(self) -> None:
+        comercio = Comercio.objects.create(nombre="Pendiente")
+        cuenta = crear_cuenta(comercio, estado="pending")
+        llamadas = []
+
+        def consultar(identificador, **kwargs):
+            self.assertFalse(connection.in_atomic_block)
+            llamadas.append(identificador)
+            if len(llamadas) == 1:
+                respuesta = post_firmado(
+                    self.client, _cuerpo(identificador), "activacion-durante-get"
+                )
+                self.assertEqual(respuesta.json()["estado"], "aplicado")
+                repetido = post_firmado(
+                    self.client, _cuerpo(identificador), "segunda-activacion"
+                )
+                self.assertEqual(repetido.json()["estado"], "aplicado")
+                self.assertEqual(
+                    cuenta.operaciones.filter(
+                        tipo="sync", estado__in=["pendiente", "en_curso"]
+                    ).count(),
+                    1,
+                )
+                self.assertEqual(len(llamadas), 1)
+                return CuentaPey(identificador, "PENDING", cuenta.clabe)
+            return CuentaPey(identificador, "ACTIVE", cuenta.clabe)
+
+        with patch("ambito.operaciones_cuenta.consultar_cuenta", side_effect=consultar):
+            sincronizar(cuenta)
+            cuenta.refresh_from_db()
+            self.assertEqual(cuenta.codi_status, "pending")
+            self.assertEqual(
+                cuenta.operaciones.filter(tipo="sync", estado="pendiente").count(), 1
+            )
+            ejecutar_pendientes()
+        cuenta.refresh_from_db()
+        self.assertEqual(len(llamadas), 2)
+        self.assertEqual(cuenta.codi_status, "active")
+        self.assertEqual(
+            cuenta.operaciones.filter(tipo="sync", estado="aplicada").count(), 2
+        )
+        self.assertFalse(
+            cuenta.operaciones.filter(
+                tipo="sync", estado__in=["pendiente", "en_curso"]
+            ).exists()
+        )

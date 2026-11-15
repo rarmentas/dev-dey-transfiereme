@@ -11,6 +11,8 @@ from ambito.models import Comercio, CuentaCobro, OperacionCuenta
 from ambito.operaciones_cuenta import (
     ErrorOperacion,
     _aplicar,
+    ejecutar_pendientes,
+    encolar_sync,
     recuperar_abandonadas,
     registrar,
     sincronizar,
@@ -191,3 +193,50 @@ class OperacionesSinCandadoTests(TransactionTestCase):
             sincronizar(cuenta)
         cuenta.refresh_from_db()
         self.assertEqual(cuenta.codi_status, "active")
+
+    def test_sync_abandonado_con_activacion_recupera_consulta_posterior(self):
+        cuenta = crear_cuenta(
+            Comercio.objects.create(nombre="Recuperación"), estado="pending"
+        )
+        op = OperacionCuenta.objects.create(
+            cuenta=cuenta,
+            tipo="sync",
+            origen="ui",
+            estado="en_curso",
+            version_reclamada=cuenta.version,
+            lease_hasta=timezone.now() - timedelta(seconds=1),
+        )
+        encolar_sync(cuenta, origen="webhook")
+        op.refresh_from_db()
+        self.assertTrue(op.sync_posterior)
+        with patch(
+            "ambito.operaciones_cuenta.consultar_cuenta",
+            return_value=CuentaPey(cuenta.pey_bank_account_id, "ACTIVE", cuenta.clabe),
+        ) as consulta:
+            ejecutar_pendientes()
+        consulta.assert_called_once()
+        cuenta.refresh_from_db()
+        op.refresh_from_db()
+        self.assertEqual(op.estado, "fallida")
+        self.assertEqual(cuenta.codi_status, "active")
+        self.assertEqual(cuenta.operaciones.filter(tipo="sync").count(), 2)
+
+    def test_sync_descartado_por_cas_conserva_activacion_pendiente(self):
+        cuenta = crear_cuenta(
+            Comercio.objects.create(nombre="CAS"), estado="pending"
+        )
+        op = OperacionCuenta.objects.create(
+            cuenta=cuenta,
+            tipo="sync",
+            origen="ui",
+            estado="en_curso",
+            version_reclamada=cuenta.version,
+        )
+        encolar_sync(cuenta, origen="webhook")
+        CuentaCobro.objects.filter(pk=cuenta.pk).update(version=cuenta.version + 1)
+        _aplicar(op, {"codi_status": "pending"}, "aplicada")
+        op.refresh_from_db()
+        self.assertEqual(op.estado, "descartada")
+        self.assertEqual(
+            cuenta.operaciones.filter(tipo="sync", estado="pendiente").count(), 1
+        )

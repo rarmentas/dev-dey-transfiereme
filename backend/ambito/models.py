@@ -180,6 +180,7 @@ class OperacionCuenta(models.Model):
     hash_payload = models.CharField(max_length=64, blank=True)
     payload = models.JSONField(default=dict)
     version_reclamada = models.PositiveIntegerField(null=True, blank=True)
+    sync_posterior = models.BooleanField(default=False)
     lease_token = models.UUIDField(null=True, blank=True)
     lease_hasta = models.DateTimeField(null=True, blank=True)
     request_id = models.CharField(max_length=64, blank=True)
