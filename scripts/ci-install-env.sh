@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copia el .env de la app (variable File) y comprueba el acceso de deploy.
 # Los secretos de la app van dentro del archivo. Host, usuario, puerto y ruta
-# quedan en variables de CI. PROD_SSH_PRIVATE_KEY y TEST_SSH_PRIVATE_KEY
+# quedan en variables de CI. PROD_SSH_PRIVATE_KEY_V2 y TEST_SSH_PRIVATE_KEY
 # llegan en base64 y se decodifican a un archivo temporal. Nada de eso se
 # copia a backend/.env. No imprime valores.
 # Uso: bash scripts/ci-install-env.sh prod|test [destino]
@@ -70,7 +70,13 @@ if ! [[ "${!port_var}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-key_var="${prefix}_SSH_PRIVATE_KEY"
+if [[ "$scope" == prod ]]; then
+  # La llave anterior permanece revocada para que un Retry de un job viejo
+  # nunca pueda desplegar con la credencial del pipeline nuevo.
+  key_var=PROD_SSH_PRIVATE_KEY_V2
+else
+  key_var=TEST_SSH_PRIVATE_KEY
+fi
 key_b64="${!key_var:-}"
 key_b64="${key_b64//[[:space:]]/}"
 if [[ -z "$key_b64" ]]; then

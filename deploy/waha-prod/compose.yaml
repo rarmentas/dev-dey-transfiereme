@@ -1,0 +1,30 @@
+name: codi-waha-prod
+
+services:
+  waha:
+    image: devlikeapro/waha@sha256:1f7faeb0227ad5edb5711f7058bfce807ea65e5f92234af0778e4db140f6eb46
+    container_name: codi-waha-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3004:3000"
+    volumes:
+      - type: bind
+        source: /var/lib/codi/waha-prod/sessions
+        target: /app/.sessions
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/codi/waha-prod/media
+        target: /app/.media
+        bind:
+          create_host_path: false
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
