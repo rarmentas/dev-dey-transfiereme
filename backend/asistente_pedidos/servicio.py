@@ -48,6 +48,7 @@ def _filas_anteriores(dto):
 
 def _preparar_renglones(estado, dto, mensaje):
     anteriores = _filas_anteriores(dto) if dto else []
+    originales_por_id = {r.renglon_id: r for r in dto.renglones} if dto else {}
     cambios = {}
     filas_por_id = {}
     eliminados = set()
@@ -66,22 +67,34 @@ def _preparar_renglones(estado, dto, mensaje):
         if not coincidencias and dto and estado.get("aclaracion_de"):
             coincidencias = [r for r in dto.renglones if r.renglon_id == estado["aclaracion_de"]
                             and r.resolucion.value == "pendiente"]
+        if not coincidencias:
+            coincidencias = [r for r in cambios.values()
+                             if r.renglon_id not in originales_por_id and
+                             (normalizar(r.texto_solicitado) == nombre or
+                              (fila["producto_id"] and
+                               filas_por_id[r.renglon_id]["producto_id"] == fila["producto_id"]))]
         if len(coincidencias) > 1:
             return None, {}, "Hay varios renglones iguales; indique cuál desea corregir."
         operacion = fila.get("operacion", "reemplazar")
+        identidad = (coincidencias[0].renglon_id if coincidencias else
+                     str(uuid5(NAMESPACE_URL, f"agente:{mensaje.pk}:{indice}")))
+        if identidad in eliminados:
+            return None, {}, "Indique si desea quitar o corregir ese producto."
         if operacion in {"incrementar", "reducir"} and coincidencias:
-            anterior = next(r for r in dto.renglones if r.renglon_id == coincidencias[0].renglon_id)
-            identidad_anterior = anterior.renglon_id
-            previo = filas_por_id.get(identidad_anterior)
-            if (anterior.resolucion.value != "incluido" or fila["resolucion"] != "incluido"
-                    or anterior.descripcion != fila["descripcion"] or anterior.unidad != fila["unidad"]):
+            anterior = originales_por_id.get(identidad)
+            previo = filas_por_id.get(identidad)
+            if (fila["resolucion"] != "incluido" or
+                    (anterior and (anterior.resolucion.value != "incluido" or
+                                   anterior.descripcion != fila["descripcion"] or
+                                   anterior.unidad != fila["unidad"])) or
+                    (not anterior and not previo)):
                 return None, {}, "No puedo ajustar esa cantidad; indique el producto y su cantidad final."
             if previo and (previo["resolucion"] != "incluido" or
                            any(previo[campo] != fila[campo] for campo in
                                ("producto_id", "descripcion", "unidad", "precio_centavos"))):
                 return None, {}, "Hay ajustes incompatibles para ese producto; indique la cantidad final."
             try:
-                cantidad_previa = (cambios[identidad_anterior].cantidad_solicitada
+                cantidad_previa = (cambios[identidad].cantidad_solicitada
                                    if previo else anterior.cantidad)
                 actual = Decimal(str(cantidad_previa))
                 diferencia = Decimal(str(fila["cantidad"]))
@@ -89,16 +102,16 @@ def _preparar_renglones(estado, dto, mensaje):
                 return None, {}, "Indique cuántas unidades desea cambiar."
             cantidad_nueva = actual + diferencia if operacion == "incrementar" else actual - diferencia
             if operacion == "reducir" and cantidad_nueva == 0:
-                eliminados.add(coincidencias[0].renglon_id)
+                if anterior:
+                    eliminados.add(identidad)
+                cambios.pop(identidad, None)
+                filas_por_id.pop(identidad, None)
                 continue
             if not 0 < cantidad_nueva <= CANTIDAD_MAXIMA:
                 return None, {}, "La cantidad resultante no es válida; indique la cantidad final."
             fila = {**fila, "cantidad": str(cantidad_nueva)}
         elif operacion == "reducir":
             return None, {}, "Ese producto no está en el pedido; indique cuál desea quitar."
-        identidad = coincidencias[0].renglon_id if len(coincidencias) == 1 else str(uuid5(NAMESPACE_URL, f"agente:{mensaje.pk}:{indice}"))
-        if identidad in eliminados:
-            return None, {}, "Indique si desea quitar o corregir ese producto."
         try:
             cantidad = Decimal(str(fila["cantidad"])) if fila["cantidad"] is not None else None
         except (InvalidOperation, ValueError, TypeError):

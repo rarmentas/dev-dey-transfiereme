@@ -107,6 +107,20 @@ class ExtraccionSeguraTests(SimpleTestCase):
         self.assertEqual([(i["operacion"], i["cantidad"]) for i in resultado["items"]],
                          [("incrementar", "2"), ("reducir", "1")])
 
+    def test_menciones_identicas_se_vinculan_una_vez_cada_una(self):
+        resultado = self.extraer("Agrega un refresco y quita un refresco", [
+            {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "agregar"},
+            {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"}])
+        self.assertEqual([(i["operacion"], i["cantidad"]) for i in resultado["items"]],
+                         [("incrementar", "1"), ("reducir", "1")])
+
+    def test_menciones_identicas_en_orden_inverso_del_modelo(self):
+        resultado = self.extraer("Agrega un refresco y quita un refresco", [
+            {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"},
+            {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "agregar"}])
+        self.assertEqual([i["operacion"] for i in resultado["items"]],
+                         ["incrementar", "reducir"])
+
 
 class AgentePedidosTests(TestCase):
     def setUp(self):
@@ -360,6 +374,52 @@ class AgentePedidosTests(TestCase):
         self.assertEqual(renglon.cantidad, Decimal("4"))
         self.assertEqual(Pedido.objects.get().renglones.count(), 1)
         self.assertIn("$72.00", salida)
+
+    def test_reducciones_sucesivas_a_cero_no_reinsertan_producto(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="pan", unidad="pieza",
+                                        precio_centavos=500)
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None},
+                {"nombre": "pan", "cantidad": "1", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"},
+                {"nombre": "refrescos", "cantidad": "2", "unidad": None, "accion": "quitar"}]},
+        )
+        self.enviar("tres refrescos y un pan", modelo)
+        _, salida = self.enviar("quita un refresco y quita dos refrescos", modelo)
+        self.assertEqual(list(Pedido.objects.get().renglones.values_list("descripcion", flat=True)), ["pan"])
+        self.assertIn("$5.00", salida)
+
+    def test_dos_menciones_identicas_conservan_ambas_acciones(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "agregar"},
+                {"nombre": "refresco", "cantidad": "1", "unidad": None, "accion": "quitar"}]},
+        )
+        self.enviar("tres refrescos", modelo)
+        _, salida = self.enviar("Agrega un refresco y quita un refresco", modelo)
+        self.assertEqual(Pedido.objects.get().renglones.get().cantidad, Decimal("3"))
+        self.assertIn("$54.00", salida)
+
+    def test_correccion_del_producto_agregado_en_el_mismo_mensaje(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="pan", unidad="pieza",
+                                        precio_centavos=500)
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "pan", "cantidad": "1", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refrescos", "cantidad": "2", "unidad": None, "accion": "agregar"},
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None, "accion": "actualizar"}]},
+        )
+        self.enviar("un pan", modelo)
+        _, salida = self.enviar("agrega dos refrescos y cambia a tres refrescos", modelo)
+        pedido = Pedido.objects.get()
+        self.assertEqual(pedido.renglones.count(), 2)
+        self.assertEqual(pedido.renglones.get(descripcion="refresco").cantidad, Decimal("3"))
+        self.assertIn("$59.00", salida)
 
     def test_negacion_no_borra_y_correccion_posterior_actualiza(self):
         modelo = ModeloFalso(
