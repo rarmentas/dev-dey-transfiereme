@@ -24,7 +24,8 @@ class SemillaVendedorTests(TestCase):
         comercio = usuario.membresia.comercio
         self.assertEqual(comercio.nombre, "Comercio demo")
         self.assertTrue(comercio.semilla_active_dev)
-        self.assertFalse(cuenta_esta_active(comercio))
+        self.assertTrue(cuenta_esta_active(comercio))
+        self.assertTrue(usuario.membresia.es_dueno)
         self.assertEqual(Movimiento.objects.count(), 0)
 
         cliente = APIClient()
@@ -49,12 +50,16 @@ class SemillaVendedorTests(TestCase):
         self.assertEqual(Comercio.objects.filter(semilla_active_dev=True).count(), 1)
         self.assertEqual(Membresia.objects.count(), 1)
         self.assertEqual(Movimiento.objects.count(), 0)
-        self.assertTrue(User.objects.get(username="vendedor@demo.mx").check_password("otra-clave"))
+        self.assertTrue(
+            User.objects.get(username="vendedor@demo.mx").check_password("otra-clave")
+        )
 
     def test_la_semilla_no_satisface_el_gate_active(self) -> None:
         fuente = inspect.getsource(cuenta_esta_active)
         self.assertNotIn("semilla_active_dev", fuente)
-        comercio = Comercio.objects.create(nombre="Solo semilla", semilla_active_dev=True)
+        comercio = Comercio.objects.create(
+            nombre="Solo semilla", semilla_active_dev=True
+        )
         self.assertFalse(cuenta_esta_active(comercio))
 
     @override_settings(DEBUG=False)

@@ -13,6 +13,7 @@ class AmbitoComercioMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         request.comercio = None
+        request.es_dueno = False
         if request.user.is_authenticated:
             membresia = (
                 Membresia.objects.select_related("comercio")
@@ -21,4 +22,5 @@ class AmbitoComercioMiddleware:
             )
             if membresia is not None:
                 request.comercio = membresia.comercio
+                request.es_dueno = membresia.es_dueno
         return self.get_response(request)

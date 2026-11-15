@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from sesion.middleware import _MENSAJE_SIN_SESION
 
 _CLABE = "012180015826225713"
@@ -23,10 +24,21 @@ def _sin_secretos(cuerpo: object, clabe: str, ulid: str) -> None:
 class CuentaEstadoApiTests(TestCase):
     def setUp(self) -> None:
         self.client = APIClient()
-        self.comercio_a = Comercio.objects.create(nombre="Comercio A", clabe=_CLABE)
+        self.comercio_a = Comercio.objects.create(nombre="Comercio A")
+        self.cuenta = crear_cuenta(
+            self.comercio_a, estado="pending", predeterminada=False
+        )
+        self.cuenta.clabe = _CLABE
+        self.cuenta.pey_bank_account_id = ""
+        self.cuenta.registro_estado = "sin_registro"
+        self.cuenta.save()
         self.comercio_b = Comercio.objects.create(nombre="Comercio B")
-        self.usuario_a = User.objects.create_user(username="vendedor_a", password="pass-a")
-        self.usuario_b = User.objects.create_user(username="vendedor_b", password="pass-b")
+        self.usuario_a = User.objects.create_user(
+            username="vendedor_a", password="pass-a"
+        )
+        self.usuario_b = User.objects.create_user(
+            username="vendedor_b", password="pass-b"
+        )
         Membresia.objects.create(usuario=self.usuario_a, comercio=self.comercio_a)
         Membresia.objects.create(usuario=self.usuario_b, comercio=self.comercio_b)
 
@@ -52,8 +64,9 @@ class CuentaEstadoApiTests(TestCase):
         self.assertTrue(cuerpo["clabe_enmascarada"].endswith("5713"))
 
     def test_pendiente_activacion_paso_3(self) -> None:
-        self.comercio_a.pey_bank_account_id = _ULID
-        self.comercio_a.save(update_fields=["pey_bank_account_id"])
+        self.cuenta.pey_bank_account_id = _ULID
+        self.cuenta.registro_estado = "registrado"
+        self.cuenta.save()
         self._entrar(self.usuario_a)
         cuerpo = self.client.get(_RUTA).json()
         self.assertEqual(cuerpo["fase"], "pendiente_activacion")
@@ -62,11 +75,7 @@ class CuentaEstadoApiTests(TestCase):
 
     @override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="")
     def test_activa_con_semilla_dev(self) -> None:
-        from ambito.cuenta_sync import sincronizar_codi_status
-
-        self.comercio_a.semilla_active_dev = True
-        self.comercio_a.save(update_fields=["semilla_active_dev"])
-        sincronizar_codi_status(self.comercio_a)
+        self._activar()
         self._entrar(self.usuario_a)
         cuerpo = self.client.get(_RUTA).json()
         self.assertEqual(cuerpo["fase"], "activa")
@@ -74,9 +83,7 @@ class CuentaEstadoApiTests(TestCase):
         self.assertTrue(cuerpo["puede_cobrar"])
 
     def test_otro_comercio_solo_ve_el_suyo(self) -> None:
-        self.comercio_a.pey_bank_account_id = _ULID
-        self.comercio_a.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
-        self.comercio_a.save()
+        self._activar()
         self._entrar(self.usuario_b)
         cuerpo = self.client.get(_RUTA).json()
         self.assertEqual(cuerpo["fase"], "sin_clabe")
@@ -90,12 +97,21 @@ class CuentaEstadoApiTests(TestCase):
         self.assertEqual(respuesta.json()["detail"], _MENSAJE_SIN_SESION)
 
     def test_tras_cambio_clabe_vuelve_paso_2(self) -> None:
-        """Caso borde 1: CLABE distinta limpia el vínculo pey."""
-        self.comercio_a.pey_bank_account_id = _ULID
-        self.comercio_a.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
-        self.comercio_a.save()
+        """La ruta anterior no altera el estado activo."""
+        self._activar()
         self._entrar(self.usuario_a)
-        self.client.post("/api/cuenta/clabe/", {"clabe": "032180000118359719"}, format="json")
+        respuesta = self.client.post(
+            "/api/cuenta/clabe/", {"clabe": "032180000118359719"}, format="json"
+        )
+        self.assertEqual(respuesta.status_code, 409)
         cuerpo = self.client.get(_RUTA).json()
-        self.assertEqual(cuerpo["paso"], 2)
-        self.assertFalse(cuerpo["tiene_cuenta_pey"])
+        self.assertEqual(cuerpo["fase"], "activa")
+        self.assertTrue(cuerpo["tiene_cuenta_pey"])
+
+    def _activar(self) -> None:
+        self.cuenta.registro_estado = "registrado"
+        self.cuenta.pey_bank_account_id = _ULID
+        self.cuenta.codi_status = "active"
+        self.cuenta.save()
+        self.comercio_a.cuenta_por_defecto = self.cuenta
+        self.comercio_a.save(update_fields=["cuenta_por_defecto"])

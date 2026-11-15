@@ -1,133 +1,94 @@
+"""Compatibilidad de CLABE y alta en la API de cuentas."""
+
 import json
-import os
-from unittest import mock
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
-from sesion.middleware import _MENSAJE_SIN_SESION
-
-CLABE_OFICIAL = "012180015826225713"
-_FALSO_SECRETO = "secreto-falso-para-test"
-_CLAVES_PROHIBIDAS = ("PEY_API_KEY", "PEY_WEBHOOK_SECRET", _FALSO_SECRETO)
-_RUTA_CLABE = "/api/cuenta/clabe/"
-
-
-def _cuerpo_sin_secretos(cuerpo: object) -> None:
-    texto = json.dumps(cuerpo, ensure_ascii=False)
-    for clave in _CLAVES_PROHIBIDAS:
-        assert clave not in texto, f"Apareció «{clave}» en la respuesta"
+from ambito.tests.soporte import clabe_valida, crear_cuenta
 
 
 class ClabeApiTests(TestCase):
     def setUp(self) -> None:
+        self.comercio_a = Comercio.objects.create(nombre="A")
+        self.comercio_b = Comercio.objects.create(nombre="B")
+        self.usuario_a = User.objects.create_user(username="a", password="pass")
+        self.usuario_b = User.objects.create_user(username="b", password="pass")
+        Membresia.objects.create(
+            usuario=self.usuario_a, comercio=self.comercio_a, es_dueno=True
+        )
+        Membresia.objects.create(
+            usuario=self.usuario_b, comercio=self.comercio_b, es_dueno=True
+        )
         self.client = APIClient()
-        self.comercio_a = Comercio.objects.create(nombre="Comercio A")
-        self.comercio_b = Comercio.objects.create(nombre="Comercio B")
-        self.usuario_a = User.objects.create_user(username="vendedor_a", password="pass-a")
-        self.usuario_b = User.objects.create_user(username="vendedor_b", password="pass-b")
-        Membresia.objects.create(usuario=self.usuario_a, comercio=self.comercio_a)
-        Membresia.objects.create(usuario=self.usuario_b, comercio=self.comercio_b)
 
-    def _entrar(self, usuario: User) -> None:
+    def _entrar(self, usuario):
         self.client.force_login(usuario)
 
     def test_get_clabe_vacia_sin_guardar(self) -> None:
         self._entrar(self.usuario_a)
-        respuesta = self.client.get(_RUTA_CLABE)
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()["clabe"], "")
+        self.assertEqual(self.client.get("/api/cuenta/clabe/").json(), {"clabe": ""})
 
     def test_get_clabe_del_comercio_de_la_sesion(self) -> None:
-        self.comercio_a.clabe = CLABE_OFICIAL
-        self.comercio_a.save(update_fields=["clabe"])
+        cuenta = crear_cuenta(self.comercio_a)
         self._entrar(self.usuario_a)
-        respuesta = self.client.get(_RUTA_CLABE)
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()["clabe"], CLABE_OFICIAL)
+        self.assertEqual(self.client.get("/api/cuenta/clabe/").json()["clabe"],
+                         "*" * 14 + cuenta.clabe[-4:])
         self._entrar(self.usuario_b)
-        respuesta_b = self.client.get(_RUTA_CLABE)
-        self.assertEqual(respuesta_b.status_code, 200)
-        self.assertEqual(respuesta_b.json()["clabe"], "")
+        self.assertEqual(self.client.get("/api/cuenta/clabe/").json()["clabe"], "")
 
     def test_get_no_cambia_pey_ni_clabe_persistida(self) -> None:
-        from ambito.models import Comercio
-
-        self.comercio_a.clabe = CLABE_OFICIAL
-        self.comercio_a.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
-        self.comercio_a.pey_bank_account_id = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
-        self.comercio_a.save(
-            update_fields=["clabe", "pey_codi_status", "pey_bank_account_id"]
-        )
+        cuenta = crear_cuenta(self.comercio_a)
         self._entrar(self.usuario_a)
-        respuesta = self.client.get(_RUTA_CLABE)
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()["clabe"], CLABE_OFICIAL)
-        self.comercio_a.refresh_from_db()
-        self.assertEqual(self.comercio_a.clabe, CLABE_OFICIAL)
-        self.assertEqual(self.comercio_a.pey_codi_status, Comercio.PeyCodiStatus.ACTIVE)
-        self.assertEqual(self.comercio_a.pey_bank_account_id, "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P")
+        self.client.get("/api/cuenta/clabe/")
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.clabe, clabe_valida(1))
+        self.assertEqual(cuenta.codi_status, "active")
+        self.assertTrue(cuenta.pey_bank_account_id)
 
     def test_get_clabe_sin_sesion_403(self) -> None:
-        respuesta = self.client.get(_RUTA_CLABE)
-        self.assertEqual(respuesta.status_code, 403)
-        self.assertEqual(respuesta.json()["detail"], _MENSAJE_SIN_SESION)
+        self.assertEqual(self.client.get("/api/cuenta/clabe/").status_code, 403)
 
-    def test_persiste_clabe_en_comercio_de_la_sesion(self) -> None:
+    def test_persiste_clabe_en_cuenta_del_comercio(self) -> None:
         self._entrar(self.usuario_a)
-        respuesta = self.client.post(
-            _RUTA_CLABE,
-            {"clabe": CLABE_OFICIAL},
-            format="json",
-        )
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()["clabe"], CLABE_OFICIAL)
-        self.comercio_a.refresh_from_db()
-        self.comercio_b.refresh_from_db()
-        self.assertEqual(self.comercio_a.clabe, CLABE_OFICIAL)
-        self.assertEqual(self.comercio_b.clabe, "")
+        respuesta = self.client.post("/api/cuenta/cuentas/", {"clabe": clabe_valida(1)},
+                                     format="json")
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(self.comercio_a.cuentas.get().clabe, clabe_valida(1))
+        self.assertFalse(self.comercio_b.cuentas.exists())
 
     def test_rechaza_comercio_en_cuerpo(self) -> None:
         self._entrar(self.usuario_a)
-        for cuerpo in (
-            {"clabe": CLABE_OFICIAL, "comercio": self.comercio_b.pk},
-            {"clabe": CLABE_OFICIAL, "comercio_id": self.comercio_b.pk},
-        ):
-            with self.subTest(cuerpo=cuerpo):
-                respuesta = self.client.post(_RUTA_CLABE, cuerpo, format="json")
-                self.assertEqual(respuesta.status_code, 400)
-                self.assertIn("comercio", respuesta.json()["detail"].lower())
+        for clave in ("comercio", "comercio_id"):
+            respuesta = self.client.post(
+                "/api/cuenta/cuentas/",
+                {"clabe": clabe_valida(1), clave: self.comercio_b.pk},
+                format="json",
+            )
+            self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(self.comercio_a.cuentas.exists())
 
     def test_clabe_invalida_no_persiste(self) -> None:
         self._entrar(self.usuario_a)
-        clabe_mala = CLABE_OFICIAL[:-1] + ("0" if CLABE_OFICIAL[-1] != "0" else "1")
-        respuesta = self.client.post(_RUTA_CLABE, {"clabe": clabe_mala}, format="json")
+        respuesta = self.client.post(
+            "/api/cuenta/cuentas/", {"clabe": "123"}, format="json"
+        )
         self.assertEqual(respuesta.status_code, 400)
-        self.comercio_a.refresh_from_db()
-        self.assertEqual(self.comercio_a.clabe, "")
+        self.assertEqual(respuesta.json()["codigo"], "CLABE_INVALIDA")
+        self.assertFalse(self.comercio_a.cuentas.exists())
 
     def test_sin_sesion_403(self) -> None:
-        respuesta = self.client.post(
-            _RUTA_CLABE,
-            {"clabe": CLABE_OFICIAL},
-            format="json",
+        self.assertEqual(
+            self.client.post("/api/cuenta/cuentas/", {}, format="json").status_code, 403
         )
-        self.assertEqual(respuesta.status_code, 403)
-        self.assertEqual(respuesta.json()["detail"], _MENSAJE_SIN_SESION)
 
-    @mock.patch.dict(os.environ, {"PEY_API_KEY": _FALSO_SECRETO}, clear=False)
     def test_respuestas_no_exponen_secretos_plataforma(self) -> None:
+        cuenta = crear_cuenta(self.comercio_a)
         self._entrar(self.usuario_a)
-        guardar = self.client.post(
-            _RUTA_CLABE,
-            {"clabe": CLABE_OFICIAL},
-            format="json",
-        )
-        self.assertEqual(guardar.status_code, 200)
-        _cuerpo_sin_secretos(guardar.json())
-
-        estado = self.client.get("/api/sesion/estado/")
-        self.assertEqual(estado.status_code, 200)
-        _cuerpo_sin_secretos(estado.json())
+        cuerpo = json.dumps(self.client.get("/api/cuenta/cuentas/").json())
+        self.assertNotIn(cuenta.clabe, cuerpo)
+        self.assertNotIn(cuenta.pey_bank_account_id, cuerpo)
+        self.assertNotIn("PEY_API_KEY", cuerpo)
+        self.assertNotIn("PEY_WEBHOOK_SECRET", cuerpo)

@@ -9,6 +9,7 @@ from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 from django.db import transaction
 from django.utils import timezone
 
+from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.models import Comercio
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
@@ -234,8 +235,9 @@ def _cuenta_de_produccion(puerto: PuertoPey, comercio: Comercio) -> dict[str, st
     """En producción el cobro va a la cuenta del comercio. En desarrollo no se exige."""
     if not isinstance(puerto, AdaptadorProduccion):
         return {}
-    ident = (comercio.pey_bank_account_id or "").strip()
-    if not ident:
+    cuenta = cuenta_por_defecto(comercio)
+    ident = cuenta.pey_bank_account_id if cuenta else ""
+    if not cuenta_apta(cuenta):
         raise CuentaNoActive()
     return {"bank_account_id": ident}
 

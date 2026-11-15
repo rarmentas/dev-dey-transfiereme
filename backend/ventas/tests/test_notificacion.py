@@ -14,6 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.produccion import AdaptadorProduccion
@@ -83,6 +84,7 @@ class NotificacionVentaTests(TestCase):
             nombre="Comercio A",
             semilla_active_dev=True,
         )
+        crear_cuenta(self.comercio)
         self.usuario = User.objects.create_user(username="vendedor_pn", password="pass")
         Membresia.objects.create(usuario=self.usuario, comercio=self.comercio)
 
@@ -304,7 +306,9 @@ class NotificacionVentaTests(TestCase):
         self.assertEqual(Cobro.objects.count(), 0)
         self.assertEqual(Movimiento.objects.count(), 0)
 
-        inactivo = Comercio.objects.create(nombre="Sin cuenta", semilla_active_dev=False)
+        inactivo = Comercio.objects.create(
+            nombre="Sin cuenta", semilla_active_dev=False
+        )
         usuario = User.objects.create_user(username="sin_cuenta", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=inactivo)
         self.client.force_login(usuario)
@@ -387,11 +391,9 @@ class NotificacionVentaTests(TestCase):
 
     @override_settings(PEY_API_KEY="llave-de-prueba")
     def test_adaptador_produccion_envia_el_cuerpo_pn(self) -> None:
-        self.comercio.pey_codi_status = self.comercio.PeyCodiStatus.ACTIVE
-        self.comercio.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-        self.comercio.save(
-            update_fields=["pey_codi_status", "pey_bank_account_id"]
-        )
+        cuenta = self.comercio.cuenta_por_defecto
+        cuenta.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        cuenta.save(update_fields=["pey_bank_account_id"])
         self._entrar()
         llamadas: list[tuple] = []
 
@@ -471,6 +473,7 @@ class _PuertoCruzado:
 class ConcurrenciaQrYNotificacionTests(TransactionTestCase):
     def test_qr_y_notificacion_simultaneos_dejan_un_solo_cobro(self) -> None:
         comercio = Comercio.objects.create(nombre="Cruzado", semilla_active_dev=True)
+        crear_cuenta(comercio)
         usuario = User.objects.create_user(username="cruzado", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
         ambos = threading.Event()

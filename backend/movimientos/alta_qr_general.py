@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 
+from ambito.cuenta import cuenta_apta, cuenta_por_defecto
 from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
 from movimientos.cobro_qr import preparar_alta_qr_general
@@ -65,8 +66,9 @@ def alta_qr_general(comercio: Comercio) -> ResultadoAltaQrGeneral:
 def _cuenta_de_produccion(puerto: object, comercio: Comercio) -> dict[str, str]:
     if not isinstance(puerto, AdaptadorProduccion):
         return {}
-    ident = (comercio.pey_bank_account_id or "").strip()
-    if not ident:
+    cuenta = cuenta_por_defecto(comercio)
+    ident = cuenta.pey_bank_account_id if cuenta else ""
+    if not cuenta_apta(cuenta):
         raise CuentaNoActiveError()
     return {"bank_account_id": ident}
 

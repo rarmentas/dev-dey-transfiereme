@@ -6,14 +6,13 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.tipos import ErrorPey, ParametroInvalido
 from sesion.middleware import _MENSAJE_SIN_SESION
 
 _RUTA = "/api/cobro/qr-general/"
-_CLABE_VALIDA = "012180015826225713"
 _CLAVES_PROHIBIDAS = ("PEY_API_KEY", "PEY_WEBHOOK_SECRET", "api.pey.mx")
 
 
@@ -33,16 +32,14 @@ class AltaQrGeneralApiTests(TestCase):
         self.client = APIClient()
         self.comercio_activo = Comercio.objects.create(
             nombre="Comercio activo",
-            clabe=_CLABE_VALIDA,
             semilla_active_dev=True,
         )
         self.comercio_pendiente = Comercio.objects.create(
             nombre="Comercio pendiente",
-            clabe=_CLABE_VALIDA,
             semilla_active_dev=False,
         )
-        sincronizar_codi_status(self.comercio_activo)
-        sincronizar_codi_status(self.comercio_pendiente)
+        crear_cuenta(self.comercio_activo)
+        crear_cuenta(self.comercio_pendiente, estado="pending")
         self.usuario_activo = User.objects.create_user(
             username="vendedor_activo",
             password="pass-activo",
@@ -132,10 +129,9 @@ class AltaQrGeneralApiTests(TestCase):
     def test_cada_comercio_obtiene_su_propio_qr(self) -> None:
         comercio_b = Comercio.objects.create(
             nombre="Comercio B",
-            clabe=_CLABE_VALIDA,
             semilla_active_dev=True,
         )
-        sincronizar_codi_status(comercio_b)
+        crear_cuenta(comercio_b)
         usuario_b = User.objects.create_user(username="vendedor_b", password="pass-b")
         Membresia.objects.create(usuario=usuario_b, comercio=comercio_b)
 

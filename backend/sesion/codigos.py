@@ -155,7 +155,7 @@ def confirmar_alta(correo: str, codigo: str) -> tuple[bool, str | None]:
     user.save()
 
     comercio = Comercio.objects.create(nombre="Mi comercio")
-    Membresia.objects.create(usuario=user, comercio=comercio)
+    Membresia.objects.create(usuario=user, comercio=comercio, es_dueno=True)
 
     solicitud.usado_en = timezone.now()
     solicitud.save(update_fields=["usado_en"])
@@ -181,7 +181,9 @@ def solicitar_olvido(correo: str) -> None:
 
 
 @transaction.atomic
-def restablecer_olvido(correo: str, codigo: str, contrasena: str) -> tuple[bool, str | None]:
+def restablecer_olvido(
+    correo: str, codigo: str, contrasena: str
+) -> tuple[bool, str | None]:
     if not correo_valido(correo) or not codigo:
         return False, _MENSAJE_CODIGO
 

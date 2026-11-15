@@ -5,7 +5,11 @@ _PESOS = (3, 7, 1)
 
 def clabe_es_valida(clabe: str) -> bool:
     """Devuelve True si la CLABE tiene formato y dígito verificador válidos."""
-    if not isinstance(clabe, str) or len(clabe) != 18 or not clabe.isdigit():
+    if (
+        not isinstance(clabe, str)
+        or len(clabe) != 18
+        or not all("0" <= digito <= "9" for digito in clabe)
+    ):
         return False
     cuerpo = clabe[:17]
     verificador = int(clabe[17])

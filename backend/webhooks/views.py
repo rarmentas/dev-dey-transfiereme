@@ -8,14 +8,12 @@ from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponseNotFound, JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from ambito.models import Comercio
-
+from ambito.models import CuentaCobro
+from ambito.operaciones_cuenta import encolar_sync
 from movimientos.correlacion import TIPO_PN, TIPO_QR, AvisoPago, aplicar_aviso
-from pey.seleccion import modo_adaptador
 from movimientos.exceptions import (
     AvisoDuplicado,
     AvisoInvalido,
@@ -24,6 +22,7 @@ from movimientos.exceptions import (
     TransicionInvalida,
 )
 from movimientos.models import Movimiento
+from pey.seleccion import modo_adaptador
 from webhooks.models import AvisoRecibido
 from webhooks.verificacion import FirmaInvalida, verificar_firma
 
@@ -91,7 +90,8 @@ def _monto_de_aviso(valor: object) -> Decimal:
 
 
 def _transaction_id_usable(valor: object) -> str | None:
-    if not isinstance(valor, str) or not valor.strip() or len(valor) > _LARGO_TRANSACTION_ID:
+    if (not isinstance(valor, str) or not valor.strip()
+            or len(valor) > _LARGO_TRANSACTION_ID):
         return None
     return valor
 
@@ -218,47 +218,18 @@ def _aplicar_activacion_cuenta(
     cuenta: _AvisoCuenta,
     webhook_id: str,
 ) -> JsonResponse:
-    if cuenta.codi_status != "ACTIVE" or not cuenta.bank_account_id:
-        logger.warning(
-            "aviso de cuenta sin activación type=%s webhook_id=%s bank_account_id=%s",
-            recibido.tipo,
-            webhook_id,
-            cuenta.bank_account_id,
-        )
-        return _cerrar(
-            recibido,
-            webhook_id=webhook_id,
-            tipo=recibido.tipo,
-            resultado=AvisoRecibido.Resultado.SIN_COBRO,
-        )
-    comercio = Comercio.objects.filter(
-        pey_bank_account_id=cuenta.bank_account_id,
-    ).first()
-    if comercio is None:
-        logger.warning(
-            "aviso de cuenta sin comercio type=%s webhook_id=%s bank_account_id=%s",
-            recibido.tipo,
-            webhook_id,
-            cuenta.bank_account_id,
-        )
-        return _cerrar(
-            recibido,
-            webhook_id=webhook_id,
-            tipo=recibido.tipo,
-            resultado=AvisoRecibido.Resultado.SIN_COBRO,
-        )
-    ahora = timezone.now()
-    comercio.pey_codi_status = Comercio.PeyCodiStatus.ACTIVE
-    comercio.pey_codi_status_actualizado_en = ahora
-    comercio.save(
-        update_fields=["pey_codi_status", "pey_codi_status_actualizado_en"],
-    )
-    return _cerrar(
-        recibido,
-        webhook_id=webhook_id,
-        tipo=recibido.tipo,
-        resultado=AvisoRecibido.Resultado.APLICADO,
-    )
+    destino = None
+    if cuenta.codi_status == "ACTIVE" and cuenta.bank_account_id:
+        destino = CuentaCobro.objects.filter(
+            pey_bank_account_id=cuenta.bank_account_id
+        ).first()
+    if destino is None:
+        resultado = AvisoRecibido.Resultado.SIN_COBRO
+    else:
+        encolar_sync(destino, origen="webhook")
+        resultado = AvisoRecibido.Resultado.APLICADO
+    return _cerrar(recibido, webhook_id=webhook_id, tipo=recibido.tipo,
+                   resultado=resultado)
 
 
 def _procesar_aviso_registrado(
@@ -379,7 +350,9 @@ def recibir_aviso_pey(request: HttpRequest) -> JsonResponse:
 
 @csrf_exempt
 @require_POST
-def recibir_aviso_desarrollo(request: HttpRequest) -> HttpResponseNotFound | JsonResponse:
+def recibir_aviso_desarrollo(
+    request: HttpRequest,
+) -> HttpResponseNotFound | JsonResponse:
     try:
         if modo_adaptador() != "desarrollo":
             return HttpResponseNotFound()

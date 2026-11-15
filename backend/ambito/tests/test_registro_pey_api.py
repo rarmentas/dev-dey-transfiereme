@@ -1,4 +1,4 @@
-"""POST /api/cuenta/registro-pey/ — sin red; transporte parcheado."""
+"""Registro por cuenta y compatibilidad de la ruta anterior."""
 
 import json
 from unittest.mock import patch
@@ -8,161 +8,120 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import clabe_valida, crear_cuenta
+from pey.cuentas import CuentaPey
 from pey.tipos import ErrorPey
-from sesion.middleware import _MENSAJE_SIN_SESION
 
-_CLABE = "012180015826225713"
-_ULID = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
-_ULID_NUEVO = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0M"
-_RUTA = "/api/cuenta/pey/registro/"
+_ID = "01J9ZQ4C8X7Y6W5V4T3S2R1Q0P"
 
 
-class _Transporte:
-    def __init__(self, status: int = 200, cuerpo: bytes = b"", side_effect=None) -> None:
-        self.status = status
-        self.cuerpo = cuerpo
-        self.side_effect = side_effect
-        self.llamadas: list = []
-
-    def __call__(self, metodo, url, headers, cuerpo_bytes, timeout):
-        self.llamadas.append((metodo, url, headers, cuerpo_bytes, timeout))
-        if self.side_effect is not None:
-            raise self.side_effect
-        return self.status, self.cuerpo
-
-
-@override_settings(
-    DEBUG=True,
-    PEY_ADAPTADOR="produccion",
-    PEY_API_KEY="llave-falsa-test",
-    PEY_BASE_URL="https://api.pey.mx",
-)
+@override_settings(DEBUG=True, PEY_ADAPTADOR="produccion", PEY_API_KEY="prueba")
 class RegistroPeyApiTests(TestCase):
     def setUp(self) -> None:
-        self.client = APIClient()
-        self.comercio = Comercio.objects.create(nombre="Tienda", clabe=_CLABE)
+        self.comercio = Comercio.objects.create(nombre="Tienda")
+        self.cuenta = crear_cuenta(
+            self.comercio, estado="pending", predeterminada=False
+        )
+        self.cuenta.registro_estado = "sin_registro"
+        self.cuenta.pey_bank_account_id = ""
+        self.cuenta.save(update_fields=["registro_estado", "pey_bank_account_id"])
         self.usuario = User.objects.create_user(username="vend", password="pass")
-        Membresia.objects.create(usuario=self.usuario, comercio=self.comercio)
+        Membresia.objects.create(
+            usuario=self.usuario, comercio=self.comercio, es_dueno=True
+        )
+        self.client = APIClient()
         self.client.force_login(self.usuario)
-        self.red = patch("urllib.request.urlopen", side_effect=AssertionError("red"))
-        self.red.start()
-        self.addCleanup(self.red.stop)
+        self.ruta = f"/api/cuenta/cuentas/{self.cuenta.pk}/registro/"
 
-    def _post(self, cuerpo: dict):
-        return self.client.post(_RUTA, cuerpo, format="json")
+    def _post(self, datos=None):
+        cuerpo = {"nombre": "Ana", "entidad": "PERSON", "command_key": "clave",
+                  "expected_version": 1}
+        cuerpo.update(datos or {})
+        return self.client.post(self.ruta, cuerpo, format="json")
 
     def test_registro_ok_guarda_ulid(self) -> None:
-        transporte = _Transporte(
-            200,
-            ('{"id": "' + _ULID_NUEVO + '", "codiStatus": "PROCESSING"}').encode(),
-        )
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
+        with patch("ambito.operaciones_cuenta.registrar_cuenta",
+                   return_value=CuentaPey(_ID, "PROCESSING")) as llamada:
+            respuesta = self._post()
         self.assertEqual(respuesta.status_code, 200)
-        cuerpo = respuesta.json()
-        self.assertEqual(cuerpo["paso"], 3)
-        self.assertTrue(cuerpo["tiene_cuenta_pey"])
-        self.assertEqual(cuerpo["pey_bank_account_id_sufijo"], "1Q0M")
-        self.assertEqual(len(transporte.llamadas), 1)
-        self.comercio.refresh_from_db()
-        self.assertEqual(self.comercio.pey_bank_account_id, _ULID_NUEVO)
-        texto = json.dumps(cuerpo)
-        self.assertNotIn(_CLABE, texto)
-        self.assertNotIn(_ULID_NUEVO, texto)
+        self.assertEqual(llamada.call_count, 1)
+        self.cuenta.refresh_from_db()
+        self.assertEqual(self.cuenta.pey_bank_account_id, _ID)
+        self.assertNotIn(_ID, json.dumps(respuesta.json()))
+        self.assertNotIn(self.cuenta.clabe, json.dumps(respuesta.json()))
 
     def test_sin_clabe_400(self) -> None:
-        self.comercio.clabe = ""
-        self.comercio.save()
-        respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
+        respuesta = self.client.post(
+            "/api/cuenta/cuentas/", {"clabe": ""}, format="json"
+        )
         self.assertEqual(respuesta.status_code, 400)
-        self.assertEqual(respuesta.json()["codigo"], "SIN_CLABE")
+        self.assertEqual(respuesta.json()["codigo"], "CLABE_INVALIDA")
 
     def test_ya_registrada_409(self) -> None:
-        """Caso borde 8."""
-        self.comercio.pey_bank_account_id = _ULID
-        self.comercio.save()
-        transporte = _Transporte()
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
-        self.assertEqual(respuesta.status_code, 409)
-        self.assertEqual(respuesta.json()["codigo"], "CUENTA_PEY_YA_REGISTRADA")
-        self.assertEqual(transporte.llamadas, [])
+        self.cuenta.registro_estado = "registrado"
+        self.cuenta.pey_bank_account_id = _ID
+        self.cuenta.save(update_fields=["registro_estado", "pey_bank_account_id"])
+        with patch("ambito.operaciones_cuenta.registrar_cuenta") as llamada:
+            respuesta = self._post()
+        self.assertEqual(respuesta.json()["codigo"], "CUENTA_YA_REGISTRADA")
+        llamada.assert_not_called()
 
     def test_reemplazar_nuevo_id(self) -> None:
-        self.comercio.pey_bank_account_id = _ULID
-        self.comercio.save()
-        transporte = _Transporte(
-            200,
-            ('{"id": "' + _ULID_NUEVO + '", "codiStatus": "ACTIVE"}').encode(),
-        )
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            respuesta = self._post(
-                {"nombre": "Ana", "entidad": "PERSON", "reemplazar": True},
-            )
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()["fase"], "activa")
+        respuesta = self.client.post("/api/cuenta/pey/registro/", {"reemplazar": True},
+                                     format="json")
+        self.assertEqual((respuesta.status_code, respuesta.json()["codigo"]),
+                         (409, "USAR_CUENTAS"))
+        self.cuenta.refresh_from_db()
+        self.assertEqual(self.cuenta.pey_bank_account_id, "")
 
     def test_doble_registro_segundo_409(self) -> None:
-        """Casos borde 3 y 4: doble clic / lock — un solo POST pey."""
-        transporte = _Transporte(
-            200,
-            ('{"id": "' + _ULID_NUEVO + '", "codiStatus": "PENDING"}').encode(),
-        )
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            uno = self._post({"nombre": "Ana", "entidad": "PERSON"})
-            dos = self._post({"nombre": "Ana", "entidad": "PERSON"})
+        with patch("ambito.operaciones_cuenta.registrar_cuenta",
+                   return_value=CuentaPey(_ID, "PENDING")) as llamada:
+            uno = self._post()
+            dos = self._post()
         self.assertEqual(uno.status_code, 200)
-        self.assertEqual(dos.status_code, 409)
-        self.assertEqual(len(transporte.llamadas), 1)
+        self.assertEqual(dos.status_code, 200)
+        self.assertTrue(dos.json()["replayed"])
+        self.assertEqual(llamada.call_count, 1)
 
     def test_pey_incierto_503(self) -> None:
-        """Caso borde 7."""
-        transporte = _Transporte(side_effect=TimeoutError("timeout"))
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
-        self.assertEqual(respuesta.status_code, 503)
+        with patch("ambito.operaciones_cuenta.registrar_cuenta", side_effect=ErrorPey(
+            "NO_DISPONIBLE", "timeout", puede_haberse_creado=True
+        )) as llamada:
+            respuesta = self._post()
+            otra = self._post()
         self.assertEqual(respuesta.json()["codigo"], "PEY_INCIERTO")
+        self.assertEqual(respuesta.status_code, 503)
+        self.assertEqual(otra.json()["codigo"], "REGISTRO_INCIERTO")
+        self.assertEqual(llamada.call_count, 1)
 
     def test_pey_error_502(self) -> None:
-        transporte = _Transporte(
-            404,
-            b'{"error":{"message":"no","type":"NOT_FOUND","requestId":"req-x"}}',
-        )
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
-        self.assertEqual(respuesta.status_code, 502)
-        self.assertEqual(respuesta.json()["tipo"], "NOT_FOUND")
+        with patch("ambito.operaciones_cuenta.registrar_cuenta",
+                   side_effect=ErrorPey("NOT_FOUND", "no")):
+            respuesta = self._post()
+        self.assertEqual((respuesta.status_code, respuesta.json()["codigo"]),
+                         (502, "PEY_RECHAZO"))
 
     def test_comercio_en_cuerpo_400(self) -> None:
-        """Caso borde 14."""
-        respuesta = self._post(
-            {"nombre": "Ana", "entidad": "PERSON", "comercio_id": 99},
-        )
-        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(self._post({"comercio_id": 99}).status_code, 400)
 
     def test_sin_sesion_403(self) -> None:
-        """Caso borde 13."""
         self.client.logout()
-        respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
-        self.assertEqual(respuesta.status_code, 403)
-        self.assertEqual(respuesta.json()["detail"], _MENSAJE_SIN_SESION)
+        self.assertEqual(self._post().status_code, 403)
 
     @override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="")
     def test_adaptador_desarrollo_503(self) -> None:
-        respuesta = self._post({"nombre": "Ana", "entidad": "PERSON"})
-        self.assertEqual(respuesta.status_code, 503)
-        self.assertEqual(respuesta.json()["codigo"], "ADAPTADOR_NO_PRODUCCION")
+        respuesta = self._post()
+        self.assertEqual((respuesta.status_code, respuesta.json()["codigo"]),
+                         (503, "ADAPTADOR_NO_PRODUCCION"))
 
     def test_otro_comercio_no_afectado(self) -> None:
-        """Caso borde 9."""
-        comercio_b = Comercio.objects.create(nombre="B", clabe=_CLABE)
-        usuario_b = User.objects.create_user(username="b", password="pass")
-        Membresia.objects.create(usuario=usuario_b, comercio=comercio_b)
-        transporte = _Transporte(
-            200,
-            ('{"id": "' + _ULID_NUEVO + '", "codiStatus": "ACTIVE"}').encode(),
-        )
-        with patch("pey.cuentas.transporte_urllib", transporte):
-            self._post({"nombre": "Ana", "entidad": "PERSON"})
-        comercio_b.refresh_from_db()
-        self.assertEqual(comercio_b.pey_bank_account_id, "")
+        comercio = Comercio.objects.create(nombre="B")
+        cuenta = crear_cuenta(comercio, estado="pending", predeterminada=False)
+        cuenta.clabe = clabe_valida(2)
+        cuenta.save(update_fields=["clabe"])
+        with patch("ambito.operaciones_cuenta.registrar_cuenta",
+                   return_value=CuentaPey(_ID, "ACTIVE")):
+            self.assertEqual(self._post().status_code, 200)
+        cuenta.refresh_from_db()
+        self.assertEqual(cuenta.codi_status, "pending")

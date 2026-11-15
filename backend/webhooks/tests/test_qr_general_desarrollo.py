@@ -8,14 +8,13 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from ambito.cuenta_sync import sincronizar_codi_status
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 
 _RUTA_QR = "/api/cobro/qr-general/"
 _RUTA_WEBHOOK = "/api/webhooks/desarrollo/"
-_CLABE_VALIDA = "012180015826225713"
 
 
 def _revienta(*args, **kwargs):
@@ -39,7 +38,9 @@ def post_desarrollo(cliente: APIClient, cuerpo: dict, webhook_id: str):
     )
 
 
-@override_settings(DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="", PEY_WEBHOOK_SECRET="")
+@override_settings(
+    DEBUG=True, PEY_ADAPTADOR="desarrollo", PEY_API_KEY="", PEY_WEBHOOK_SECRET=""
+)
 class QrGeneralDesarrolloTests(TestCase):
     def setUp(self) -> None:
         self.cliente_api = APIClient()
@@ -47,10 +48,9 @@ class QrGeneralDesarrolloTests(TestCase):
         self.adaptador = AdaptadorDesarrollo()
         self.comercio = Comercio.objects.create(
             nombre="Local desarrollo",
-            clabe=_CLABE_VALIDA,
             semilla_active_dev=True,
         )
-        sincronizar_codi_status(self.comercio)
+        crear_cuenta(self.comercio)
         self.usuario = User.objects.create_user(username="vendedor_h3", password="pass")
         Membresia.objects.create(usuario=self.usuario, comercio=self.comercio)
         self.cliente_api.force_login(self.usuario)

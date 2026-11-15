@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from webhooks.tests.support.pey_webhook import SECRETO, cuerpo_qr, post_firmado
@@ -20,6 +21,7 @@ class PagoTardioVentaTests(TestCase):
         self,
     ) -> None:
         comercio = Comercio.objects.create(nombre="Comercio A", semilla_active_dev=True)
+        crear_cuenta(comercio)
         usuario = User.objects.create_user(username="vendedor_tarde", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
         cliente = APIClient()

@@ -13,6 +13,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
 from pey.tipos import ErrorPey, QrCreado
@@ -67,8 +68,14 @@ class UnCanalVivoTests(TestCase):
             nombre="Comercio B",
             semilla_active_dev=True,
         )
-        self.usuario_a = User.objects.create_user(username="vendedor_a", password="pass-a")
-        self.usuario_b = User.objects.create_user(username="vendedor_b", password="pass-b")
+        crear_cuenta(self.comercio_a)
+        crear_cuenta(self.comercio_b)
+        self.usuario_a = User.objects.create_user(
+            username="vendedor_a", password="pass-a"
+        )
+        self.usuario_b = User.objects.create_user(
+            username="vendedor_b", password="pass-b"
+        )
         Membresia.objects.create(usuario=self.usuario_a, comercio=self.comercio_a)
         Membresia.objects.create(usuario=self.usuario_b, comercio=self.comercio_b)
 
@@ -88,7 +95,9 @@ class UnCanalVivoTests(TestCase):
         datos = {
             "comercio": comercio,
             "canal": canal,
-            "monto": Decimal("0") if canal == Movimiento.Canal.QR_GENERAL else Decimal("10.00"),
+            "monto": Decimal("0")
+            if canal == Movimiento.Canal.QR_GENERAL
+            else Decimal("10.00"),
             "concepto": "Transferencia",
             "vence_en": timezone.now() + timedelta(minutes=10),
         }
@@ -150,7 +159,9 @@ class UnCanalVivoTests(TestCase):
         self.assertEqual(cuerpo["movimiento_id"], movimiento.pk)
         self.assertEqual(cuerpo["canal"], Movimiento.Canal.NOTIFICACION)
         self.assertEqual(espia.qr_kwargs, [])
-        self.assertEqual(Cobro.objects.filter(canal=Movimiento.Canal.QR_VENTA).count(), 0)
+        self.assertEqual(
+            Cobro.objects.filter(canal=Movimiento.Canal.QR_VENTA).count(), 0
+        )
 
     def test_pendiente_vencido_se_cierra_y_la_nueva_venta_pasa(self) -> None:
         cobro = self._cobro(
@@ -174,7 +185,11 @@ class UnCanalVivoTests(TestCase):
         escenarios = (
             ("pagado", Movimiento.Estado.PAGADO, Movimiento.Canal.QR_VENTA),
             ("vencido", Movimiento.Estado.VENCIDO, Movimiento.Canal.QR_VENTA),
-            ("general pendiente", Movimiento.Estado.PENDIENTE, Movimiento.Canal.QR_GENERAL),
+            (
+                "general pendiente",
+                Movimiento.Estado.PENDIENTE,
+                Movimiento.Canal.QR_GENERAL,
+            ),
             ("general pagado", Movimiento.Estado.PAGADO, Movimiento.Canal.QR_GENERAL),
         )
         for nombre, estado, canal in escenarios:
@@ -183,7 +198,10 @@ class UnCanalVivoTests(TestCase):
                     nombre=nombre,
                     semilla_active_dev=True,
                 )
-                usuario = User.objects.create_user(username=nombre.replace(" ", "_"), password="pass")
+                crear_cuenta(comercio)
+                usuario = User.objects.create_user(
+                    username=nombre.replace(" ", "_"), password="pass"
+                )
                 Membresia.objects.create(usuario=usuario, comercio=comercio)
                 vence = (
                     None
@@ -306,7 +324,10 @@ class ConcurrenciaUnCanalTests(TransactionTestCase):
             exigir_sin_venta_viva(Comercio(pk=1))
 
     def test_dos_altas_simultaneas_dejan_un_solo_cobro(self) -> None:
-        comercio = Comercio.objects.create(nombre="Concurrente", semilla_active_dev=True)
+        comercio = Comercio.objects.create(
+            nombre="Concurrente", semilla_active_dev=True
+        )
+        crear_cuenta(comercio)
         usuario = User.objects.create_user(username="concurrente", password="pass")
         Membresia.objects.create(usuario=usuario, comercio=comercio)
         ambos = threading.Event()

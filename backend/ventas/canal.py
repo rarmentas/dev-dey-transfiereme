@@ -4,6 +4,7 @@ from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 
+from ambito.candados import bloquear_comercio
 from ambito.models import Comercio
 from movimientos.exceptions import TransicionInvalida
 from movimientos.models import Movimiento
@@ -20,11 +21,6 @@ class VentaPendiente(Exception):
     def __init__(self, movimiento: Movimiento) -> None:
         self.movimiento = movimiento
         super().__init__("Ya hay una venta pendiente.")
-
-
-def bloquear_comercio(comercio: Comercio) -> Comercio:
-    """Bloquea la fila del comercio. Hay que llamarlo dentro de ``atomic()``."""
-    return Comercio.objects.select_for_update().get(pk=comercio.pk)
 
 
 def vencer_pendientes(comercio: Comercio) -> None:

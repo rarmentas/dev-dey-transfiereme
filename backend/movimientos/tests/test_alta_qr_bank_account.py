@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 
 from ambito.exceptions import CuentaNoActiveError
 from ambito.models import Comercio
+from ambito.tests.soporte import crear_cuenta
 from movimientos.alta_qr_general import alta_qr_general
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
@@ -17,11 +18,13 @@ _CUENTA = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 @override_settings(PEY_API_KEY="llave-de-prueba", PEY_BASE_URL="https://api.pey.mx")
 class AltaQrGeneralCuentaTests(TestCase):
     def _comercio(self, cuenta: str) -> Comercio:
-        return Comercio.objects.create(
-            nombre="QR",
-            pey_codi_status=Comercio.PeyCodiStatus.ACTIVE,
-            pey_bank_account_id=cuenta,
-        )
+        comercio = Comercio.objects.create(nombre="QR")
+        if cuenta:
+            destino = crear_cuenta(comercio)
+            destino.pey_bank_account_id = cuenta
+            destino.save(update_fields=["pey_bank_account_id"])
+        return comercio
+
 
     def test_produccion_envia_bank_account_id(self) -> None:
         llamadas: list[bytes] = []
@@ -32,7 +35,9 @@ class AltaQrGeneralCuentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with patch(
+                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
+            ):
                 resultado = alta_qr_general(self._comercio(_CUENTA))
         self.assertTrue(resultado.creado)
         self.assertEqual(len(llamadas), 1)
@@ -48,18 +53,20 @@ class AltaQrGeneralCuentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with patch(
+                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
+            ):
                 with self.assertRaises(CuentaNoActiveError):
                     alta_qr_general(self._comercio(""))
         self.assertEqual(llamadas, [])
 
-    def test_desarrollo_no_exige_la_cuenta(self) -> None:
+    def test_desarrollo_usa_default_sin_enviar_id(self) -> None:
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
             with patch(
                 "movimientos.alta_qr_general.obtener_puerto",
                 return_value=AdaptadorDesarrollo(),
             ):
-                resultado = alta_qr_general(self._comercio(""))
+                resultado = alta_qr_general(self._comercio(_CUENTA))
         self.assertTrue(resultado.creado)
         self.assertTrue(resultado.cobro.qr_string.startswith("cody-dev://qr/"))
         self.assertEqual(resultado.cobro.pey_bank_account_id, "")
@@ -83,8 +90,12 @@ class AltaQrGeneralCuentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
-                with self.assertLogs("movimientos.alta_qr_general", level="WARNING") as logs:
+            with patch(
+                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
+            ):
+                with self.assertLogs(
+                    "movimientos.alta_qr_general", level="WARNING"
+                ) as logs:
                     resultado = alta_qr_general(comercio)
         viejo.refresh_from_db()
         self.assertEqual(resultado.cobro.pk, viejo.pk)
@@ -117,7 +128,9 @@ class AltaQrGeneralCuentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with patch(
+                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
+            ):
                 resultado = alta_qr_general(comercio)
         self.assertFalse(resultado.creado)
         self.assertEqual(resultado.cobro.qr_string, "igual")
@@ -142,7 +155,9 @@ class AltaQrGeneralCuentaTests(TestCase):
 
         puerto = AdaptadorProduccion(transporte=transporte)
         with patch("urllib.request.urlopen", side_effect=AssertionError("red")):
-            with patch("movimientos.alta_qr_general.obtener_puerto", return_value=puerto):
+            with patch(
+                "movimientos.alta_qr_general.obtener_puerto", return_value=puerto
+            ):
                 with self.assertRaises(CuentaNoActiveError):
                     alta_qr_general(comercio)
         viejo.refresh_from_db()

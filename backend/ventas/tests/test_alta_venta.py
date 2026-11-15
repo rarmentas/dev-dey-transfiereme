@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ambito.models import Comercio, Membresia
+from ambito.tests.soporte import crear_cuenta
 from movimientos.correlacion import AvisoPago, aplicar_aviso
 from movimientos.models import Cobro, Movimiento
 from pey.desarrollo import AdaptadorDesarrollo
@@ -31,26 +32,8 @@ _MENSAJE_CUERPO = "El cuerpo debe ser un objeto JSON."
 
 @contextmanager
 def _cuenta_produccion_activa(comercio: Comercio):
-    """Activa el gate de producción sin salir a la red.
-
-    Si el comercio ya tiene ``pey_codi_status`` (master), se marca active.
-    En esta rama el campo no existe: el adaptador ya importó
-    ``cuenta_esta_active``, así que el parche cae en los dos módulos.
-    """
-    if any(campo.name == "pey_codi_status" for campo in comercio._meta.fields):
-        estado = "active"
-        enum = getattr(Comercio, "PeyCodiStatus", None)
-        if enum is not None:
-            estado = enum.ACTIVE
-        comercio.pey_codi_status = estado
-        comercio.save(update_fields=["pey_codi_status"])
-        yield
-        return
-    with (
-        patch("ambito.cuenta.cuenta_esta_active", return_value=True),
-        patch("pey.produccion.cuenta_esta_active", return_value=True),
-    ):
-        yield
+    """Usa el default activo para el adaptador de producción."""
+    yield
 
 
 class _DoblePuerto:
@@ -103,8 +86,14 @@ class AltaVentaApiTests(TestCase):
             nombre="Sin cuenta",
             semilla_active_dev=False,
         )
-        self.usuario_a = User.objects.create_user(username="vendedor_a", password="pass-a")
-        self.usuario_b = User.objects.create_user(username="vendedor_b", password="pass-b")
+        crear_cuenta(self.comercio_a)
+        crear_cuenta(self.comercio_b)
+        self.usuario_a = User.objects.create_user(
+            username="vendedor_a", password="pass-a"
+        )
+        self.usuario_b = User.objects.create_user(
+            username="vendedor_b", password="pass-b"
+        )
         self.usuario_off = User.objects.create_user(
             username="vendedor_off",
             password="pass-off",
@@ -282,7 +271,9 @@ class AltaVentaApiTests(TestCase):
         self.assertTrue(cuerpo["qr_string"].startswith("cody-dev://qr/dev-qr-"))
         cobro = Cobro.objects.get(pk=cuerpo["cobro_id"])
         self.assertEqual(cobro.comercio_id, self.comercio_a.pk)
-        self.assertEqual(cobro.pey_qr_id, cuerpo["qr_string"].removeprefix("cody-dev://qr/"))
+        self.assertEqual(
+            cobro.pey_qr_id, cuerpo["qr_string"].removeprefix("cody-dev://qr/")
+        )
         self.assertEqual(
             Movimiento.objects.get(pk=cuerpo["movimiento_id"]).origen,
             Movimiento.Origen.ORIGEN_DESARROLLO,
@@ -533,8 +524,9 @@ class AltaVentaApiTests(TestCase):
 
     @override_settings(PEY_API_KEY=_LLAVE_PRUEBA)
     def test_adaptador_produccion_marca_origen_pey(self) -> None:
-        self.comercio_a.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-        self.comercio_a.save(update_fields=["pey_bank_account_id"])
+        cuenta = self.comercio_a.cuenta_por_defecto
+        cuenta.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        cuenta.save(update_fields=["pey_bank_account_id"])
         self._entrar(self.usuario_a)
         llamadas: list[tuple] = []
 

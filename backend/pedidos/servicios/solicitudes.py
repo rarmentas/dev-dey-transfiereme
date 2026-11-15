@@ -3,13 +3,13 @@
 from django.db import transaction
 from django.db.models import Max
 
+from ambito.candados import bloquear_comercio
 from pedidos.contratos.v1 import CodigoError, TipoEvento
 from pedidos.errores import ErrorNucleo
 from pedidos.models import Pedido
 from pedidos.servicios.comandos import guardar, repeticion
 from pedidos.servicios.cotizaciones import invalidar
 from pedidos.servicios.eventos import emitir
-from ventas.canal import bloquear_comercio
 
 
 def registrar_solicitud(self, ctx, **datos):
