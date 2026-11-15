@@ -1,0 +1,45 @@
+import re
+
+from asistente.alcance import RESPUESTA_FUERA_DE_ALCANCE
+from asistente.formato import convertir_horas_24h_en_texto
+
+_RE_MARKDOWN = re.compile(r'[*_`#]|^-\s+', re.MULTILINE)
+_RE_CODIGO = re.compile(
+    r'```|^\s*(?:def |import |for .+ in |print\()',
+    re.MULTILINE,
+)
+_RE_URL_FACTURA = re.compile(r'/api/facturacion/facturas/\d+/(pdf|xml)/')
+
+
+def contiene_codigo(texto: str) -> bool:
+    limpio = (texto or '').strip()
+    if not limpio:
+        return False
+    return bool(_RE_CODIGO.search(limpio))
+
+
+def limpiar_salida(texto: str, respuesta_vacia: str) -> str:
+    limpio = (texto or '').strip()
+    if not limpio:
+        return respuesta_vacia
+    limpio = limpio.replace('```', ' ')
+    limpio = _RE_MARKDOWN.sub('', limpio)
+    limpio = convertir_horas_24h_en_texto(limpio)
+    if '\n' in limpio:
+        lineas = [' '.join(ln.split()) for ln in limpio.splitlines() if ln.strip()]
+        limpio = '\n'.join(lineas)
+        return limpio or respuesta_vacia
+    limpio = ' '.join(limpio.split())
+    if _RE_URL_FACTURA.search(limpio):
+        return limpio or respuesta_vacia
+    oraciones = re.split(r'(?<=[.!?])\s+', limpio)
+    oraciones = [o for o in oraciones if o.strip()]
+    if len(oraciones) > 3:
+        limpio = ' '.join(oraciones[:3])
+    return limpio or respuesta_vacia
+
+
+def validar_respuesta_asistente(texto: str) -> str:
+    if contiene_codigo(texto):
+        return RESPUESTA_FUERA_DE_ALCANCE
+    return limpiar_salida(texto, RESPUESTA_FUERA_DE_ALCANCE)

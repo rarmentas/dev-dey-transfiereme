@@ -1,0 +1,268 @@
+import json
+import logging
+from typing import TypedDict
+
+from django.utils import timezone
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph
+
+from asistente.contexto import (
+    establecer_clinica,
+    establecer_conversacion,
+    obtener_conversacion,
+    restablecer_clinica,
+    restablecer_conversacion,
+)
+from asistente.herramientas import HERRAMIENTAS, ejecutar_herramienta
+from asistente.models import Mensaje
+from asistente.proveedor import crear_modelo_chat
+from asistente.salida import validar_respuesta_asistente
+
+MAX_RONDAS_HERRAMIENTAS = 6
+MAX_MENSAJES_HISTORIAL = 8
+
+PROMPT_SISTEMA = (
+    'Eres el asistente de una clínica dental. Ayuda con la agenda (citas, '
+    'pacientes, huecos, tratamientos, estudios, saldos) y con consultas de '
+    'facturación de un paciente ya identificado (líneas pendientes, datos '
+    'fiscales, facturas emitidas). Responde en español de México, de usted, '
+    'en texto plano. Usa siempre las herramientas y repite horas, fechas y '
+    'folios tal como vienen; no inventes datos. Si hay varias coincidencias, '
+    'pregunta cuál. Para citas usa proponer_crear_cita, proponer_reagendar_cita o '
+    'proponer_cancelar_cita y repite el resumen que devuelve. Para timbrar usa '
+    'proponer_facturar con líneas numeradas y forma de pago del catálogo; '
+    'proponer_guardar_datos_fiscales si faltan datos fiscales. Para enviar una '
+    'factura timbrada por correo use proponer_enviar_factura_correo (confirmación '
+    'sí/no separada; no combine timbrado y envío). Siempre confirme '
+    'con sí o no antes de timbrar, guardar fiscales o enviar correo. No cancela '
+    'facturas desde aquí. No cobras, no creas pacientes, no '
+    'das consejo médico.'
+)
+
+MENSAJE_SIN_COMPLETAR = 'No pude completar la consulta.'
+
+logger = logging.getLogger(__name__)
+
+_GRAFOS_COMPILADOS: dict = {}
+
+
+class EstadoAsistente(TypedDict):
+    historial: list[BaseMessage]
+    respuesta: str
+
+
+def _mensajes_validos(conversacion) -> list:
+    crudos = list(conversacion.mensajes.order_by('creado', 'id'))
+    validos = []
+    indice = 0
+    while indice < len(crudos):
+        mensaje = crudos[indice]
+        if (
+            mensaje.rol == Mensaje.Rol.USUARIO
+            and indice + 1 < len(crudos)
+            and crudos[indice + 1].rol == Mensaje.Rol.ASISTENTE
+            and crudos[indice + 1].fuera_de_alcance
+        ):
+            indice += 2
+            continue
+        if mensaje.rol == Mensaje.Rol.ASISTENTE and mensaje.fuera_de_alcance:
+            indice += 1
+            continue
+        validos.append(mensaje)
+        indice += 1
+    if len(validos) > MAX_MENSAJES_HISTORIAL:
+        validos = validos[-MAX_MENSAJES_HISTORIAL:]
+    return validos
+
+
+def _mensajes_langchain(conversacion, *, contexto_accion: str | None = None) -> list[BaseMessage]:
+    hoy = timezone.localdate().isoformat()
+    historial: list[BaseMessage] = [
+        SystemMessage(content=PROMPT_SISTEMA),
+        SystemMessage(content=f'Hoy es {hoy}.'),
+    ]
+    if contexto_accion:
+        historial.append(
+            SystemMessage(content=f'Contexto interno (no repetir literalmente): {contexto_accion}')
+        )
+    for mensaje in _mensajes_validos(conversacion):
+        if mensaje.rol == Mensaje.Rol.USUARIO:
+            historial.append(HumanMessage(content=mensaje.texto))
+        else:
+            historial.append(AIMessage(content=mensaje.texto))
+    return historial
+
+
+def _texto_de_mensaje(salida: AIMessage) -> str:
+    contenido = salida.content
+    if isinstance(contenido, str):
+        return contenido.strip()
+    if isinstance(contenido, list):
+        partes = []
+        for bloque in contenido:
+            if isinstance(bloque, str):
+                partes.append(bloque)
+            elif isinstance(bloque, dict) and bloque.get('type') == 'text':
+                partes.append(str(bloque.get('text', '')))
+        return ''.join(partes).strip()
+    return str(contenido).strip()
+
+
+_HERRAMIENTA_FACTURAS_PACIENTE = 'facturas_de_paciente'
+_HERRAMIENTA_LINEAS_FACTURABLES = 'lineas_facturables_de_paciente'
+
+
+def _reordenar_presentaciones_facturacion(
+    bloques: list[tuple[str, str]],
+) -> list[str]:
+    """Facturas antes que líneas en las mismas posiciones del lote; resto estable."""
+    items = list(bloques)
+    posiciones = [
+        indice
+        for indice, (nombre, _) in enumerate(items)
+        if nombre
+        in (_HERRAMIENTA_FACTURAS_PACIENTE, _HERRAMIENTA_LINEAS_FACTURABLES)
+    ]
+    textos_facturas = [
+        texto
+        for nombre, texto in items
+        if nombre == _HERRAMIENTA_FACTURAS_PACIENTE
+    ]
+    textos_lineas = [
+        texto
+        for nombre, texto in items
+        if nombre == _HERRAMIENTA_LINEAS_FACTURABLES
+    ]
+    if not posiciones or not textos_facturas or not textos_lineas:
+        return [texto for _, texto in items]
+    relleno = textos_facturas + textos_lineas
+    salida = [texto for _, texto in items]
+    for posicion, texto in zip(posiciones, relleno, strict=True):
+        salida[posicion] = texto
+    return salida
+
+
+def _presentacion_desde_resultados(
+    contenidos: list[str],
+    nombres_herramienta: list[str] | None = None,
+) -> str | None:
+    bloques: list[tuple[str, str]] = []
+    for indice, contenido in enumerate(contenidos):
+        try:
+            datos = json.loads(contenido)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(datos, dict) or datos.get('error'):
+            return None
+        texto = datos.get('presentacion')
+        if not isinstance(texto, str) or not texto.strip():
+            return None
+        nombre = ''
+        if nombres_herramienta is not None and indice < len(nombres_herramienta):
+            nombre = nombres_herramienta[indice]
+        bloques.append((nombre, texto.strip()))
+    if not bloques:
+        return None
+    textos = (
+        _reordenar_presentaciones_facturacion(bloques)
+        if nombres_herramienta is not None
+        else [texto for _, texto in bloques]
+    )
+    return '\n\n'.join(textos)
+
+
+def _invocar_con_herramientas(historial: list[BaseMessage], *, chat) -> str:
+    conversacion = list(historial)
+    for ronda in range(1, MAX_RONDAS_HERRAMIENTAS + 1):
+        salida = chat.invoke(conversacion)
+        meta = getattr(salida, 'usage_metadata', None) or {}
+        conv = obtener_conversacion()
+        conversacion_id = conv.pk if conv is not None else None
+        logger.info(
+            'tokens_llm conversacion=%s ronda=%s input_tokens=%s output_tokens=%s total_tokens=%s',
+            conversacion_id,
+            ronda,
+            meta.get('input_tokens'),
+            meta.get('output_tokens'),
+            meta.get('total_tokens'),
+        )
+        if not isinstance(salida, AIMessage):
+            salida = AIMessage(content=str(salida))
+        if not salida.tool_calls:
+            texto = _texto_de_mensaje(salida)
+            return texto or MENSAJE_SIN_COMPLETAR
+        conversacion.append(salida)
+        resultados_lote: list[str] = []
+        nombres_lote: list[str] = []
+        for llamada in salida.tool_calls:
+            nombre = llamada['name']
+            argumentos = llamada.get('args') or {}
+            contenido = ejecutar_herramienta(nombre, argumentos)
+            resultados_lote.append(contenido)
+            nombres_lote.append(nombre)
+            conversacion.append(
+                ToolMessage(content=contenido, tool_call_id=llamada['id'])
+            )
+        texto_servidor = _presentacion_desde_resultados(
+            resultados_lote,
+            nombres_lote,
+        )
+        if texto_servidor is not None:
+            return texto_servidor
+    return MENSAJE_SIN_COMPLETAR
+
+
+def _nodo_redactar(estado: EstadoAsistente, *, chat) -> dict:
+    texto = _invocar_con_herramientas(estado['historial'], chat=chat)
+    return {'respuesta': texto}
+
+
+def _nodo_validar_salida(estado: EstadoAsistente) -> dict:
+    return {'respuesta': validar_respuesta_asistente(estado['respuesta'])}
+
+
+def _compilar_grafo(*, modelo=None):
+    chat = crear_modelo_chat(modelo=modelo).bind_tools(HERRAMIENTAS)
+    grafo = StateGraph(EstadoAsistente)
+
+    def redactar(estado: EstadoAsistente) -> dict:
+        return _nodo_redactar(estado, chat=chat)
+
+    grafo.add_node('redactar', redactar)
+    grafo.add_node('validar_salida', _nodo_validar_salida)
+    grafo.add_edge(START, 'redactar')
+    grafo.add_edge('redactar', 'validar_salida')
+    grafo.add_edge('validar_salida', END)
+    return grafo.compile()
+
+
+def _obtener_grafo(*, modelo=None):
+    clave = id(modelo) if modelo is not None else 'default'
+    if clave not in _GRAFOS_COMPILADOS:
+        _GRAFOS_COMPILADOS[clave] = _compilar_grafo(modelo=modelo)
+    return _GRAFOS_COMPILADOS[clave]
+
+
+def redactar_respuesta(
+    conversacion,
+    *,
+    modelo=None,
+    contexto_accion: str | None = None,
+) -> str:
+    """Ejecuta el grafo y devuelve el texto del asistente."""
+    token_conv = establecer_conversacion(conversacion)
+    token_clinica = establecer_clinica(conversacion.clinica)
+    try:
+        app = _obtener_grafo(modelo=modelo)
+        estado_inicial: EstadoAsistente = {
+            'historial': _mensajes_langchain(
+                conversacion,
+                contexto_accion=contexto_accion,
+            ),
+            'respuesta': '',
+        }
+        final = app.invoke(estado_inicial)
+        return final['respuesta']
+    finally:
+        restablecer_clinica(token_clinica)
+        restablecer_conversacion(token_conv)

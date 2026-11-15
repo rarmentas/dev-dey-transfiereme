@@ -1,0 +1,53 @@
+{
+  "origen": "/home/rarme/Proyectos/dent-intec-A",
+  "commit_origen": "c6542f954173a95c787757b03b06b1a87c17e243",
+  "fecha": "2026-11-15",
+  "proposito": "Arnes del asistente copiado como referencia para planear su adaptacion a pedidos. No esta integrado ni es ejecutable; las extensiones .txt evitan su importacion y descubrimiento como pruebas. El grafo y los filtros conservan dependencias y reglas dentales que deben sustituirse. No se copiaron secretos ni datos de usuarios.",
+  "archivos": [
+    {
+      "origen": "backend/asistente/grafo.py",
+      "copia": "backend/asistente/grafo.py.txt",
+      "sha256": "f50e10d3889f7c0efda7dc46c07eb0a35cdd92362b0fc8354a3d823bbc79723f"
+    },
+    {
+      "origen": "backend/asistente/proveedor.py",
+      "copia": "backend/asistente/proveedor.py.txt",
+      "sha256": "fbd851b6406a766dddcae012948d4f64b911c7d11a2249cfc3e1df9e00473607"
+    },
+    {
+      "origen": "backend/asistente/contexto.py",
+      "copia": "backend/asistente/contexto.py.txt",
+      "sha256": "1a0476fcb59e46e27c5457758f24e68ca5160d0271469c02926ec2111717c6dc"
+    },
+    {
+      "origen": "backend/asistente/alcance.py",
+      "copia": "backend/asistente/alcance.py.txt",
+      "sha256": "1b8438730359aecf59743e21d2bf30ea4d7b3ec7c993401da5ff41d8dcbd5acc"
+    },
+    {
+      "origen": "backend/asistente/salida.py",
+      "copia": "backend/asistente/salida.py.txt",
+      "sha256": "7cc3283dc28a308545569c4de130929a61c0b2124502e376687fd3157fab05a6"
+    },
+    {
+      "origen": "backend/asistente/tests/test_tokens_grafo.py",
+      "copia": "backend/asistente/tests/test_tokens_grafo.py.txt",
+      "sha256": "410ea1ec41c59b8d2de212056f38eedf4c334e4fcb2b99226078d5da92770da2"
+    },
+    {
+      "origen": "backend/asistente/tests/test_proveedor.py",
+      "copia": "backend/asistente/tests/test_proveedor.py.txt",
+      "sha256": "00ee9b1ce49ba982ea6bfe0796310f2ff1b73a1d1e2301c67fe9b6a38bdd3ff3"
+    },
+    {
+      "origen": "backend/asistente/tests/test_alcance.py",
+      "copia": "backend/asistente/tests/test_alcance.py.txt",
+      "sha256": "ac4b53a6af62a569091151edf916e2282d13cea0347d8c08415c1ba462784fbd"
+    },
+    {
+      "origen": "backend/requirements.txt",
+      "copia": "backend/requirements.txt.txt",
+      "sha256": "66cd7fbbc8381da87a5c78e912ec830be9b7f667abd3d8261c2fc567db5723d6"
+    }
+  ]
+}
