@@ -28,7 +28,7 @@ Plantilla: `.env.example` (también en `backend/.env.example`). `scripts/dev-sta
 
 ## GitLab CI
 
-Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en `.gitlab-ci.yml`. Proteja las ramas `master` y `test`. El ámbito `production` solo entra al job de `master`; el ámbito `test`, solo al de la rama `test`. Los merge requests no las reciben.
+Cree cada variable en **Settings → CI/CD → Variables**. No ponga valores en `.gitlab-ci.yml`. El inventario del 2026-11-14 encontró `master` protegida y `test` sin protección ni variables `TEST_*` de proyecto o grupo. `deploy:test` queda deshabilitado hasta disponer de recursos propios. Las variables `PROD_*` existentes tienen ámbito `*`; se debe pasar al ámbito `production` durante la preparación operativa, sin mostrar ni rotar valores en este cambio. Los merge requests actuales no reciben estas variables ni ejecutan CI.
 
 ### Archivo de la app
 
@@ -65,19 +65,14 @@ Estas no van en el `.env`. El job las usa para entrar al servidor; si vivieran e
 
 | Variable de CI | Tipo | Ámbito | Rama |
 | --- | --- | --- | --- |
-| `PROD_DEPLOY_HOST` | Variable, protegida | `production` | `master` |
-| `PROD_DEPLOY_USER` | Variable, protegida | `production` | `master` |
-| `PROD_DEPLOY_PORT` | Variable, protegida | `production` | `master` |
-| `PROD_DEPLOY_PATH` | Variable, protegida | `production` | `master` |
-| `PROD_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `production` | `master` |
-| `TEST_DEPLOY_HOST` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_USER` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_PORT` | Variable, protegida | `test` | `test` |
-| `TEST_DEPLOY_PATH` | Variable, protegida | `test` | `test` |
-| `TEST_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `test` | `test` |
+| `PROD_DEPLOY_HOST` | Variable, protegida | `*` actual; `production` previsto | `master` |
+| `PROD_DEPLOY_USER` | Variable, protegida | `*` actual; `production` previsto | `master` |
+| `PROD_DEPLOY_PORT` | Variable, protegida | `*` actual; `production` previsto | `master` |
+| `PROD_DEPLOY_PATH` | Variable, protegida | `*` actual; `production` previsto | `master` |
+| `PROD_SSH_PRIVATE_KEY` | Variable, protegida, valor en base64 | `*` actual; `production` previsto | `master` |
 
-`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH y `DEPLOY_PATH` una ruta absoluta de al menos dos niveles, dedicada a la app (no el home). `PROD_SSH_PRIVATE_KEY` y `TEST_SSH_PRIVATE_KEY` son la llave privada en base64 de una sola línea (`base64 -w 0`). El job la decodifica a un archivo temporal y no la copia al `.env`. El script rechaza el archivo de la app si trae esas claves o un bloque `PRIVATE KEY`.
+`DEPLOY_HOST` es el servidor, `DEPLOY_USER` quien entra por SSH, `DEPLOY_PORT` el puerto SSH. El camino nuevo exige `PROD_DEPLOY_PATH=/opt/codi/prod` exactamente y conserva host `100.120.112.112`, puerto `30022`. La clave pública del host está fijada en `deploy/known_hosts.prod`; un cambio de identidad SSH detiene el job hasta verificarlo y actualizar ese archivo. La variable de ruta sigue en `/opt/codi/` hasta el corte; con ese valor el script nuevo falla antes de escribir. `PROD_SSH_PRIVATE_KEY` es la llave privada en base64 de una sola línea (`base64 -w 0`); el job la decodifica a un archivo temporal y no la copia al `.env`. El script rechaza el archivo de la app si trae claves de deploy o un bloque `PRIVATE KEY`.
 
-El pipeline solo se crea en un push (o un lanzamiento manual) a `master` o a `test`. `deploy:prod` usa el prefijo `PROD_` y el ámbito `production`; `deploy:test` usa `TEST_` y el ámbito `test`. Cada uno copia el árbol a su `DEPLOY_PATH`, instala el `.env` en `backend/.env`, levanta el Postgres de `deploy/compose.yaml` y espera a que responda, crea el venv, migra, publica estáticos, instala `cody.service` y espera HTTP 200 en `/api/salud/`. En intec-vps-001 ese contenedor es `codi-postgres` y publica `127.0.0.1:5435`; el archivo de la app tiene que traer `POSTGRES_PORT=5435`. Los datos quedan en `/var/lib/codi/postgres`, fuera del árbol que sincroniza el job. El usuario de deploy necesita `sudo` sin contraseña para `systemctl`, `install` y `mkdir`, y pertenecer al grupo `docker`. Opcional: `PROD_PYTHON` o `TEST_PYTHON` (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`, el mismo intérprete que denti). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`: Traefik llega por el puente Docker y UFW solo abre el 8000 a `172.16.0.0/12`. La comprobación del job sigue en `127.0.0.1`. Dentro del archivo de la app se pueden fijar `GUNICORN_WORKERS` y `GUNICORN_TIMEOUT`. Un `GUNICORN_BIND` ahí pisa la unit, porque systemd aplica `EnvironmentFile=` después de `Environment=`. `DEBUG` tiene que ser `False`.
+El pipeline se crea en push o lanzamiento manual a `master` o `test`. `deploy:test` está bloqueado y `deploy:prod` requiere lanzamiento manual. El deploy productivo exige que la migración a `/opt/codi/prod` ya haya sido aceptada: valida la ruta, la unit activa y PostgreSQL antes de sincronizar; mantiene un `flock` remoto durante rsync y el reinicio; no crea PostgreSQL ni ejecuta migraciones. Instala dependencias y estáticos antes de detener `cody`, y falla si hay migraciones pendientes. Al reiniciar comprueba `/api/salud/`. `codi-postgres` debe seguir sano en `127.0.0.1:5435`, con datos en `/var/lib/codi/postgres`; el `.env` debe traer `POSTGRES_PORT=5435`. El usuario de deploy necesita acceso Docker y `sudo` sin contraseña para `systemctl` e `install`. `PROD_PYTHON` es opcional (por defecto `/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12`). `deploy/cody.service.in` fija `GUNICORN_BIND=0.0.0.0:8000`; un `GUNICORN_BIND` en `.env` lo sustituye. `DEBUG` debe ser `False`. El bloqueo nuevo no detiene scripts de commits antiguos: durante el corte se revoca su acceso SSH efectivo y se comprueba que no quedan jobs activos antes de crear hijos en `/opt/codi`.
 
 El Postgres del job `backend:test` sigue con una contraseña efímera en el YAML, distinta de la del archivo. Las plantillas `.env.example` traen `PEY_ADAPTADOR=desarrollo`. Ese adaptador no usa `PEY_API_KEY`, `PEY_WEBHOOK_SECRET` ni `https://api.pey.mx`. `obtener_puerto()` lo rechaza cuando `PEY_API_KEY` tiene valor, para que un `DEBUG` encendido por error no conviva con la llave real.

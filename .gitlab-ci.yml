@@ -222,7 +222,7 @@ deploy:test:
   extends: .deploy_template
   environment:
     name: test
-  resource_group: test
+  resource_group: codi-vps
   variables:
     DEPLOY_SCOPE: test
   needs:
@@ -234,14 +234,15 @@ deploy:test:
     - job: build:landing
       artifacts: true
   rules:
-    - if: $CI_COMMIT_BRANCH == "test"
+    # No existe unit, BD ni puerto aislado para test.
+    - when: never
 
 deploy:prod:
   extends: .deploy_template
   environment:
     name: production
     url: https://transfiereme.asware.com.mx
-  resource_group: production
+  resource_group: codi-vps
   variables:
     DEPLOY_SCOPE: prod
   needs:
@@ -253,4 +254,6 @@ deploy:prod:
     - job: build:landing
       artifacts: true
   rules:
+    # El primer deploy nuevo se lanza solo después del traslado y respaldo.
     - if: $CI_COMMIT_BRANCH == "master"
+      when: manual

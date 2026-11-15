@@ -300,7 +300,7 @@ Variables de conexión: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `PO
 
 Cobro: `PEY_API_KEY` (Bearer contra `https://api.pey.mx`), `PEY_WEBHOOK_SECRET` (secreto `whsec_...` del portal) y `WEBHOOK_BASE_URL` para que pey entregue `codi.qr.payment_received` y `codi.pn.payment_received`.
 
-El `.env` no se commitea. En CI, GitLab lo entrega como variable File (`PROD_ENV_FILE` en `master`, `TEST_ENV_FILE` en `test`), secretos de la app incluidos. Host, usuario, puerto, ruta y llave SSH del deploy son variables aparte y no viajan dentro de ese archivo. El detalle está en `docs/desarrollo/variables-entorno.md`.
+El `.env` no se commitea. En CI, GitLab lo entrega como variable File (`PROD_ENV_FILE` en `master`), secretos de la app incluidos. El deploy de `test` está bloqueado hasta que tenga recursos aislados. Host, usuario, puerto, ruta y llave SSH del deploy son variables aparte y no viajan dentro de ese archivo. El detalle está en `docs/desarrollo/variables-entorno.md`.
 
 ## Desarrollo local
 
@@ -325,9 +325,9 @@ Pruebas acotadas a lo que se tocó, no la suite completa:
 
 Patrón de la referencia, para cuando Cody salga del hackatón local:
 
-- CI en GitLab, runners con tag `docker`. Ramas que despliegan: una de trabajo (en la referencia, `demo`) y `master`.
+- CI en GitLab, runners con tag `docker`. El deploy productivo de `master` es manual; `deploy:test` está deshabilitado.
 - Job de build: imagen Flutter 3.47.8, `flutter pub get`, `flutter test`, `flutter build web --release`.
-- Job de deploy: imagen `alpine:3.22`, `bash`, `openssh-client`, `rsync`. Copia el árbol, instala el `.env`, `pip install`, `migrate`, `collectstatic`, reinicia systemd y espera HTTP 200.
+- Job de deploy: imagen `alpine:3.22`, `bash`, `openssh-client`, `rsync`. Tras el traslado inicial, sincroniza solo a `/opt/codi/prod` bajo bloqueo remoto; comprueba PostgreSQL sin recrearlo, rechaza migraciones pendientes, prepara dependencias y estáticos antes de reiniciar systemd y exige HTTP 200. Ver [traslado a prod](../operacion/traslado-prod.md).
 - El proceso de aplicación es una unit systemd: usuario propio, `EnvironmentFile`, Gunicorn con `--bind`, `--workers` y `--timeout` por variables, logs a stdout (journald), `Restart=always`, `NoNewPrivileges`, `ProtectSystem=strict`.
 - Tareas periódicas y colas van en units aparte (`*.service` + `*.timer`), no dentro del request.
 
