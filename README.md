@@ -1,8 +1,14 @@
 # Transfiéreme
 
-**Capa de cobro CoDi para el pequeño comercio y sus pedidos, con la API de pey.**
+**El tendero recibe pedidos por WhatsApp y cobra con CoDi, sin terminal ni comisiones.**
 
-**En producción:** [transfiereme.asware.com.mx](https://transfiereme.asware.com.mx/)
+El cliente pide por WhatsApp, por texto o nota de voz. El tendero revisa y cotiza en la app; el cliente acepta con `ACEPTAR <token>`. El cobro CoDi sale por la API de pey y un webhook firmado marca el pedido como pagado.
+
+[Conoce Transfiéreme en producción](https://transfiereme.asware.com.mx/).
+
+Equipo: Rodrigo Armenta y Ariel Martinez (ver [Contribuidores](#contribuidores))
+
+> 🎬 **Video de 3 minutos:** próximamente. <!-- TODO(Rodrigo): reemplazar con la liga del video o GIF -->
 
 ## Hackatón México
 
@@ -14,6 +20,83 @@ Para las reglas 9.1 y 9.7, todo lo existente antes del 14 de noviembre de 2026 s
 
 La lista de Fase 0 identifica código existente en el árbol de `85e24d8`; no certifica pruebas de punta a punta. Las capacidades de Fase 1 se describen por su implementación, no como evidencia de una demo ejecutada.
 
+## Pruébalo en 2 minutos
+
+La demo pública está en [transfiereme.asware.com.mx](https://transfiereme.asware.com.mx/).
+
+1. Escribe tu pedido por WhatsApp al número del comercio demo: **\<NÚMERO DE WHATSAPP DEL COMERCIO DEMO\>**. <!-- TODO(Rodrigo): reemplazar con el número de WhatsApp del comercio demo -->
+2. El tendero revisa y cotiza en la app Flutter, pestaña **Pedidos**. La app marca los artículos sin precio como pendientes de cotizar; el total no se inventa.
+3. Recibes el resumen y respondes `ACEPTAR <token>` con el token del último resumen.
+4. El tendero abre el pedido, en la tarjeta de **Pago** elige **Código QR** (o **Enviar al celular**) y pulsa **Cobrar**; paga el QR CoDi con tu app bancaria. En el comercio demo el cobro es de **$0.01 MXN** (modo demo `es_demo`; lo pagado no se devuelve).
+5. pey avisa con un webhook firmado y el pedido pasa a **pagado**; tú recibes el aviso por WhatsApp y el tendero marca listo y entregado.
+
+pey se prueba en producción; usa solo $0.01.
+
+## Impacto
+
+- Los [Censos Económicos 2024 del INEGI](https://www.inegi.org.mx/contenidos/programas/ce/2024/doc/rd_infcom_ce24.pdf), con año de referencia 2023, registran **1,063,448 establecimientos** y **2,132,756 personas ocupadas** en el comercio al por menor de abarrotes y alimentos. Las tiendas de abarrotes, ultramarinos y misceláneas fueron la actividad que más creció en unidades económicas entre 2018 y 2023: **+81,500**. [INEGI](https://www.inegi.org.mx/contenidos/saladeprensa/boletines/2025/ce/CE2024_def_RR.pdf).
+- En la [Encuesta #25 Pulso de la Tiendita de Barrio 2025 de ANPEC](https://www.anpec.com.mx/encuestas/10Encuesta25.pdf), entre 3,000 comerciantes encuestados, solo **13.8%** cuenta con terminal bancaria y **10% o menos** vende por plataformas digitales. Son resultados de esa encuesta.
+- Según [Banxico](https://www.banxico.org.mx/sistemas-de-pago/codi-cobro-digital-banco-me.html), CoDi «no genera comisiones adicionales» y está pensado para que los comercios acepten pagos electrónicos sin costo. Con tarjeta, el comercio paga una tasa de descuento que depende del adquirente y el giro: en el [reporte de tasas de descuento de débito de agregadores de julio de 2026](https://www.banxico.org.mx/servicios/tasas-de-descuento-para-tarjetas-de-debito-por-gir/%7B26C0F4CD-F244-5486-EFD5-E0B212ACF2D3%7D.pdf), el promedio por agregador va de **1.42% a 3.55%** entre 39 agregadores. Las [cuotas de intercambio](https://www.banxico.org.mx/sistemas-de-pago/cuotas-intercambio-comisiones.html) pueden llegar a 1.91% en crédito y 1.15% en débito, con tope de $13.50 por operación en débito.
+- La ENIF 2024 del INEGI indica que **63.0%** de las personas de 18 a 70 años tiene al menos una cuenta de ahorro formal ([INEGI](https://www.inegi.org.mx/contenidos/saladeprensa/boletines/2025/enif/ENIF2024_RR.pdf)) y **85.2%** usa efectivo como medio de pago más frecuente en compras de $500 o menos ([INEGI](https://www.inegi.org.mx/contenidos/programas/enif/2024/doc/enif_2024_resultados.pdf)).
+- La [ENDUTIH 2024 del INEGI](https://www.inegi.org.mx/contenidos/saladeprensa/boletines/2025/endutih/ENDUTIH_24_RR.pdf) señala que **90.6%** de las personas usuarias de teléfono inteligente usó aplicaciones de mensajería instantánea; la encuesta no reporta WhatsApp por separado.
+
+Hay más de un millón de establecimientos de abarrotes y alimentos, pocas tiendas tienen terminal según la encuesta de ANPEC, el efectivo domina las compras chicas y la mensajería es de uso extendido. Transfiéreme lleva el cobro CoDi, sin costo, al canal donde ya pide el cliente.
+
+## Cómo usamos CoDi y pey
+
+| Pieza | Qué hace | Dónde |
+| --- | --- | --- |
+| `POST /codi/qr` | QR por venta o pedido con monto, concepto y referencia; QR general del local con monto 0. | `backend/pey/produccion.py` |
+| `POST /codi/pn` | Cobro por notificación push al celular del cliente. | `backend/pey/produccion.py` |
+| `POST /bank-account` y `GET /bank-account/{id}` | Registro y consulta de la CLABE del comercio en pey; el cobro se bloquea sin cuenta `ACTIVE`. | `backend/pey/cuentas.py` |
+| Webhooks `codi.qr.payment_received` y `codi.pn.payment_received` | Firma Standard Webhooks verificada sobre el cuerpo crudo e idempotencia por `webhook-id`. | `backend/webhooks` |
+| `GET /transaction/{id}` y `GET /transaction/codi/qr/{id}` | Consulta de transacciones: respaldo definido en el contrato; hoy la confirmación del pago en el código es por webhook. | [Contrato](docs/stack-tecnologico/000-stack.md) |
+
+```mermaid
+sequenceDiagram
+    participant Cliente as Cliente - WhatsApp
+    participant Canal as Canal - WAHA
+    participant Nucleo as Núcleo de pedidos
+    participant Tendero as Tendero - app Flutter
+    participant Cobros as cody-cobros
+    participant Pey as pey
+    participant Banco as Banco del cliente
+    Cliente->>Canal: Pedido por texto o voz
+    Canal->>Nucleo: Pedido
+    Nucleo->>Tendero: Revisión y cotización
+    Tendero->>Nucleo: Publica cotización
+    Nucleo->>Canal: Resumen con token
+    Canal->>Cliente: Resumen con token
+    Cliente->>Canal: ACEPTAR #lt;token#gt;
+    Canal->>Nucleo: Aceptación vigente
+    Tendero->>Nucleo: Cobrar - QR o push
+    Nucleo->>Cobros: IntentoCobro
+    Cobros->>Pey: POST /codi/qr o /codi/pn
+    Pey->>Cobros: id y qrString
+    Cobros->>Nucleo: Cobro pendiente - QR en tarjeta de Pago de la app
+    Cliente->>Banco: Autoriza el pago CoDi
+    Pey->>Nucleo: Webhook firmado payment_received - verifica firma e idempotencia
+    Nucleo->>Canal: Aviso pagado
+    Canal->>Cliente: Aviso pagado por WhatsApp
+```
+
+## Capturas de la app
+
+<table>
+  <tr>
+    <td><img src="docs/assets/capturas/inicio.png" width="200" alt="Pantalla de inicio con opciones de cobro, Mi QR y Pedidos"></td>
+    <td><img src="docs/assets/capturas/movimientos.png" width="200" alt="Pantalla de movimientos de cobros por día"></td>
+    <td><img src="docs/assets/capturas/ajustes.png" width="200" alt="Pantalla de ajustes del comercio y su cuenta de cobro"></td>
+    <td><img src="docs/assets/capturas/catalogo.png" width="200" alt="Pantalla de catálogo y configuración del agente de pedidos"></td>
+  </tr>
+  <tr>
+    <td>Inicio: cobrar, Mi QR y Pedidos.</td>
+    <td>Movimientos: cobros por día con estado Pagado o Vencido.</td>
+    <td>Ajustes: comercio y CLABE con cuenta activa.</td>
+    <td>Catálogo: lista de precios con el interruptor del agente de pedidos.</td>
+  </tr>
+</table>
+
 ## Fases del proyecto
 
 | Fase | Fecha | Alcance y estado |
@@ -21,6 +104,18 @@ La lista de Fase 0 identifica código existente en el árbol de `85e24d8`; no ce
 | 0 | Antes del 14 de noviembre | Componentes previos declarados. |
 | 1 | 15 de noviembre de 2026 | Entrega preliminar: código de pedidos, canal y cobro; evidencia de demo pendiente. |
 | 2 | 12 de diciembre de 2026 | Entrega final: trabajo planeado. |
+
+### Antes y después: Fase 0 frente a Fase 1
+
+| Capacidad | Fase 0 (antes del 14 de nov) | Fase 1 (entrega del 15 de nov) |
+| --- | --- | --- |
+| Cobro | Venta capturada por el vendedor. | Pedido ligado a aceptación, intento, cobro y webhook. |
+| Canal | Sin canal de pedidos. | WhatsApp con WAHA, texto y notas de voz con STT local. |
+| Cuenta de cobro | CLABE única. | Varias CLABE por comercio y destino histórico por intento. |
+| Estado del pedido | Solo estado financiero. | Pago, listo y entregado diferenciados. |
+| Cotización | No existía. | Revisión por el tendero y aceptación explícita `ACEPTAR <token>`. |
+| Operación | CI y deploy. | Deploy con respaldo `pg_dump` y migraciones; units systemd de web, canal, cobros y STT. |
+| Agente | No existía. | Agente de pedidos LangGraph opcional por comercio, apagado por defecto, con lista de precios. |
 
 ### Fase 0: componentes previos
 
@@ -57,6 +152,23 @@ Lo siguiente es **plan**, no funcionalidad implementada:
 - **F2-07 Piloto:** probar con un abarrote real y medir pedidos completados, tiempos, errores y abandonos.
 
 Ampliaciones condicionadas: escaneo de código de barras para autoservicio, inventario opcional y reparto propio básico. Fuera de alcance: marketplace o comparador, fiado y cobranza autónoma, conciliación avanzada, TTS y asesor analítico.
+
+## Diferenciadores técnicos
+
+- **Idempotencia:** garantizada por `webhook-id` en los avisos de pey; el canal y la aceptación están diseñados para no duplicar repeticiones.
+- **Cobro durable:** `IntentoCobro` tiene estados `en_espera`, `reservado`, `enviando`, `pendiente`, `incierto`, `rechazado`, `vencido`, `pagado` y `descartado`. Un intento incierto bloquea nuevos envíos hasta resolverlo con evidencia, sin reintento a ciegas.
+- **Webhooks firmados:** Standard Webhooks verifica la firma sobre el cuerpo crudo.
+- **Deploy:** respaldo `pg_dump` y migraciones antes del reinicio.
+- **STT local:** `faster-whisper` transcribe notas de voz en el servidor mediante una cola de audio.
+- **Agente de pedidos LangGraph opcional por comercio, apagado por defecto:** el servidor resuelve productos y precios de la lista del comercio; el modelo no tiene herramientas de cobro.
+
+## Hacia la Fase 2
+
+- Pedidos y cobros concurrentes, con WhatsApp operable.
+- POS y catálogo progresivo, con compra móvil por tienda.
+- Separación de comercios y piloto en un abarrote real.
+
+Consulta el [plan completo de Fase 2](#fase-2-plan-para-el-12-de-diciembre).
 
 ## Problema
 
