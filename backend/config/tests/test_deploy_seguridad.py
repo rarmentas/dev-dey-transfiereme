@@ -53,6 +53,9 @@ class DeploySeguridadTests(SimpleTestCase):
             "POSTGRES_PASSWORD=clave-ficticia-secreta\n"
             "POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=5435\nWAHA_BASE_URL=http://127.0.0.1:3004\n"
             "WAHA_API_KEY=ficticia\nWAHA_INSTANCIA=waha\n"
+            "AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n"
+            "AGENTE_PEDIDOS_MODELO=modelo-prueba\n"
+            "AGENTE_PEDIDOS_TIMEOUT_S=25\n"
             "PEY_API_KEY=ficticia\nPEY_WEBHOOK_SECRET=ficticio\n"
             "NUCLEO_ADAPTADOR=real\nPEDIDOS_COBRO_HABILITADO=true\n"
             "WAHA_WEBHOOK_SECRET=ficticio\nEMAIL_HOST_PASSWORD=ficticia\n"
@@ -365,6 +368,7 @@ esac''')
         self.assertEqual(len(respaldos), 1)
         self.assertEqual(respaldos[0].read_bytes(), b"PGDMP contenido ficticio")
         self.assertNotIn(b"clave-ficticia-secreta", resultado.stdout + resultado.stderr)
+        self.assertNotIn(b"ficticia-modelo", resultado.stdout + resultado.stderr)
         self.assertLess(acciones.index("systemctl start cody.service"),
                         acciones.index("systemctl restart cody-canal.service"))
         self.assertIn("--desde 2026-01-01T00:00:00Z", acciones)
@@ -380,6 +384,9 @@ esac''')
         self.assertIn("WAHA_INSTANCIA=waha\n", contenido)
         self.assertIn("WAHA_BASE_URL=http://127.0.0.1:3004\n", contenido)
         self.assertIn("WAHA_API_KEY=ficticia\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_API_KEY=ficticia-modelo\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_MODELO=modelo-prueba\n", contenido)
+        self.assertIn("AGENTE_PEDIDOS_TIMEOUT_S=25\n", contenido)
         for secreto in (
             "PEY_API_KEY", "PEY_WEBHOOK_SECRET", "WAHA_WEBHOOK_SECRET",
             "EMAIL_HOST_PASSWORD",
@@ -393,6 +400,8 @@ esac''')
         self.assertNotIn("PEY_WEBHOOK_SECRET", cobros)
         self.assertIn("WAHA_API_KEY=ficticia", stt)
         self.assertNotIn("PEY_API_KEY", stt)
+        self.assertNotIn("AGENTE_PEDIDOS_API_KEY", stt)
+        self.assertNotIn("AGENTE_PEDIDOS_API_KEY", cobros)
         for rol in ("canal", "cobros", "stt"):
             entorno = self.destino / f"backend/.env.{rol}"
             self.assertEqual(entorno.stat().st_mode & 0o777, 0o600)

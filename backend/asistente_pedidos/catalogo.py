@@ -1,6 +1,5 @@
 """Resolución exacta de nombres, unidades y precios aprobados del comercio."""
 
-import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
 

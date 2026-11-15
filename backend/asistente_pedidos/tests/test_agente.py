@@ -2,8 +2,9 @@ import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -13,6 +14,7 @@ from canales.lector import LectorProcedenciaCanal
 from canales.models import ConversacionCanal, MensajeEntrante, SalidaCanal, SesionCanal
 from pedidos.models import Pedido, ProductoCatalogo
 from pedidos.nucleo_real import NucleoRealV1
+from asistente_pedidos.grafo import _extraer
 
 
 class ModeloFalso:
@@ -23,6 +25,31 @@ class ModeloFalso:
     def invoke(self, prompt):
         self.llamadas += 1
         return json.dumps(next(self.salidas))
+
+
+class ExtraccionSeguraTests(SimpleTestCase):
+    def setUp(self):
+        self.productos = [SimpleNamespace(nombre="tortilla", alias=["tortillas"]),
+                          SimpleNamespace(nombre="refresco", alias=["refrescos"])]
+
+    def extraer(self, texto, items):
+        return _extraer({"texto": texto, "productos": self.productos, "pendientes": []},
+                        ModeloFalso({"intencion": "nuevo", "items": items}))
+
+    def test_unidad_del_primer_producto_no_contamina_el_segundo(self):
+        resultado = self.extraer("2 kg de tortilla y 3 refrescos", [
+            {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"},
+            {"nombre": "refrescos", "cantidad": "3", "unidad": None},
+        ])
+        self.assertEqual(resultado["items"][0]["unidad"], "kg")
+        self.assertIsNone(resultado["items"][1]["unidad"])
+
+    def test_numero_de_tortilla_no_respalda_cantidad_de_refrescos(self):
+        resultado = self.extraer("dos kilos de tortilla y tres refrescos", [
+            {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"},
+            {"nombre": "refrescos", "cantidad": "2", "unidad": None},
+        ])
+        self.assertIsNone(resultado["items"][1]["cantidad"])
 
 
 class AgentePedidosTests(TestCase):
@@ -188,6 +215,84 @@ class AgentePedidosTests(TestCase):
         _, texto = self.enviar("dos kg", modelo)
         self.assertIn("$50.00", texto)
         self.assertEqual(Pedido.objects.get().renglones.get().pk, renglon.pk)
+
+    def test_agregar_producto_no_reemplaza_pendiente(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [{"nombre": "tortilla", "cantidad": None, "unidad": None}]},
+            {"intencion": "correccion", "items": [{"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+        )
+        self.enviar("quiero tortilla", modelo)
+        original = Pedido.objects.get().renglones.get().pk
+        _, salida = self.enviar("agrega tres refrescos", modelo)
+        pedido = Pedido.objects.get()
+        self.assertEqual(pedido.renglones.count(), 2)
+        self.assertTrue(pedido.renglones.filter(pk=original, resolucion="pendiente").exists())
+        self.assertIn("pendiente de cotizar", salida.lower())
+
+    def test_quitar_producto_conserva_otros(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [
+                {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"},
+                {"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+            {"intencion": "correccion", "items": [
+                {"nombre": "refrescos", "cantidad": None, "unidad": None}]},
+        )
+        self.enviar("2 kg de tortilla y 3 refrescos", modelo)
+        tortilla_id = Pedido.objects.get().renglones.get(descripcion="tortilla").pk
+        _, salida = self.enviar("quita refrescos", modelo)
+        pedido = Pedido.objects.get()
+        self.assertEqual(pedido.renglones.count(), 1)
+        self.assertEqual(pedido.renglones.get().pk, tortilla_id)
+        self.assertIn("$50.00", salida)
+
+    def test_pedido_nuevo_tras_cierre_conserva_historial(self):
+        modelo = ModeloFalso(
+            {"intencion": "nuevo", "items": [{"nombre": "tortilla", "cantidad": "2", "unidad": "kg"}]},
+            {"intencion": "nuevo", "items": [{"nombre": "refrescos", "cantidad": "3", "unidad": None}]},
+        )
+        self.enviar("2 kg de tortilla", modelo)
+        anterior = Pedido.objects.get()
+        anterior.estado, anterior.abierto = "cerrado", False
+        anterior.save(update_fields=["estado", "abierto"])
+        _, salida = self.enviar("3 refrescos", modelo)
+        self.assertIn("$54.00", salida)
+        self.assertEqual(Pedido.objects.count(), 2)
+        self.assertEqual(Pedido.objects.get(pk=anterior.pk).renglones.get().descripcion, "tortilla")
+        self.conv.refresh_from_db()
+        self.assertNotEqual(self.conv.pedido_id_actual, anterior.pk)
+
+    def test_cambio_de_unidad_durante_modelo_deja_pendiente(self):
+        class CambiaUnidad(ModeloFalso):
+            def invoke(inner, prompt):
+                ProductoCatalogo.objects.filter(comercio=self.comercio, nombre="tortilla").update(unidad="pieza")
+                return super().invoke(prompt)
+        modelo = CambiaUnidad({"intencion": "nuevo", "items": [
+            {"nombre": "tortilla", "cantidad": "2", "unidad": "kg"}]})
+        _, salida = self.enviar("2 kg de tortilla", modelo)
+        renglon = Pedido.objects.get().renglones.get()
+        self.assertIn("pendiente de cotizar", salida.lower())
+        self.assertEqual(renglon.resolucion, "pendiente")
+        self.assertIsNone(renglon.precio_unitario_centavos)
+
+    def test_worker_vencido_no_reintenta_mensaje_terminado(self):
+        token = uuid.uuid4()
+        self.conv.lease_token = token
+        self.conv.lease_hasta = timezone.now() + timedelta(seconds=120)
+        self.conv.save()
+        mensaje = MensajeEntrante.objects.create(conversacion=self.conv, instancia_id="waha", sesion_id="s",
+            id_mensaje_proveedor="vence", hash_payload="x" * 64, secuencia=1, tipo="texto", texto="2 kg de tortilla")
+
+        class FallaTarde:
+            def invoke(inner, prompt):
+                ConversacionCanal.objects.filter(pk=self.conv.pk).update(lease_token=uuid.uuid4())
+                MensajeEntrante.objects.filter(pk=mensaje.pk).update(estado="procesado")
+                raise TimeoutError("modelo")
+
+        procesar_mensaje(mensaje, self.nucleo, self.lector, timezone.now(), lease_token=token, modelo=FallaTarde())
+        mensaje.refresh_from_db()
+        self.assertEqual(mensaje.estado, "procesado")
+        self.assertEqual(mensaje.intentos, 0)
+        self.assertFalse(SalidaCanal.objects.exists())
 
     def test_version_obsoleta_no_sobrescribe(self):
         self.enviar("dos kg de tortilla", ModeloFalso({"intencion": "nuevo", "items": [{"nombre": "tortilla", "cantidad": "2", "unidad": "kg"}]}))

@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from asistente_pedidos.catalogo import normalizar
-from asistente_pedidos.grafo import FUERA, construir
+from asistente_pedidos.grafo import construir
 from canales.conversacion import contexto
 from canales.models import ConversacionCanal, MensajeEntrante
 from canales.salidas import preparar
@@ -22,12 +22,18 @@ from pedidos.models import Pedido, ProductoCatalogo
 logger = logging.getLogger(__name__)
 
 
-def _reintentar(mensaje, ahora):
+def _reintentar(mensaje, lease_token):
     with transaction.atomic():
+        conversacion = ConversacionCanal.objects.select_for_update().get(pk=mensaje.conversacion_id)
+        if (conversacion.lease_token != lease_token or not conversacion.lease_hasta
+                or conversacion.lease_hasta <= timezone.now()):
+            return
         mensaje = MensajeEntrante.objects.select_for_update().get(pk=mensaje.pk)
+        if mensaje.estado not in {"pendiente", "reintentable"}:
+            return
         mensaje.intentos += 1
         mensaje.estado = "reintentable" if mensaje.intentos < 3 else "fallido"
-        mensaje.proximo_intento_en = ahora + timedelta(seconds=min(2 ** mensaje.intentos, 30))
+        mensaje.proximo_intento_en = timezone.now() + timedelta(seconds=min(2 ** mensaje.intentos, 30))
         mensaje.error = "agente_no_disponible"
         mensaje.save(update_fields=["intentos", "estado", "proximo_intento_en", "error"])
         if mensaje.estado == "fallido":
@@ -44,16 +50,27 @@ def _preparar_renglones(estado, dto, mensaje):
     anteriores = _filas_anteriores(dto) if dto else []
     cambios = {}
     filas_por_id = {}
-    for indice, fila in enumerate(estado["filas"]):
+    eliminados = set()
+    for nombre in estado.get("eliminaciones") or []:
+        clave = normalizar(nombre)
+        candidatos = [r for r in dto.renglones if normalizar(r.texto_solicitado) == clave
+                      or normalizar(r.descripcion) == clave] if dto else []
+        if len(candidatos) != 1:
+            return None, {}, "Indíqueme cuál renglón desea quitar del pedido."
+        eliminados.add(candidatos[0].renglon_id)
+    for indice, fila in enumerate(estado.get("filas") or []):
         nombre = normalizar(fila["nombre"])
         coincidencias = [r for r in anteriores if normalizar(r.texto_solicitado) == nombre]
         if not coincidencias and fila["producto_id"]:
             coincidencias = [r for r in dto.renglones if r.resolucion.value == "incluido" and normalizar(r.descripcion) == normalizar(fila["descripcion"])] if dto else []
-        if not coincidencias and dto and len(estado["filas"]) == 1:
-            pendientes = [r for r in dto.renglones if r.resolucion.value == "pendiente"]
-            if len(pendientes) == 1:
-                coincidencias = pendientes
+        if not coincidencias and dto and estado.get("aclaracion_de"):
+            coincidencias = [r for r in dto.renglones if r.renglon_id == estado["aclaracion_de"]
+                            and r.resolucion.value == "pendiente"]
+        if len(coincidencias) > 1:
+            return None, {}, "Hay varios renglones iguales; indique cuál desea corregir."
         identidad = coincidencias[0].renglon_id if len(coincidencias) == 1 else str(uuid5(NAMESPACE_URL, f"agente:{mensaje.pk}:{indice}"))
+        if identidad in eliminados:
+            return None, {}, "Indique si desea quitar o corregir ese producto."
         try:
             cantidad = Decimal(str(fila["cantidad"])) if fila["cantidad"] is not None else None
         except (InvalidOperation, ValueError, TypeError):
@@ -61,9 +78,12 @@ def _preparar_renglones(estado, dto, mensaje):
         nuevo = RenglonSolicitadoV1(identidad, fila["nombre"], cantidad, fila["unidad"])
         cambios[identidad] = nuevo
         filas_por_id[identidad] = fila
-    final = [cambios.pop(r.renglon_id) if r.renglon_id in cambios else r for r in anteriores]
+    final = [cambios.pop(r.renglon_id) if r.renglon_id in cambios else r
+             for r in anteriores if r.renglon_id not in eliminados]
     final.extend(cambios.values())
-    return final, filas_por_id
+    if not final:
+        return None, {}, "No puedo dejar un pedido vacío; pida al tendero que lo revise."
+    return final, filas_por_id, None
 
 
 def _aplicar_catalogo(pedido_id, version, filas, comercio_id):
@@ -77,7 +97,8 @@ def _aplicar_catalogo(pedido_id, version, filas, comercio_id):
             continue
         if fila["resolucion"] == "incluido":
             producto = ProductoCatalogo.objects.filter(pk=fila["producto_id"], comercio_id=comercio_id,
-                                                        disponible=True, precio_centavos=fila["precio_centavos"]).first()
+                disponible=True, precio_centavos=fila["precio_centavos"], unidad=fila["unidad"],
+                nombre=fila["descripcion"]).first()
             if producto:
                 renglon.producto_catalogo = producto
                 renglon.descripcion = producto.nombre
@@ -131,21 +152,25 @@ def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
         estado = mensaje.agente_resultado
     else:
         productos = list(ProductoCatalogo.objects.filter(comercio_id=comercio_id))
-        pendientes = [r.texto_solicitado for r in dto.renglones if r.resolucion.value == "pendiente"] if dto else []
+        filas_pendientes = [r for r in dto.renglones if r.resolucion.value == "pendiente"] if dto else []
+        pendientes = [r.texto_solicitado for r in filas_pendientes]
         inicio = time.monotonic()
         try:
             estado = construir(modelo).invoke({
                 "comercio_id": comercio_id, "conversacion_id": str(conv.pk), "mensaje_id": str(mensaje.pk),
                 "texto": mensaje.texto, "pedido_id": str(pedido_id) if pedido_id else None,
-                "version": dto.version if dto else None, "pendientes": pendientes, "productos": productos,
+                "version": dto.version if dto else None, "pendientes": pendientes,
+                "pendiente_id": filas_pendientes[0].renglon_id if len(filas_pendientes) == 1 else None,
+                "productos": productos,
             })
         except Exception as exc:
             logger.warning("agente_error tipo=%s mensaje=%s", type(exc).__name__, mensaje.pk)
-            _reintentar(mensaje, ahora)
+            _reintentar(mensaje, lease_token)
             return
         finally:
             logger.info("agente_latencia_ms=%s mensaje=%s", round((time.monotonic() - inicio) * 1000), mensaje.pk)
-        estado = {k: estado.get(k) for k in ("intencion", "items", "filas", "aclaraciones", "total", "respuesta", "version")}
+        estado = {k: estado.get(k) for k in ("intencion", "items", "filas", "eliminaciones",
+                                            "aclaracion_de", "aclaraciones", "total", "respuesta", "version")}
         if not ConversacionCanal.objects.filter(pk=conv.pk, lease_token=lease_token, lease_hasta__gt=timezone.now()).exists():
             return
         MensajeEntrante.objects.filter(pk=mensaje.pk, agente_resultado={}).update(agente_resultado=estado)
@@ -170,30 +195,34 @@ def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
                     salida += " Pago confirmado por el servidor."
             else:
                 salida = "Aún no tiene un pedido registrado. Indíqueme productos y cantidades."
-        if estado["intencion"] in {"nuevo", "correccion"} and estado.get("filas"):
-            if dto and not dto.abierto:
+        if estado["intencion"] in {"nuevo", "correccion"} and (estado.get("filas") or estado.get("eliminaciones")):
+            if dto and not dto.abierto and estado["intencion"] == "correccion":
                 salida = "Su pedido actual ya no admite cambios. Pida al tendero que lo revise."
             else:
-                renglones, filas = _preparar_renglones(estado, dto, mensaje)
-                datos = dict(contrato_version=CONTRATO_VERSION, mensaje_id=str(mensaje.pk),
-                             message_key=message_key(mensaje.instancia_id, mensaje.sesion_id, mensaje.id_mensaje_proveedor),
-                             secuencia_conversacion=mensaje.secuencia, renglones=renglones)
-                if dto:
-                    version = estado.get("version") or dto.version
-                    respuesta = nucleo.corregir_borrador(ctx, command_key=f"agente:corregir:{mensaje.pk}",
-                        pedido_id=str(pedido_id), expected_version=version, **datos)
+                base = dto if dto and dto.abierto else None
+                renglones, filas, error_correccion = _preparar_renglones(estado, base, mensaje)
+                if error_correccion:
+                    salida = error_correccion
                 else:
-                    respuesta = nucleo.registrar_solicitud(ctx, command_key=f"agente:registrar:{mensaje.pk}", **datos)
-                if not respuesta.ok:
-                    if respuesta.error.retryable:
-                        _reintentar(mensaje, ahora)
-                        return
-                    salida = "El pedido cambió. Revise el estado y vuelva a indicar la corrección."
-                else:
-                    pedido = respuesta.data["pedido"]
-                    pedido_id = pedido.id
-                    _aplicar_catalogo(pedido_id, pedido.version, filas, comercio_id)
-                    salida = _respuesta_pedido(pedido_id, comercio_id)
+                    datos = dict(contrato_version=CONTRATO_VERSION, mensaje_id=str(mensaje.pk),
+                                 message_key=message_key(mensaje.instancia_id, mensaje.sesion_id, mensaje.id_mensaje_proveedor),
+                                 secuencia_conversacion=mensaje.secuencia, renglones=renglones)
+                    if base:
+                        version = estado.get("version") or base.version
+                        respuesta = nucleo.corregir_borrador(ctx, command_key=f"agente:corregir:{mensaje.pk}",
+                            pedido_id=str(pedido_id), expected_version=version, **datos)
+                    else:
+                        respuesta = nucleo.registrar_solicitud(ctx, command_key=f"agente:registrar:{mensaje.pk}", **datos)
+                    if not respuesta.ok:
+                        if respuesta.error.retryable:
+                            _reintentar(mensaje, lease_token)
+                            return
+                        salida = "El pedido cambió. Revise el estado y vuelva a indicar la corrección."
+                    else:
+                        pedido = respuesta.data["pedido"]
+                        pedido_id = pedido.id
+                        _aplicar_catalogo(pedido_id, pedido.version, filas, comercio_id)
+                        salida = _respuesta_pedido(pedido_id, comercio_id)
         if nucleo.ES_SIMULACION:
             salida = "[SIMULACIÓN] " + salida
         ConversacionCanal.objects.filter(pk=conv.pk).update(pedido_id_actual=pedido_id)
