@@ -474,6 +474,7 @@ exec /usr/bin/sed "$@"''')
         )
         self.assertIn("systemctl enable --now cody-stt.service", acciones)
         self.assertIn("--proceso procesar_audio", acciones)
+        self.assertIn("MemoryMax=10G", (self.units / "cody-stt.service").read_text())
 
     def test_modelo_offline_invalido_no_respalda_ni_migra(self) -> None:
         (self.stt / "venv/bin").mkdir(parents=True)
