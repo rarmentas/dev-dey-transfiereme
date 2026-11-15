@@ -48,7 +48,6 @@ required=(
   POLITICA_COBRO_VERSION
   PEDIDOS_COBRO_HABILITADO
   WAHA_INSTANCIA
-  WAHA_IMAGE
   WAHA_BASE_URL
   WAHA_API_KEY
   WAHA_WEBHOOK_SECRET
@@ -107,6 +106,16 @@ require_ci "${prefix}_DEPLOY_HOST"
 require_ci "${prefix}_DEPLOY_USER"
 require_ci "${prefix}_DEPLOY_PATH"
 require_ci "${prefix}_DEPLOY_PORT"
+path_var="${prefix}_DEPLOY_PATH"
+if [[ "$scope" == prod && "${!path_var}" != /opt/codi/prod ]]; then
+  echo "PROD_DEPLOY_PATH debe ser /opt/codi/prod." >&2
+  exit 1
+fi
+if [[ "$scope" == test && "${!path_var}" != /opt/codi/test ]]; then
+  echo "TEST_DEPLOY_PATH debe ser /opt/codi/test." >&2
+  exit 1
+fi
+
 
 port_var="${prefix}_DEPLOY_PORT"
 if ! [[ "${!port_var}" =~ ^[0-9]+$ ]]; then
