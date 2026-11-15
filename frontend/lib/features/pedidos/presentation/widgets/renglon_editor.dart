@@ -27,6 +27,13 @@ class RenglonEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final incluido = renglon.resolucion == 'incluido';
+    final cantidadSolicitada = [
+      renglon.cantidadSolicitada,
+      renglon.unidadSolicitada,
+    ].whereType<String>().where((valor) => valor.isNotEmpty).join(' ');
+    final solicitado = cantidadSolicitada.isEmpty
+        ? renglon.solicitado
+        : '$cantidadSolicitada · ${renglon.solicitado}';
     return Card(
       color: resaltar ? Theme.of(context).colorScheme.errorContainer : null,
       child: Padding(
@@ -34,7 +41,7 @@ class RenglonEditor extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Solicitado: ${renglon.solicitado}'),
+            Text('Solicitado: $solicitado'),
             DropdownButtonFormField<String>(
               initialValue: renglon.resolucion,
               decoration: InputDecoration(

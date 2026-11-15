@@ -61,6 +61,8 @@ Map<String, dynamic> pedidoJson({
     {
       'renglon_id': 'r1',
       'texto_solicitado': 'Leche',
+      'cantidad_solicitada': null,
+      'unidad_solicitada': null,
       'descripcion': 'Leche',
       'cantidad': '1',
       'unidad': 'pieza',

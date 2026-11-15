@@ -64,6 +64,8 @@ class Renglon {
   Renglon.fromJson(Map<String, dynamic> json)
     : id = json['renglon_id'] as String,
       solicitado = json['texto_solicitado'] as String,
+      cantidadSolicitada = json['cantidad_solicitada'] as String?,
+      unidadSolicitada = json['unidad_solicitada'] as String?,
       descripcion = json['descripcion'] as String? ?? '',
       cantidad = json['cantidad'] as String? ?? '',
       unidad = json['unidad'] as String? ?? '',
@@ -73,6 +75,8 @@ class Renglon {
       subtotal = json['subtotal_centavos'] as int?;
   final String id;
   final String solicitado;
+  final String? cantidadSolicitada;
+  final String? unidadSolicitada;
   String descripcion;
   String cantidad;
   String unidad;

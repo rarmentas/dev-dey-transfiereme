@@ -72,6 +72,35 @@ PedidoException fallo(
   Map<String, dynamic> errores = const {},
 }) => PedidoException(codigo, 409, codigo, errores: errores);
 void main() {
+  testWidgets('B3 muestra cantidad y unidad solicitadas en el detalle', (
+    t,
+  ) async {
+    final json = pedidoJson();
+    final renglon = (json['renglones'] as List).single as Map<String, dynamic>;
+    renglon['texto_solicitado'] = 'tomate';
+    renglon['cantidad_solicitada'] = '2';
+    renglon['unidad_solicitada'] = 'kg';
+    final mock = MockPedidoApi(crearDioPedido());
+    mock.responder('GET', '/api/pedidos/abc/', 200, exito(json));
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pedidoRepositoryProvider.overrideWithValue(
+            PedidoRepository(mock.dio),
+          ),
+        ],
+        child: const MaterialApp(home: PedidoDetallePage(id: 'abc')),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('Solicitado: 2 kg · tomate'), findsOneWidget);
+  });
+  testWidgets('B3 muestra solo el texto cuando no hay cantidad ni unidad', (
+    t,
+  ) async {
+    await abrir(t, RepoPrueba());
+    expect(find.text('Solicitado: Leche'), findsOneWidget);
+  });
   testWidgets('publica y muestra importes del servidor', (t) async {
     final r = RepoPrueba();
     await abrir(t, r);

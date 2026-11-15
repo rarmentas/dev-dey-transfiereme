@@ -8,7 +8,7 @@ void main() {
   for (final caso in [
     (
       403,
-      <String, dynamic>{'detail': 'cualquier texto'},
+      <String, dynamic>{'detail': 'Debe iniciar sesión.'},
       'SESION_TERMINADA',
       'Tu sesión terminó. Vuelve a entrar.',
     ),
@@ -50,6 +50,34 @@ void main() {
       );
     });
   }
+  test('M5 403 CSRF sin código muestra error genérico', () async {
+    final mock = MockPedidoApi(crearDioPedido());
+    mock.responder('GET', '/api/pedidos/', 403, {
+      'detail': 'CSRF Failed: token missing.',
+    });
+    await expectLater(
+      PedidoRepository(mock.dio).listar(),
+      throwsA(
+        isA<PedidoException>()
+            .having((e) => e.codigo, 'codigo', 'ERROR')
+            .having(
+              (e) => e.mensaje,
+              'mensaje',
+              'No pudimos completar la solicitud. Intenta de nuevo.',
+            ),
+      ),
+    );
+  });
+  test('M5 403 sin detail ni código muestra error genérico', () async {
+    final mock = MockPedidoApi(crearDioPedido());
+    mock.responder('GET', '/api/pedidos/', 403, {});
+    await expectLater(
+      PedidoRepository(mock.dio).listar(),
+      throwsA(
+        isA<PedidoException>().having((e) => e.codigo, 'codigo', 'ERROR'),
+      ),
+    );
+  });
   test('lee lista vacía y ruta', () async {
     final mock = MockPedidoApi(crearDioPedido());
     mock.responder('GET', '/api/pedidos/', 200, exito({'pedidos': []}));

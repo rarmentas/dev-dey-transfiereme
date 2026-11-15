@@ -76,7 +76,8 @@ class PedidoRepository {
     }
     final codigo =
         mapa['codigo'] as String? ??
-        (status == 401 || status == 403
+        (status == 401 ||
+                (status == 403 && mapa['detail'] == 'Debe iniciar sesión.')
             ? 'SESION_TERMINADA'
             : status != null && status >= 500
             ? 'SERVICIO_NO_DISPONIBLE'
