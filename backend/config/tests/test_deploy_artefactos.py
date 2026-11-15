@@ -29,23 +29,19 @@ class DeployArtefactosTests(SimpleTestCase):
             self.assertIn(valor, unit)
         self.assertNotIn("PEY", unit)
         remoto = (RAIZ / SCRIPTS[1]).read_text()
-        for clave in (
-            "PEY_API_KEY",
-            "PEY_WEBHOOK_SECRET",
-            "WAHA_WEBHOOK_SECRET",
-            "EMAIL_HOST_PASSWORD",
-        ):
-            self.assertIn(clave, remoto)
+        for clave in ("PEY_API_KEY", "PEY_WEBHOOK_SECRET", "WAHA_WEBHOOK_SECRET"):
+            filtro = remoto.split("# Solo las variables", 1)[1].split("chmod 600", 1)[0]
+            self.assertNotIn(clave, filtro)
         self.assertIn('chmod 600 "$canal_env"', remoto)
 
-    def test_compose_waha_privado_y_persistente(self) -> None:
+    def test_compose_solo_postgres(self) -> None:
         compose = (RAIZ / "deploy/compose.yaml").read_text()
-        self.assertIn('"127.0.0.1:3000:3000"', compose)
-        self.assertNotIn('"0.0.0.0:3000:3000"', compose)
-        self.assertNotIn('"3000:3000"', compose)
-        self.assertIn("/var/lib/codi/waha:/app/.sessions", compose)
-        self.assertIn("${WAHA_IMAGE:?", compose)
-        self.assertIn("${WAHA_WEBHOOK_SECRET:?", compose)
+        self.assertIn("name: codi", compose)
+        self.assertIn("container_name: codi-postgres", compose)
+        self.assertIn('"127.0.0.1:5435:5432"', compose)
+        self.assertIn("/var/lib/codi/postgres:/var/lib/postgresql/data", compose)
+        self.assertNotIn("WAHA", compose)
+        self.assertNotIn("  waha:", compose)
 
     def test_deploy_y_ci_incluyen_canal(self) -> None:
         deploy = (RAIZ / SCRIPTS[0]).read_text()
@@ -133,7 +129,6 @@ class DeployArtefactosTests(SimpleTestCase):
                 "PEY_WEBHOOK_SECRET",
                 "POLITICA_COBRO_VERSION",
                 "WAHA_INSTANCIA",
-                "WAHA_IMAGE",
                 "WAHA_BASE_URL",
                 "WAHA_API_KEY",
                 "WAHA_WEBHOOK_SECRET",
@@ -150,7 +145,7 @@ class DeployArtefactosTests(SimpleTestCase):
                 TEST_ENV_FILE=str(archivo),
                 TEST_DEPLOY_HOST="x",
                 TEST_DEPLOY_USER="x",
-                TEST_DEPLOY_PATH="/a/b",
+                TEST_DEPLOY_PATH="/opt/codi/test",
                 TEST_DEPLOY_PORT="22",
                 TEST_SSH_PRIVATE_KEY="UFJJVkFURSBLRVk=",
             )
@@ -198,3 +193,17 @@ class DeployArtefactosTests(SimpleTestCase):
                 ).returncode,
                 0,
             )
+
+            archivo.write_text("".join(f"{k}={v}\n" for k, v in valores.items()))
+            entorno.update(
+                PROD_ENV_FILE=str(archivo), PROD_DEPLOY_HOST="x", PROD_DEPLOY_USER="x",
+                PROD_DEPLOY_PORT="22", PROD_SSH_PRIVATE_KEY="UFJJVkFURSBLRVk=",
+            )
+            for ruta in ("/opt/codi", "/opt/codi/test", "/opt/codi/waha-prod",
+                         "/opt/codi/prod/", "/opt/codi/prod"):
+                entorno["PROD_DEPLOY_PATH"] = ruta
+                resultado = subprocess.run(
+                    ["bash", str(RAIZ / SCRIPTS[2]), "prod", str(destino)],
+                    env=entorno, capture_output=True, check=False,
+                )
+                self.assertEqual(resultado.returncode == 0, ruta == "/opt/codi/prod")
