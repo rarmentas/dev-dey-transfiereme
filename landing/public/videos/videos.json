@@ -87,6 +87,27 @@
       }
     },
     {
+      "nombre": "pedidos-whatsapp",
+      "titulo": "Pedidos por mensaje",
+      "descripcion": "Tu cliente pide por chat «2 kg de tortilla, 3 refrescos», tú pones precios y publicas la cotización; le llega el resumen y responde ACEPTAR.",
+      "duracion_s": 29.0,
+      "ancho": 1920,
+      "alto": 1080,
+      "aspecto": "16/9",
+      "incluye_marco_telefono": true,
+      "fps": 30,
+      "audio": false,
+      "loop": true,
+      "archivos": {
+        "mp4": "/videos/pedidos-whatsapp.mp4",
+        "poster": "/videos/pedidos-whatsapp-poster.jpg"
+      },
+      "peso_kb": {
+        "mp4": 510,
+        "poster": 78
+      }
+    },
+    {
       "nombre": "presentacion",
       "titulo": "Qué es transfiéreme",
       "descripcion": "El problema de cobrar con terminal, qué es transfiéreme, cómo se cobra en 3 pasos y un QR a transfiereme.asware.com.mx.",

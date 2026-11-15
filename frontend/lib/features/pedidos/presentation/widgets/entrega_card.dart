@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:cody/core/ui/tf_tokens.dart';
+
+import 'pedido_estado_chip.dart';
+
 import '../../data/pedido.dart';
 
 class EntregaCard extends StatelessWidget {
@@ -16,15 +20,13 @@ class EntregaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(TfSpace.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(switch (pedido.preparacion) {
-            'listo' => 'Listo',
-            'entregado' => 'Entregado',
-            _ => 'Preparación pendiente',
-          }),
+          Text('Entrega', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: TfSpace.s2),
+          PedidoEstadoChip.preparacion(estado: pedido.preparacion),
           if (pedido.entrega['listo_en'] != null)
             Text(
               'Listo: ${pedido.entrega['listo_por'] ?? ''} · ${pedido.entrega['listo_en']}',
@@ -34,11 +36,26 @@ class EntregaCard extends StatelessWidget {
               'Entregado: ${pedido.entrega['entregado_por'] ?? ''} · ${pedido.entrega['entregado_en']}',
             ),
           if (pedido.preparacion == 'pendiente')
-            FilledButton(
-              onPressed: !ocupado && pedido.pagoEstado == 'pagado'
-                  ? listo
-                  : null,
-              child: const Text('Marcar listo'),
+            Padding(
+              padding: const EdgeInsets.only(top: TfSpace.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (pedido.pagoEstado != 'pagado')
+                    Text(
+                      'Primero confirma el pago',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  FilledButton(
+                    onPressed: !ocupado && pedido.pagoEstado == 'pagado'
+                        ? listo
+                        : null,
+                    child: const Text('Marcar listo'),
+                  ),
+                ],
+              ),
             ),
           if (pedido.preparacion == 'listo')
             FilledButton(

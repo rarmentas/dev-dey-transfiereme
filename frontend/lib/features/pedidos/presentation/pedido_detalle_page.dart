@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:cody/core/ui/tf_tokens.dart';
+
 import '../data/clave_comando.dart';
 import '../data/pedido.dart';
 import '../data/pedido_repository.dart';
@@ -30,6 +32,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   final claveListo = ClaveComando();
   final claveEntregado = ClaveComando();
   final telefono = TextEditingController();
+  final scroll = ScrollController();
   String canal = 'qr_venta';
   Timer? timer;
   bool permisoDenegado = false;
@@ -55,6 +58,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   @override
   void dispose() {
     timer?.cancel();
+    scroll.dispose();
     telefono.dispose();
     super.dispose();
   }
@@ -169,6 +173,11 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         modificado = false;
         pendientes = false;
       });
+      if (publicar) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scroll.hasClients) scroll.jumpTo(0);
+        });
+      }
       clave.limpiar();
     } on PedidoException catch (e) {
       if (!mounted) return;
@@ -369,112 +378,236 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
       appBar: AppBar(
         title: Text(actual == null ? 'Pedido' : 'Pedido #${actual.numero}'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (ocupado) const LinearProgressIndicator(),
-          if (aviso != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(aviso!),
-            ),
-          if (conflictoVersion)
-            OutlinedButton(
-              onPressed: ocupado ? null : cargar,
-              child: const Text('Recargar pedido'),
-            ),
-          if (noAccesible)
-            OutlinedButton(
-              onPressed: () => context.go('/pedidos'),
-              child: const Text('Volver a pedidos'),
-            ),
-          if (actual == null && !noAccesible && !permisoDenegado && !ocupado)
-            OutlinedButton(onPressed: cargar, child: const Text('Reintentar')),
-          if (actual != null && !noAccesible && !permisoDenegado) ...[
-            Text(
-              'Cliente: ${actual.cliente} · ${actual.estado}${actual.cotizacion != null
-                  ? ''
-                  : actual.propuesta == null
-                  ? ' · Pendiente de cotizar'
-                  : ' · Propuesta: ${formatearCentavos(actual.propuesta!)}'}',
-            ),
-            PagoCard(
-              pedido: actual,
-              incierto: cobroIncierto,
-              errorTelefono: errorTelefono,
-              ocupado:
-                  ocupado ||
-                  conflictoVersion ||
-                  cobroIncierto ||
-                  cobroBloqueado,
-              telefono: telefono,
-              canal: canal,
-              cambiarCanal: (v) => setState(() => canal = v),
-              cobrar: () => accion('cobro'),
-              activar: () => accion('espera'),
-            ),
-            EntregaCard(
-              pedido: actual,
-              ocupado: ocupado || conflictoVersion,
-              listo: () => accion('listo'),
-              entregado: () => accion('entregado'),
-            ),
-            if (actual.cotizacion != null)
-              ResumenCotizacionCard(
-                cotizacion: actual.cotizacion!,
-                aceptado: actual.aceptado,
-              ),
-            Form(
-              key: formulario,
-              child: Column(
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kMaxAnchoContenido),
+            child: SingleChildScrollView(
+              controller: scroll,
+              child: ListView(
+                shrinkWrap: true,
+                primary: false,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  kMargenPantalla,
+                  TfSpace.s4,
+                  kMargenPantalla,
+                  TfSpace.s6,
+                ),
                 children: [
-                  for (var i = 0; i < actual.renglones.length; i++)
-                    RenglonEditor(
-                      key: ValueKey('$generacion-$i'),
-                      renglon: actual.renglones[i],
-                      indice: i,
-                      editable: !ocupado && !congelado,
-                      errores: errores,
-                      resaltar:
-                          pendientes &&
-                          (actual.renglones[i].resolucion == 'pendiente' ||
-                              (errores['renglones_pendientes'] is List &&
-                                  (errores['renglones_pendientes'] as List)
-                                      .contains(actual.renglones[i].id))),
-                      alCambiar: () {
-                        setState(() {
-                          modificado = true;
-                        });
-                      },
+                if (ocupado)
+                  LinearProgressIndicator(
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                if (aviso != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: TfSpace.s3),
+                    child: aviso!.contains('cancelado')
+                        ? _AvisoExito(mensaje: aviso!)
+                        : _AvisoError(
+                            titulo: conflictoVersion
+                                ? 'El pedido cambió'
+                                : 'Revisa este pedido',
+                            mensaje: aviso!,
+                          ),
+                  ),
+                if (conflictoVersion)
+                  OutlinedButton(
+                    onPressed: ocupado ? null : cargar,
+                    child: const Text('Recargar pedido'),
+                  ),
+                if (noAccesible)
+                  OutlinedButton(
+                    onPressed: () => context.go('/pedidos'),
+                    child: const Text('Volver a pedidos'),
+                  ),
+                if (actual == null &&
+                    !noAccesible &&
+                    !permisoDenegado &&
+                    !ocupado)
+                  OutlinedButton(
+                    onPressed: cargar,
+                    child: const Text('Reintentar'),
+                  ),
+                if (actual != null && !noAccesible && !permisoDenegado) ...[
+                  Text(
+                    'Pedido #${actual.numero}',
+                    style: Theme.of(context).textTheme.headlineLarge,
+                  ),
+                  const SizedBox(height: TfSpace.s1),
+                  Text(
+                    actual.cliente,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: TfSpace.s3),
+                  if (actual.preparacion == 'listo')
+                    const Text('Listo'),
+                  if (actual.aceptado)
+                    for (final renglon in actual.renglones)
+                      Text(
+                        'Solicitado: ${[
+                          renglon.cantidadSolicitada,
+                          renglon.unidadSolicitada,
+                        ].whereType<String>().where((v) => v.isNotEmpty).join(' ').isEmpty ? renglon.solicitado : '${[
+                          renglon.cantidadSolicitada,
+                          renglon.unidadSolicitada,
+                        ].whereType<String>().where((v) => v.isNotEmpty).join(' ')} · ${renglon.solicitado}'}',
+                      ),
+                  if (actual.cotizacion != null) ...[
+                    ResumenCotizacionCard(
+                      cotizacion: actual.cotizacion!,
+                      aceptado: actual.aceptado,
+                    ),
+                    const SizedBox(height: TfSpace.s3),
+                  ],
+                  // Estas acciones se mantienen antes del editor: además de ser la
+                  // jerarquía operativa de la pantalla, evita que queden fuera del
+                  // área construida inicialmente en listas pequeñas.
+                  PagoCard(
+                    pedido: actual,
+                    incierto: cobroIncierto,
+                    errorTelefono: errorTelefono,
+                    ocupado:
+                        ocupado ||
+                        conflictoVersion ||
+                        cobroIncierto ||
+                        cobroBloqueado,
+                    telefono: telefono,
+                    canal: canal,
+                    cambiarCanal: (v) => setState(() => canal = v),
+                    cobrar: () => accion('cobro'),
+                    activar: () => accion('espera'),
+                  ),
+                  const SizedBox(height: TfSpace.s3),
+                  EntregaCard(
+                    pedido: actual,
+                    ocupado: ocupado || conflictoVersion,
+                    listo: () => accion('listo'),
+                    entregado: () => accion('entregado'),
+                  ),
+                  const SizedBox(height: TfSpace.s4),
+                  Form(
+                    key: formulario,
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < actual.renglones.length; i++)
+                          RenglonEditor(
+                            key: ValueKey('$generacion-$i'),
+                            renglon: actual.renglones[i],
+                            indice: i,
+                            editable: !ocupado && !congelado,
+                            errores: errores,
+                            resaltar:
+                                pendientes &&
+                                (actual.renglones[i].resolucion ==
+                                        'pendiente' ||
+                                    (errores['renglones_pendientes'] is List &&
+                                        (errores['renglones_pendientes']
+                                                as List)
+                                            .contains(actual.renglones[i].id))),
+                            alCambiar: () {
+                              setState(() {
+                                modificado = true;
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: TfSpace.s4),
+                  if (!congelado) ...[
+                    FilledButton(
+                      onPressed: ocupado || conflictoVersion
+                          ? null
+                          : () => operar(publicar: false),
+                      child: const Text('Guardar renglones'),
+                    ),
+                    const SizedBox(height: TfSpace.s2),
+                    OutlinedButton(
+                      onPressed: ocupado || conflictoVersion
+                          ? null
+                          : () => operar(publicar: true),
+                      child: const Text('Publicar cotización'),
+                    ),
+                    const SizedBox(height: TfSpace.s2),
+                  ],
+                  if (actual.estado != 'cerrado')
+                    OutlinedButton(
+                      onPressed:
+                          ocupado ||
+                              conflictoVersion ||
+                              (actual.cobroEnCurso ||
+                                  actual.pagoEstado == 'pagado')
+                          ? null
+                          : cancelarPedido,
+                      child: const Text('Cancelar pedido'),
                     ),
                 ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
+}
+
+class _AvisoError extends StatelessWidget {
+  const _AvisoError({required this.titulo, required this.mensaje});
+  final String titulo;
+  final String mensaje;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(TfSpace.s4),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.errorContainer,
+      borderRadius: BorderRadius.circular(TfRadius.md),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titulo, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: TfSpace.s1),
+        Text(mensaje),
+      ],
+    ),
+  );
+}
+
+class _AvisoExito extends StatelessWidget {
+  const _AvisoExito({required this.mensaje});
+  final String mensaje;
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(TfSpace.s4),
+      decoration: BoxDecoration(
+        color: t.colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(TfRadius.md),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: t.colorScheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: TfSpace.s2),
+          Expanded(
+            child: Text(
+              mensaje,
+              style: t.textTheme.bodyMedium?.copyWith(
+                color: t.colorScheme.onTertiaryContainer,
               ),
             ),
-            if (!congelado) ...[
-              FilledButton(
-                onPressed: ocupado || conflictoVersion
-                    ? null
-                    : () => operar(publicar: false),
-                child: const Text('Guardar renglones'),
-              ),
-              OutlinedButton(
-                onPressed: ocupado || conflictoVersion
-                    ? null
-                    : () => operar(publicar: true),
-                child: const Text('Publicar cotización'),
-              ),
-            ],
-            if (actual.estado != 'cerrado')
-              OutlinedButton(
-                onPressed:
-                    ocupado ||
-                        conflictoVersion ||
-                        (actual.cobroEnCurso || actual.pagoEstado == 'pagado')
-                    ? null
-                    : cancelarPedido,
-                child: const Text('Cancelar pedido'),
-              ),
-          ],
+          ),
         ],
       ),
     );

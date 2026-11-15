@@ -23,12 +23,9 @@ String mensajeSiguientePaso(EstadoCuentaPey? estado) {
     return 'Tu cuenta ya puede cobrar con CoDi.';
   }
   return switch (estado.paso) {
-    1 =>
-      'Paso 1 de 3: en Ajustes, toca «Registrar CLABE» y guarda los 18 dígitos de tu cuenta.',
-    2 =>
-      'Paso 2 de 3: registra el titular y la entidad (persona o negocio) en pey.',
-    3 =>
-      'Paso 3 de 3: espera que pey active tu cuenta. Usa «Revisar estado» para actualizar.',
+    1 => 'Paso 1 de 3: en Ajustes, toca «Registrar CLABE» y guarda los 18 dígitos de tu cuenta.',
+    2 => 'Paso 2 de 3: registra el titular y la entidad (persona o negocio) en pey.',
+    3 => 'Paso 3 de 3: espera que pey active tu cuenta. Usa «Revisar estado» para actualizar.',
     _ => kMensajeQrAlActivar,
   };
 }

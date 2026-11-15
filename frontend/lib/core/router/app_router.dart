@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/ajustes/presentation/ajustes_page.dart';
+import '../../features/asistente_vivo/presentation/asistente_vivo_page.dart';
 import '../../features/cobro/presentation/mi_qr_page.dart';
 import '../../features/cuenta/presentation/cuentas_page.dart';
 import '../../features/movimientos/presentation/resumen_movimientos_page.dart';
@@ -31,6 +32,7 @@ const kRutaMiQr = '/mi-qr';
 const kRutaPedidos = '/pedidos';
 const kRutaCatalogo = '/pedidos/catalogo';
 const kRutaPedido = '/pedidos/:id';
+const kRutaAsistente = '/asistente';
 
 const _rutasPublicasSinSesion = <String>{kRutaEntrar};
 
@@ -113,6 +115,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: kRutaAsistente,
+        builder: (context, state) => const AsistenteVivoPage(),
       ),
       GoRoute(
         path: kRutaPedidos,

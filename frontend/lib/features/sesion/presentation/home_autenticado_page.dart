@@ -152,6 +152,16 @@ class HomeAutenticadoPage extends ConsumerWidget {
                     onPressed: () => context.push(kRutaPedidos),
                     child: const Text('Pedidos'),
                   ),
+                  const SizedBox(height: TfSpace.s3),
+                  OutlinedButton.icon(
+                    key: const Key('boton_asistente_vivo'),
+                    onPressed: () => context.push(kRutaAsistente),
+                    icon: const Icon(Icons.mic_rounded),
+                    label: const Text('Asistente en vivo'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                  ),
                   const SizedBox(height: TfSpace.s6),
                   Row(
                     children: [
