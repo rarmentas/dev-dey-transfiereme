@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Marco con la navegación inferior: Inicio, Movimientos, Tablero, Ajustes.
+/// Marco con la navegación inferior: Inicio, Movimientos, Tablero, Ajustes y Catálogo.
 class TfShell extends StatelessWidget {
   const TfShell({super.key, required this.navigationShell});
 
@@ -34,6 +34,11 @@ class TfShell extends StatelessWidget {
           NavigationDestination(
             icon: Icon(Icons.tune_rounded),
             label: 'Ajustes',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.storefront_outlined),
+            selectedIcon: Icon(Icons.storefront_rounded),
+            label: 'Catálogo',
           ),
         ],
       ),

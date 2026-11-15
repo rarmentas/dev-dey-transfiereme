@@ -29,6 +29,7 @@ const kRutaRegistrarCuentaPey = '/cuenta/pey/registrar';
 const kRutaAjustes = '/ajustes';
 const kRutaMiQr = '/mi-qr';
 const kRutaPedidos = '/pedidos';
+const kRutaCatalogo = '/pedidos/catalogo';
 const kRutaPedido = '/pedidos/:id';
 
 const _rutasPublicasSinSesion = <String>{kRutaEntrar};
@@ -103,15 +104,19 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRutaCatalogo,
+                builder: (context, state) => const CatalogoPage(),
+              ),
+            ],
+          ),
         ],
       ),
       GoRoute(
         path: kRutaPedidos,
         builder: (context, state) => const PedidosPage(),
-      ),
-      GoRoute(
-        path: '/pedidos/catalogo',
-        builder: (context, state) => const CatalogoPage(),
       ),
       GoRoute(
         path: kRutaPedido,
