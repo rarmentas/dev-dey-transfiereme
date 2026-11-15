@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "pey",
     "integracion",
     "ventas",
+    "pedidos",
 ]
 
 MIDDLEWARE = [
@@ -90,7 +91,10 @@ DATABASES = {
 }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation."
+        "UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -128,6 +132,14 @@ PEY_API_KEY = os.environ.get("PEY_API_KEY", "")
 # Vacío: obtener_puerto() elige desarrollo si DEBUG, y producción si no.
 PEY_ADAPTADOR = os.environ.get("PEY_ADAPTADOR", "")
 PEY_BASE_URL = "https://api.pey.mx"
+
+DEMO_MODE = os.environ.get("DEMO_MODE", "")
+DEMO_PEY_BANK_ACCOUNT_ID = os.environ.get("DEMO_PEY_BANK_ACCOUNT_ID", "")
+POLITICA_COBRO_VERSION = os.environ.get("POLITICA_COBRO_VERSION", "")
+NUCLEO_ADAPTADOR = os.environ.get("NUCLEO_ADAPTADOR", "")
+NUCLEO_STUB_PERMITIDO = DEBUG or "test" in sys.argv
+PEDIDOS_COBRO_HABILITADO = _env_bool("PEDIDOS_COBRO_HABILITADO", False)
+PEDIDOS_LECTOR_PROCEDENCIA = "canales.lector.LectorProcedenciaCanal"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

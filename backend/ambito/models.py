@@ -38,6 +38,7 @@ class Comercio(models.Model):
         blank=True,
         verbose_name="última sincronización de estado pey",
     )
+    secuencia_evento = models.BigIntegerField(default=0)
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
