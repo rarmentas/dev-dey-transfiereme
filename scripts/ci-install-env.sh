@@ -43,6 +43,14 @@ required=(
   WEBHOOK_BASE_URL
   PEY_API_KEY
   PEY_WEBHOOK_SECRET
+  DEMO_MODE
+  NUCLEO_ADAPTADOR
+  POLITICA_COBRO_VERSION
+  PEDIDOS_COBRO_HABILITADO
+  WAHA_IMAGE
+  WAHA_BASE_URL
+  WAHA_API_KEY
+  WAHA_WEBHOOK_SECRET
 )
 for key in "${required[@]}"; do
   if ! grep -Eq "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[^[:space:]#]+" "$file_path"; then
@@ -50,6 +58,41 @@ for key in "${required[@]}"; do
     exit 1
   fi
 done
+
+env_val() {
+  local line
+  line="$(grep -E "^[[:space:]]*$1[[:space:]]*=" "$file_path" | tail -1 || true)"
+  line="${line#*=}"
+  line="${line%%#*}"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  printf '%s' "$line"
+}
+
+for key in "${required[@]}"; do
+  if [[ -z "$(env_val "$key")" ]]; then
+    echo "Falta ${key} en ${file_var}." >&2
+    exit 1
+  fi
+done
+
+if [[ "$(env_val NUCLEO_ADAPTADOR)" != "real" ]]; then
+  echo "NUCLEO_ADAPTADOR debe ser real." >&2
+  exit 1
+fi
+if [[ "$(env_val PEDIDOS_COBRO_HABILITADO)" != "false" ]]; then
+  echo "PEDIDOS_COBRO_HABILITADO debe ser false." >&2
+  exit 1
+fi
+demo_mode="$(env_val DEMO_MODE)"
+if [[ "$demo_mode" != "true" && "$demo_mode" != "false" ]]; then
+  echo "DEMO_MODE debe ser true o false." >&2
+  exit 1
+fi
+if [[ "$demo_mode" == "true" && -z "$(env_val DEMO_PEY_BANK_ACCOUNT_ID)" ]]; then
+  echo "Falta DEMO_PEY_BANK_ACCOUNT_ID para el modo demo." >&2
+  exit 1
+fi
 
 require_ci() {
   local ci_var="$1"

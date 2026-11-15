@@ -33,6 +33,12 @@ remote_path="${remote_path%/}"
 ssh_port="$(ci_val DEPLOY_PORT)"
 ssh_host="$(ci_val DEPLOY_HOST)"
 ssh_user="$(ci_val DEPLOY_USER)"
+unit_base_var="${prefix}_UNIT_BASE"
+unit_base="${!unit_base_var:-cody}"
+if [[ ! "$unit_base" =~ ^[a-z][a-z0-9-]*$ ]]; then
+  echo "${unit_base_var} no es un nombre de unit válido." >&2
+  exit 1
+fi
 python_var="${prefix}_PYTHON"
 python_bin="${!python_var:-/opt/uv-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12}"
 
@@ -114,11 +120,13 @@ fi
 rsync_rsh="$(printf 'ssh -i %q -p %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=%q' "$key_file" "$ssh_port" "$known_hosts")"
 rsync -az --delete -e "$rsync_rsh" \
   --exclude '.git/' \
+  --exclude '.plan/' \
   --exclude '.tooling/' \
   --exclude 'backend/.venv/' \
   --exclude 'backend/staticfiles/' \
   --exclude 'backend/.env' \
   --exclude 'backend/.env.incoming' \
+  --exclude 'backend/.env.canal' \
   --exclude 'frontend/.dart_tool/' \
   --exclude 'landing/node_modules/' \
   --exclude 'landing/.astro/' \
@@ -139,6 +147,6 @@ scp -i "$key_file" -P "$ssh_port" -o IdentitiesOnly=yes -o BatchMode=yes -o Conn
 
 ssh "${ssh_base[@]}" "$remote" \
   bash "${remote_path}/scripts/ci/deploy-remoto.sh" \
-  "$remote_path" "$python_bin" "$ssh_user" "$health_host" "$health_port"
+  "$remote_path" "$python_bin" "$ssh_user" "$health_host" "$health_port" "$unit_base"
 
 echo "Listo. Cody responde en el servidor."

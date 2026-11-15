@@ -23,3 +23,18 @@ services:
       interval: 2s
       timeout: 5s
       retries: 30
+  waha:
+    image: ${WAHA_IMAGE:?WAHA_IMAGE requerido (imagen con digest probado, no latest)}
+    container_name: codi-waha
+    restart: unless-stopped
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY requerido}
+      WHATSAPP_HOOK_URL: ${WEBHOOK_BASE_URL:?WEBHOOK_BASE_URL requerido}/api/webhooks/waha/
+      WHATSAPP_HOOK_EVENTS: message
+      WHATSAPP_HOOK_HMAC_KEY: ${WAHA_WEBHOOK_SECRET:?WAHA_WEBHOOK_SECRET requerido}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /var/lib/codi/waha:/app/.sessions

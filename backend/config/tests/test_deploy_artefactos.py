@@ -1,0 +1,149 @@
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+from django.conf import settings
+from django.test import SimpleTestCase
+
+RAIZ = Path(settings.BASE_DIR).parent
+SCRIPTS = (
+    "scripts/ci/deploy.sh",
+    "scripts/ci/deploy-remoto.sh",
+    "scripts/ci-install-env.sh",
+)
+
+
+class DeployArtefactosTests(SimpleTestCase):
+    def test_sintaxis_de_scripts(self) -> None:
+        resultado = subprocess.run(
+            ["bash", "-n", *(str(RAIZ / ruta) for ruta in SCRIPTS)],
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
+
+    def test_unit_canal_y_aislamiento(self) -> None:
+        unit = (RAIZ / "deploy/cody-canal.service.in").read_text()
+        for valor in ("procesar_canal", "Restart=always", ".env.canal"):
+            self.assertIn(valor, unit)
+        self.assertNotIn("PEY", unit)
+        remoto = (RAIZ / SCRIPTS[1]).read_text()
+        for clave in (
+            "PEY_API_KEY",
+            "PEY_WEBHOOK_SECRET",
+            "WAHA_WEBHOOK_SECRET",
+            "EMAIL_HOST_PASSWORD",
+        ):
+            self.assertIn(clave, remoto)
+        self.assertIn('chmod 600 "$canal_env"', remoto)
+
+    def test_compose_waha_privado_y_persistente(self) -> None:
+        compose = (RAIZ / "deploy/compose.yaml").read_text()
+        self.assertIn('"127.0.0.1:3000:3000"', compose)
+        self.assertNotIn('"0.0.0.0:3000:3000"', compose)
+        self.assertNotIn('"3000:3000"', compose)
+        self.assertIn("/var/lib/codi/waha:/app/.sessions", compose)
+        self.assertIn("${WAHA_IMAGE:?", compose)
+        self.assertIn("${WAHA_WEBHOOK_SECRET:?", compose)
+
+    def test_deploy_y_ci_incluyen_canal(self) -> None:
+        deploy = (RAIZ / SCRIPTS[0]).read_text()
+        self.assertIn("--exclude '.plan/'", deploy)
+        self.assertIn("--exclude 'backend/.env.canal'", deploy)
+        remoto = (RAIZ / SCRIPTS[1]).read_text()
+        self.assertLess(
+            remoto.index('"${unit_base}-canal" "$unit_base"'),
+            remoto.index("manage.py migrate"),
+        )
+        self.assertLess(
+            remoto.index("manage.py migrate"),
+            remoto.index('systemctl restart "${unit_base}-canal"'),
+        )
+        self.assertIn("manage.py estado_canal --max-edad 30", remoto)
+        ci = (RAIZ / ".gitlab-ci.yml").read_text()
+        self.assertIn("pedidos.tests canales.tests", ci)
+        self.assertIn("makemigrations --check --dry-run", ci)
+        self.assertIn(
+            "flutter test test/widget_smoke_test.dart test/features/pedidos", ci
+        )
+
+    def test_validacion_de_entorno_y_casos_vacios(self) -> None:
+        valores = {
+            clave: "x"
+            for clave in (
+                "POSTGRES_DB",
+                "POSTGRES_USER",
+                "POSTGRES_PASSWORD",
+                "POSTGRES_HOST",
+                "POSTGRES_PORT",
+                "DJANGO_SECRET_KEY",
+                "DEBUG",
+                "ALLOWED_HOSTS",
+                "WEBHOOK_BASE_URL",
+                "PEY_API_KEY",
+                "PEY_WEBHOOK_SECRET",
+                "POLITICA_COBRO_VERSION",
+                "WAHA_IMAGE",
+                "WAHA_BASE_URL",
+                "WAHA_API_KEY",
+                "WAHA_WEBHOOK_SECRET",
+            )
+        }
+        valores.update(
+            DEMO_MODE="false", NUCLEO_ADAPTADOR="real", PEDIDOS_COBRO_HABILITADO="false"
+        )
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo = Path(directorio) / "entrada"
+            destino = Path(directorio) / "salida"
+            entorno = os.environ.copy()
+            entorno.update(
+                TEST_ENV_FILE=str(archivo),
+                TEST_DEPLOY_HOST="x",
+                TEST_DEPLOY_USER="x",
+                TEST_DEPLOY_PATH="/a/b",
+                TEST_DEPLOY_PORT="22",
+                TEST_SSH_PRIVATE_KEY="UFJJVkFURSBLRVk=",
+            )
+
+            def ejecutar(datos: dict[str, str]) -> subprocess.CompletedProcess:
+                archivo.write_text("".join(f"{k}={v}\n" for k, v in datos.items()))
+                return subprocess.run(
+                    ["bash", str(RAIZ / SCRIPTS[2]), "test", str(destino)],
+                    env=entorno,
+                    capture_output=True,
+                    check=False,
+                )
+
+            self.assertEqual(ejecutar(valores).returncode, 0)
+            for clave in valores:
+                with self.subTest(clave=clave):
+                    self.assertNotEqual(ejecutar({**valores, clave: ""}).returncode, 0)
+            with archivo.open("w") as salida:
+                salida.write("".join(f"{k}={v}\n" for k, v in valores.items()))
+                salida.write("WAHA_API_KEY=\n")
+            duplicado = subprocess.run(
+                ["bash", str(RAIZ / SCRIPTS[2]), "test", str(destino)],
+                env=entorno,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(duplicado.returncode, 0)
+            for clave, valor in (
+                ("DEMO_MODE", "otro"),
+                ("NUCLEO_ADAPTADOR", "stub"),
+                ("PEDIDOS_COBRO_HABILITADO", "true"),
+            ):
+                with self.subTest(clave=clave, valor=valor):
+                    self.assertNotEqual(
+                        ejecutar({**valores, clave: valor}).returncode, 0
+                    )
+            self.assertNotEqual(
+                ejecutar({**valores, "DEMO_MODE": "true"}).returncode, 0
+            )
+            self.assertEqual(
+                ejecutar(
+                    {**valores, "DEMO_MODE": "true", "DEMO_PEY_BANK_ACCOUNT_ID": "x"}
+                ).returncode,
+                0,
+            )
