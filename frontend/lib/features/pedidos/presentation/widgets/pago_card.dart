@@ -27,6 +27,12 @@ class PagoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final estado = pedido.pagoEstado;
     final intento = pedido.intento;
+    final previo = intento?['aceptacion_id'];
+    final deOtraAceptacion =
+        pedido.aceptado &&
+        previo is String &&
+        previo != pedido.aceptacionId &&
+        const {'descartado', 'rechazado', 'vencido'}.contains(estado);
     final texto = switch (estado) {
       'en_espera' => 'Cobro en espera',
       'reservado' || 'enviando' => 'Generando cobro…',
@@ -44,7 +50,9 @@ class PagoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(texto),
+            Text(deOtraAceptacion ? 'Sin cobro' : texto),
+            if (deOtraAceptacion)
+              Text('Cobro anterior: ${etiquetaPago(estado)}'),
             if (estado == 'pendiente' &&
                 intento?['qr'] is String &&
                 (intento!['qr'] as String).isNotEmpty)
@@ -60,7 +68,9 @@ class PagoCard extends StatelessWidget {
                 onPressed: ocupado ? null : activar,
                 child: const Text('Activar cobro'),
               ),
-            if (estado == 'sin_cobro' && pedido.aceptado && !incierto) ...[
+            if ((estado == 'sin_cobro' || deOtraAceptacion) &&
+                pedido.aceptado &&
+                !incierto) ...[
               DropdownButton<String>(
                 value: canal,
                 items: const [

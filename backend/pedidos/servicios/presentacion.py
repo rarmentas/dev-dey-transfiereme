@@ -86,6 +86,7 @@ def pedido_dto(pedido):
         cobro.qr_string or None if cobro else None,
         cobro.vence_en if cobro else None,
         enmascarar_clabe(ultimo.cuenta.clabe) if ultimo.cuenta_id else None,
+        str(ultimo.aceptacion_id) if ultimo.aceptacion_id else None,
     ) if ultimo else None
     return PedidoDTO(
         str(pedido.id),

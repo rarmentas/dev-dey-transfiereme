@@ -14,7 +14,7 @@ import '../../support/mock_pedido_api.dart';
 class RepoAcciones extends PedidoRepository {
   RepoAcciones() : super(crearDioPedido());
   String pago = 'sin_cobro', preparacion = 'pendiente';
-  String? pagoDespuesCobro;
+  String? pagoDespuesCobro, aceptacion, intentoAceptacion;
   bool avanzarListo = true;
   PedidoException? errorCarga, errorAccion;
   int lecturas = 0;
@@ -24,10 +24,12 @@ class RepoAcciones extends PedidoRepository {
     final json = pedidoJson(aceptado: true);
     json['pago_estado'] = pago;
     json['preparacion'] = preparacion;
+    if (aceptacion != null) json['aceptacion'] = {'id': aceptacion};
     json['intento'] = {
       'intento_id': 'i1',
       'qr': 'qr-prueba',
       'vencimiento': 'mañana',
+      if (intentoAceptacion != null) 'aceptacion_id': intentoAceptacion,
     };
     json['entrega'] = {
       'listo_por': 'Ana',
@@ -141,6 +143,30 @@ void main() {
     final clave = repo.solicitudes.single['command_key'];
     await pulsar(t, 'Activar cobro');
     expect(repo.solicitudes.last['command_key'], isNot(clave));
+  });
+  testWidgets('aceptacion nueva con intento descartado cobra con otra clave', (
+    t,
+  ) async {
+    final repo = RepoAcciones()
+      ..aceptacion = 'a1'
+      ..pagoDespuesCobro = 'reservado'
+      ..intentoAceptacion = 'a1';
+    await abrir(t, repo);
+    await pulsar(t, 'Cobrar');
+    final clave = repo.solicitudes.single['command_key'];
+    expect(find.text('Cobrar'), findsNothing);
+    repo
+      ..aceptacion = 'a2'
+      ..pago = 'descartado';
+    await t.pump(const Duration(seconds: 2));
+    await t.pump();
+    expect(find.text('Cobro anterior: Descartado'), findsOneWidget);
+    await pulsar(t, 'Cobrar');
+    expect(repo.solicitudes, hasLength(2));
+    expect(repo.solicitudes.last, containsPair('accion', 'solicitar'));
+    expect(repo.solicitudes.last['command_key'], isNotEmpty);
+    expect(repo.solicitudes.last['command_key'], isNot(clave));
+    await t.pumpWidget(const SizedBox());
   });
   testWidgets('listo exitoso limpia clave aun con mismo payload', (t) async {
     final repo = RepoAcciones()

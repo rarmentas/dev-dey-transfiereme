@@ -201,6 +201,7 @@ class CobroDTO(Serializable):
     qr: str | None = None
     vencimiento: datetime | None = None
     destino_enmascarado: str | None = None
+    aceptacion_id: str | None = None
 
 
 @dataclass(frozen=True)

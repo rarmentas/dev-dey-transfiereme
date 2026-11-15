@@ -39,6 +39,9 @@ class Pedido {
               Map<String, dynamic>.from(json['cotizacion'] as Map),
             ),
       aceptado = json['aceptacion'] != null,
+      aceptacionId = json['aceptacion'] is Map
+          ? (json['aceptacion'] as Map)['id'] as String?
+          : null,
       pagoEstado = json['pago_estado'] as String? ?? 'sin_cobro',
       preparacion = json['preparacion'] as String? ?? 'pendiente',
       intento = json['intento'] is Map
@@ -55,6 +58,7 @@ class Pedido {
   final List<Renglon> renglones;
   final Cotizacion? cotizacion;
   final bool aceptado;
+  final String? aceptacionId;
   final String pagoEstado, preparacion;
   final Map<String, dynamic>? intento;
   final Map<String, dynamic> entrega;
