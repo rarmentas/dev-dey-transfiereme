@@ -56,7 +56,7 @@ class DurabilidadRevisionTests(TransactionTestCase):
             except Exception as exc:
                 errores.append(exc)
             finally:
-                close_old_connections()
+                connection.close()
 
         hilos = [threading.Thread(target=ejecutar) for _ in range(2)]
         for hilo in hilos:
