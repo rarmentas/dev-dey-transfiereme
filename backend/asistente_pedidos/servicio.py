@@ -9,7 +9,7 @@ from uuid import NAMESPACE_URL, uuid5
 from django.db import transaction
 from django.utils import timezone
 
-from asistente_pedidos.catalogo import normalizar
+from asistente_pedidos.catalogo import coincidencias_consulta, normalizar
 from asistente_pedidos.grafo import construir
 from canales.conversacion import contexto
 from canales.models import ConversacionCanal, MensajeEntrante
@@ -213,6 +213,29 @@ def _respuesta_estado(dto):
     return " ".join(partes)
 
 
+def _respuesta_catalogo(comercio_id, consulta=None):
+    productos = list(ProductoCatalogo.objects.filter(
+        comercio_id=comercio_id, disponible=True).order_by("nombre", "pk"))
+    if consulta is not None:
+        productos = coincidencias_consulta(consulta, productos)
+    if not productos:
+        return ("No encontré ese producto disponible en la lista del comercio."
+                if consulta is not None else "Este comercio aún no tiene productos disponibles en su lista.")
+    encabezado = "Productos disponibles:" if consulta is None else "Encontré estos productos:"
+    lineas = [encabezado]
+    for producto in productos:
+        precio = (f"${producto.precio_centavos // 100}.{producto.precio_centavos % 100:02d} por {producto.unidad}"
+                  if producto.precio_centavos is not None else "precio pendiente de cotizar")
+        linea = f"• {producto.nombre}: {precio}"
+        if sum(len(parte) + 1 for parte in lineas) + len(linea) > 3500:
+            lineas.append("Hay más productos en la lista; consulte uno por nombre.")
+            break
+        lineas.append(linea)
+    if consulta is not None and len(productos) > 1:
+        lineas.append("Indíqueme cuál de ellos desea pedir.")
+    return "\n".join(lineas)
+
+
 def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
     conv = mensaje.conversacion
     ctx = contexto(conv)
@@ -256,6 +279,9 @@ def procesar(mensaje, nucleo, lector, ahora, lease_token, modelo=None):
         if MensajeEntrante.objects.filter(pk=mensaje.pk, estado__in=["procesado", "ignorado"]).exists():
             return
         salida = estado["respuesta"]
+        if estado["intencion"] in {"catalogo", "catalogo_producto"}:
+            salida = _respuesta_catalogo(comercio_id,
+                mensaje.texto if estado["intencion"] == "catalogo_producto" else None)
         if estado["intencion"] == "consulta":
             if "precio" in normalizar(mensaje.texto) or "cuesta" in normalizar(mensaje.texto):
                 catalogo = ProductoCatalogo.objects.filter(comercio_id=comercio_id, disponible=True)

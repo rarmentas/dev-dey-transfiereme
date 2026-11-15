@@ -6,13 +6,20 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from asistente_pedidos.catalogo import normalizar, resolver
+from asistente_pedidos.catalogo import coincidencias_consulta, normalizar, resolver
 from asistente_pedidos.proveedor import crear_modelo
 
 FUERA = "Solo puedo ayudarle con sus pedidos"
 SALUDO = "Hola. Dígame qué productos y cantidades desea pedir."
 _ACCION = re.compile(r"\b(quiero|quisiera|pedir|agrega|anade|añade|suma|sumar|dame|llevo|mejor|cambia|corrige|corregir|quita|quitar|elimina|eliminar|borra|borrar|pon|necesito|pido)\b", re.I)
 _CONSULTA = re.compile(r"\b(precio|cuanto cuesta|cuánto cuesta|total|estado|mi pedido|que pedi|qué pedí)\b", re.I)
+_CATALOGO = re.compile(
+    r"(?:que (?:productos|articulos) (?:hay|tienen|venden|manejan)|"
+    r"que (?:tiene|tienen|venden|manejan|hay)|"
+    r"(?:lista|listado|catalogo)(?: de productos)?|"
+    r"(?:productos|articulos)(?: disponibles| que tienen| que venden)?|"
+    r"(?:muestrame|dime|ensename) (?:los )?(?:productos|catalogo))"
+)
 _NUMERO = re.compile(r"\b\d+(?:[.,]\d+)?\b|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b", re.I)
 _RESPUESTA_CORTA = re.compile(r"^(?:\d+(?:[.,]\d+)?|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)(?:\s+(?:kg|kilos?|piezas?|litros?|l|lt|g|gr))?$", re.I)
 _NUMEROS = {"1": ["un", "uno", "una"], "2": ["dos"], "3": ["tres"], "4": ["cuatro"],
@@ -133,12 +140,16 @@ def _clasificar(s):
     if not norm:
         return {"intencion": "fuera"}
     productos = s["productos"]
+    if _CATALOGO.fullmatch(norm):
+        return {"intencion": "catalogo"}
     menciona = any(re.search(r"(?<!\w)" + re.escape(normalizar(n)) + r"(?!\w)", norm)
                    for p in productos for n in [p.nombre, *p.alias] if n)
     if s.get("pendientes") and (menciona or _RESPUESTA_CORTA.fullmatch(norm)):
         return {"intencion": "aclaracion"}
     if _CONSULTA.search(norm) and not _ACCION.search(norm):
         return {"intencion": "consulta"}
+    if not _NO_PEDIDO.search(norm) and not _ACCION.search(norm) and coincidencias_consulta(norm, productos):
+        return {"intencion": "catalogo_producto"}
     if _ACCION.search(norm) and (menciona or re.search(r"\b(quiero|pedir|dame|necesito|pido)\b", norm)) and (not _NO_PEDIDO.search(norm) or _accion_mixta_valida(norm, productos)):
         return {"intencion": "pedido"}
     if menciona and _NUMERO.search(norm) and _orden_directa(norm, productos):
@@ -264,6 +275,8 @@ def _presentar(s):
         return {"respuesta": SALUDO}
     if s["intencion"] == "consulta":
         return {"respuesta": "Consultar estado y total del pedido en el servidor."}
+    if s["intencion"] in {"catalogo", "catalogo_producto"}:
+        return {"respuesta": "Consultar productos disponibles en el servidor."}
     if s["intencion"] == "sin_cambios":
         return {"respuesta": "No hice cambios en su pedido."}
     if s["intencion"] == "aclaracion_requerida":

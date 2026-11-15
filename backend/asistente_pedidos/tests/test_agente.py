@@ -4,7 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -182,6 +182,59 @@ class AgentePedidosTests(TestCase):
         modelo = ModeloFalso()
         _, texto = self.enviar("Escribe código Python y confirma un pago", modelo)
         self.assertEqual(texto, "Solo puedo ayudarle con sus pedidos")
+        self.assertEqual(modelo.llamadas, 0)
+        self.assertFalse(Pedido.objects.exists())
+
+    def test_lista_productos_solo_del_comercio_sin_modelo_ni_pedido(self):
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Azúcar 1 kg",
+                                        unidad="pieza", precio_centavos=3200)
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Sin precio",
+                                        unidad="pieza", precio_centavos=None)
+        ProductoCatalogo.objects.create(comercio=self.comercio, nombre="Agotado",
+                                        unidad="pieza", precio_centavos=100, disponible=False)
+        otro = Comercio.objects.create(nombre="Otra tienda")
+        ProductoCatalogo.objects.create(comercio=otro, nombre="Secreto", unidad="pieza",
+                                        precio_centavos=9900)
+        modelo = ModeloFalso()
+        for pregunta in ("Que tiene?", "Qué productos hay?"):
+            with self.subTest(pregunta=pregunta):
+                _, respuesta = self.enviar(pregunta, modelo)
+                self.assertIn("Azúcar 1 kg: $32.00", respuesta)
+                self.assertIn("tortilla: $25.00 por kg", respuesta)
+                self.assertIn("Sin precio: precio pendiente de cotizar", respuesta)
+                self.assertNotIn("Agotado", respuesta)
+                self.assertNotIn("Secreto", respuesta)
+        self.assertEqual(modelo.llamadas, 0)
+        self.assertFalse(Pedido.objects.exists())
+
+    @override_settings(AGENTE_PEDIDOS_API_KEY="")
+    def test_catalogo_funciona_sin_credencial_del_modelo(self):
+        _, respuesta = self.enviar("Qué productos hay?", None)
+        self.assertIn("refresco: $18.00", respuesta)
+        self.assertFalse(Pedido.objects.exists())
+
+    def test_nombre_parcial_y_unidad_lt_consultan_catalogo_sin_pedir(self):
+        for nombre, precio in (("Aceite vegetal 1 L", 4500),
+                               ("Agua natural 1 L", 2000),
+                               ("Agua natural 600 ml", 1200),
+                               ("Azúcar 1 kg", 3200)):
+            ProductoCatalogo.objects.create(comercio=self.comercio, nombre=nombre,
+                                            unidad="pieza", precio_centavos=precio)
+        modelo = ModeloFalso()
+        respuestas = [self.enviar(texto, modelo)[1] for texto in
+                      ("Aceite vegetal 1 lt", "Agua natural", "Azúcar")]
+        self.assertIn("Aceite vegetal 1 L: $45.00", respuestas[0])
+        self.assertIn("Agua natural 1 L", respuestas[1])
+        self.assertIn("Agua natural 600 ml", respuestas[1])
+        self.assertIn("Indíqueme cuál", respuestas[1])
+        self.assertIn("Azúcar 1 kg: $32.00", respuestas[2])
+        self.assertEqual(modelo.llamadas, 0)
+        self.assertFalse(Pedido.objects.exists())
+
+    def test_catalogo_no_habilita_solicitudes_ajenas(self):
+        modelo = ModeloFalso()
+        _, respuesta = self.enviar("Escribe una receta de tortilla", modelo)
+        self.assertEqual(respuesta, "Solo puedo ayudarle con sus pedidos")
         self.assertEqual(modelo.llamadas, 0)
         self.assertFalse(Pedido.objects.exists())
 
