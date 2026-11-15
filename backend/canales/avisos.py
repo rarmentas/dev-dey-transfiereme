@@ -29,6 +29,7 @@ def procesar_avisos(nucleo, lector):
                 TipoEvento.PAGO_CONFIRMADO: mensajes.PAGADO,
                 TipoEvento.PEDIDO_LISTO: mensajes.LISTO,
                 TipoEvento.PEDIDO_ENTREGADO: mensajes.ENTREGADO,
+                TipoEvento.PEDIDO_CANCELADO: mensajes.PEDIDO_CANCELADO,
                 TipoEvento.COBRO_INCIERTO: mensajes.COBRO_INCIERTO,
                 TipoEvento.COBRO_RECHAZADO: mensajes.COBRO_RECHAZADO,
                 TipoEvento.COBRO_VENCIDO: mensajes.COBRO_VENCIDO,
@@ -52,9 +53,13 @@ def procesar_avisos(nucleo, lector):
                 )
                 importe = snapshot.get("importe_efectivo_centavos")
                 total = snapshot.get("total_comercial_centavos")
-                if importe is not None:
+                if importe is not None and evento.tipo != TipoEvento.PEDIDO_CANCELADO:
                     texto += f" Importe: ${importe / 100:.2f}."
-                if snapshot.get("demo_mode") and total is not None:
+                if (
+                    snapshot.get("demo_mode")
+                    and total is not None
+                    and evento.tipo != TipoEvento.PEDIDO_CANCELADO
+                ):
                     texto += f" Total comercial: ${total / 100:.2f}."
                 if nucleo.ES_SIMULACION:
                     texto = "[SIMULACIÓN] " + texto

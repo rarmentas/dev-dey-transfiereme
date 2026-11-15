@@ -6,6 +6,7 @@ from pedidos.views import (
     ProductoView,
     CotizacionesPedidoView,
     CobroPedidoView,
+    CancelarPedidoView,
     DetallePedidoView,
     EntregadoPedidoView,
     ListoPedidoView,
@@ -19,6 +20,11 @@ urlpatterns = [
     path("agente/", AgenteConfiguracionView.as_view(), name="pedidos-agente"),
     path("", ListaPedidosView.as_view(), name="pedidos-lista"),
     path("<str:pedido_id>/cobro/", CobroPedidoView.as_view(), name="pedidos-cobro"),
+    path(
+        "<str:pedido_id>/cancelar/",
+        CancelarPedidoView.as_view(),
+        name="pedidos-cancelar",
+    ),
     path("<str:pedido_id>/listo/", ListoPedidoView.as_view(), name="pedidos-listo"),
     path(
         "<str:pedido_id>/entregado/",

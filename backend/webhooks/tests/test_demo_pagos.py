@@ -1,13 +1,20 @@
-"""El pago demo se coteja con su importe y destino históricos."""
+"""Los pagos conservan su importe y destino históricos, incluso en demo."""
 
+from decimal import Decimal
+from io import StringIO
+
+from django.core.management import call_command
 from django.test import Client, override_settings
 
+from ambito.models import Comercio
+from ambito.tests.soporte import crear_cuenta
+from movimientos.models import Cobro
 from pedidos.models import EventoPedido
 from pedidos.servicios.despacho import enviar_intento
 from pedidos.tests.soporte_cobro import PuertoPeyFalso
 from pedidos.tests.soporte_real import CasoReal
-from webhooks.tests.support.pey_webhook import SECRETO
 from webhooks.tests import test_inbox_pago
+from webhooks.tests.support.pey_webhook import SECRETO
 
 DESTINO = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
@@ -21,6 +28,55 @@ class DemoPagosTests(CasoReal):
     reservar = test_inbox_pago.InboxPagoTests.reservar
     cuerpo = test_inbox_pago.InboxPagoTests.cuerpo
     post = test_inbox_pago.InboxPagoTests.post
+
+    def test_qr_general_en_demo_acredita_a_la_cuenta_real(self):
+        comercio = Comercio.objects.create(nombre="Comercio con QR")
+        cuenta = crear_cuenta(comercio)
+        cobro = Cobro.objects.create(
+            comercio=comercio,
+            cuenta=cuenta,
+            canal="qr_general",
+            monto=0,
+            concepto="Transferencia",
+            qr_string="qr",
+            pey_qr_id="qr-general-demo",
+            pey_bank_account_id=cuenta.pey_bank_account_id,
+        )
+        call_command(
+            "designar_comercio_demo",
+            "--comercio",
+            str(comercio.pk),
+            "--si",
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        comercio.refresh_from_db()
+        self.assertTrue(comercio.es_demo)
+        self.cliente = Client()
+        self.cuenta = cuenta
+        respuesta = self.post(
+            self.cuerpo(qr=cobro.pey_qr_id, monto=25, banco=DESTINO, tx="ajeno"),
+            "qr-demo-destino-ajeno",
+        )
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "destino_distinto")
+        self.assertFalse(cobro.movimientos.exists())
+        respuesta = self.post(
+            self.cuerpo(qr=cobro.pey_qr_id, monto=25, tx="pago-real"),
+            "qr-demo-pago-real",
+        )
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()["estado"], "aplicado")
+        movimiento = cobro.movimientos.get()
+        self.assertEqual(movimiento.comercio_id, comercio.pk)
+        self.assertEqual(movimiento.estado, "pagado")
+        self.assertEqual(movimiento.monto, Decimal("25.00"))
+        self.assertEqual(movimiento.pey_transaction_id, "pago-real")
+        cobro.refresh_from_db()
+        self.assertEqual(cobro.pey_bank_account_id, cuenta.pey_bank_account_id)
+        self.assertEqual(cobro.cuenta_id, cuenta.pk)
+        self.assertNotEqual(cobro.pey_bank_account_id, DESTINO)
+        self.assertFalse(EventoPedido.objects.filter(tipo="pago.confirmado").exists())
 
     def test_pago_exige_importe_y_destino_originales(self):
         self.driver.cambiar_modo(True, "demo-1")

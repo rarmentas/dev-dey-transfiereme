@@ -24,6 +24,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   final formulario = GlobalKey<FormState>();
   final claveRevision = ClaveComando();
   final clavePublicacion = ClaveComando();
+  final claveCancelar = ClaveComando();
   final claveCobro = ClaveComando();
   final claveEspera = ClaveComando();
   final claveListo = ClaveComando();
@@ -126,7 +127,17 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   }
 
   Future<void> operar({required bool publicar}) async {
-    if (pedido == null || ocupado || congelado || conflictoVersion) return;
+    if (pedido == null) return;
+    if (ocupado || congelado || conflictoVersion) {
+      setState(() {
+        aviso = ocupado
+            ? 'Espera a que termine la operación actual.'
+            : congelado
+            ? 'Este pedido está congelado. Recarga para revisar su estado.'
+            : 'El pedido cambió. Recarga antes de publicar la cotización.';
+      });
+      return;
+    }
     if (!publicar && !(formulario.currentState?.validate() ?? false)) return;
     if (publicar && modificado) {
       setState(() {
@@ -192,6 +203,7 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
   void limpiarClaves() {
     claveRevision.limpiar();
     clavePublicacion.limpiar();
+    claveCancelar.limpiar();
     claveCobro.limpiar();
     claveEspera.limpiar();
     claveListo.limpiar();
@@ -288,6 +300,63 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
         }
       } else if (e.status != null && e.status! < 500) {
         clave.limpiar();
+      }
+    } finally {
+      if (mounted) setState(() => ocupado = false);
+    }
+  }
+
+  Future<void> cancelarPedido() async {
+    final actual = pedido;
+    if (actual == null || ocupado || conflictoVersion) return;
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancelar pedido'),
+        content: Text(
+          '¿Cancelar el pedido #${actual.numero}? El cliente podrá enviar uno nuevo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Confirmar cancelación'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted || pedido == null) return;
+    final contenido = <String, dynamic>{'expected_version': pedido!.version};
+    final cuerpo = {...contenido, 'command_key': claveCancelar.para(contenido)};
+    setState(() {
+      ocupado = true;
+      aviso = null;
+    });
+    try {
+      final resultado = await ref
+          .read(pedidoRepositoryProvider)
+          .cancelar(widget.id, cuerpo);
+      if (!mounted) return;
+      setState(() {
+        pedido = resultado;
+        modificado = false;
+        generacion++;
+        aviso = 'Pedido cancelado. El cliente puede enviar uno nuevo.';
+      });
+      claveCancelar.limpiar();
+      programarPolling();
+    } on PedidoException catch (e) {
+      if (!mounted) return;
+      setState(() => aviso = e.mensaje);
+      if (e.codigo == 'VERSION_OBSOLETA') {
+        claveCancelar.limpiar();
+        setState(() => ocupado = false);
+        await cargar(conservarAviso: true);
+      } else if (e.status != null && e.status! < 500) {
+        claveCancelar.limpiar();
       }
     } finally {
       if (mounted) setState(() => ocupado = false);
@@ -396,6 +465,16 @@ class _PedidoDetallePageState extends ConsumerState<PedidoDetallePage> {
                 child: const Text('Publicar cotización'),
               ),
             ],
+            if (actual.estado != 'cerrado')
+              OutlinedButton(
+                onPressed:
+                    ocupado ||
+                        conflictoVersion ||
+                        (actual.cobroEnCurso || actual.pagoEstado == 'pagado')
+                    ? null
+                    : cancelarPedido,
+                child: const Text('Cancelar pedido'),
+              ),
           ],
         ],
       ),
