@@ -3,15 +3,18 @@
 from io import StringIO
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 
 from ambito.admin import ComercioAdmin
-from ambito.models import Comercio
+from ambito.models import Comercio, Membresia
 from ambito.tests.soporte import crear_cuenta
-from movimientos.models import Cobro
+from movimientos.alta_qr_general import alta_qr_general
+from movimientos.exceptions import DemoBloqueado
+from movimientos.models import Cobro, Movimiento
 
 DESTINO = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
@@ -89,30 +92,85 @@ class DesignarDemoTests(TestCase):
         self.a.refresh_from_db()
         self.assertTrue(self.a.es_demo)
 
-    def test_rechaza_qr_colision_y_plaza(self):
-        cuenta = crear_cuenta(self.b)
-        cuenta.pey_bank_account_id = DESTINO
-        cuenta.save(update_fields=["pey_bank_account_id"])
-        with self.assertRaises(CommandError):
-            self.ejecutar("--comercio", str(self.a.pk), "--si")
-        cuenta.pey_bank_account_id = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
-        cuenta.save(update_fields=["pey_bank_account_id"])
+    def test_rechaza_colision_con_cuenta_propia_o_ajena(self):
+        for comercio in (self.a, self.b):
+            with self.subTest(comercio=comercio.pk):
+                cuenta = crear_cuenta(comercio)
+                original = cuenta.pey_bank_account_id
+                cuenta.pey_bank_account_id = DESTINO
+                cuenta.save(update_fields=["pey_bank_account_id"])
+                with self.assertRaisesMessage(
+                    CommandError,
+                    "El destino demo coincide con una cuenta registrada.",
+                ):
+                    self.ejecutar("--comercio", str(self.a.pk), "--si")
+                self.a.refresh_from_db()
+                self.assertFalse(self.a.es_demo)
+                cuenta.pey_bank_account_id = original
+                cuenta.save(update_fields=["pey_bank_account_id"])
+
+    def test_historial_qr_general_se_conserva_al_designar_y_quitar(self):
+        cuenta = crear_cuenta(self.a)
+        cobro = Cobro.objects.create(
+            comercio=self.a,
+            cuenta=cuenta,
+            canal="qr_general",
+            monto=0,
+            concepto="Transferencia",
+            qr_string="qr",
+            pey_qr_id="qr-historial",
+            pey_bank_account_id=cuenta.pey_bank_account_id,
+        )
+        movimiento = Movimiento.objects.create(
+            comercio=self.a,
+            cobro=cobro,
+            canal="qr_general",
+            monto="25.00",
+            concepto="Transferencia",
+            estado="pagado",
+            origen="origen_pey",
+        )
+        campos_cobro = Cobro.objects.filter(pk=cobro.pk).values().get()
+        campos_movimiento = Movimiento.objects.filter(pk=movimiento.pk).values().get()
+        for quitar in (False, True):
+            args = ["--comercio", str(self.a.pk), "--si"]
+            if quitar:
+                args.append("--quitar")
+            self.ejecutar(*args)
+            self.a.refresh_from_db()
+            self.assertEqual(self.a.es_demo, not quitar)
+            self.assertEqual(
+                Cobro.objects.filter(pk=cobro.pk).values().get(), campos_cobro
+            )
+            self.assertEqual(
+                Movimiento.objects.filter(pk=movimiento.pk).values().get(),
+                campos_movimiento,
+            )
+
+    def test_qr_general_existente_no_se_puede_solicitar_en_demo(self):
         Cobro.objects.create(
             comercio=self.a,
             canal="qr_general",
             monto=0,
-            concepto="",
+            concepto="Transferencia",
             qr_string="qr",
-            pey_qr_id="qr",
+            pey_qr_id="qr-existente",
         )
-        with self.assertRaises(CommandError):
-            self.ejecutar("--comercio", str(self.a.pk), "--si")
-        Cobro.objects.all().delete()
-        with patch("pedidos.servicios.intentos.plaza_ocupada", return_value=True):
-            with self.assertRaises(CommandError):
-                self.ejecutar("--comercio", str(self.a.pk), "--si")
+        self.ejecutar("--comercio", str(self.a.pk), "--si")
         self.a.refresh_from_db()
-        self.assertFalse(self.a.es_demo)
+        usuario = get_user_model().objects.create_user(username="demo-qr")
+        Membresia.objects.create(usuario=usuario, comercio=self.a)
+        self.client.force_login(usuario)
+        with patch("movimientos.alta_qr_general.obtener_puerto") as obtener:
+            with self.assertRaises(DemoBloqueado):
+                alta_qr_general(self.a)
+            respuesta = self.client.post(
+                "/api/cobro/qr-general/", {}, content_type="application/json"
+            )
+            obtener.assert_not_called()
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(respuesta.json()["codigo"], "RUTA_BLOQUEADA_EN_DEMO")
+        self.assertEqual(Cobro.objects.filter(comercio=self.a).count(), 1)
 
     def test_quitar_no_revisa_colision_del_destino(self):
         self.ejecutar("--comercio", str(self.a.pk), "--si")
@@ -123,11 +181,20 @@ class DesignarDemoTests(TestCase):
         self.a.refresh_from_db()
         self.assertFalse(self.a.es_demo)
 
-    def test_quitar_rechaza_intento_vivo(self):
+    def test_qr_general_con_intento_vivo_bloquea_designar_y_quitar(self):
         from pedidos.models import IntentoCobro
 
-        self.ejecutar("--comercio", str(self.a.pk), "--si")
         cuenta = crear_cuenta(self.a)
+        Cobro.objects.create(
+            comercio=self.a,
+            cuenta=cuenta,
+            canal="qr_general",
+            monto=0,
+            concepto="Transferencia",
+            qr_string="qr",
+            pey_qr_id="qr-general-intento",
+            pey_bank_account_id=cuenta.pey_bank_account_id,
+        )
         IntentoCobro.objects.create(
             origen="legado",
             comercio=self.a,
@@ -142,14 +209,25 @@ class DesignarDemoTests(TestCase):
             expiracion_s=600,
             clave_legado="ocupado",
         )
-        with self.assertRaises(CommandError):
+        with self.assertRaisesMessage(CommandError, "plaza ocupada"):
+            self.ejecutar("--comercio", str(self.a.pk), "--si")
+        self.a.refresh_from_db()
+        self.assertFalse(self.a.es_demo)
+        Comercio.objects.filter(pk=self.a.pk).update(es_demo=True)
+        with self.assertRaisesMessage(CommandError, "plaza ocupada"):
             self.ejecutar("--comercio", str(self.a.pk), "--quitar", "--si")
         self.a.refresh_from_db()
         self.assertTrue(self.a.es_demo)
 
     def test_venta_pendiente_bloquea_designar_y_quitar(self):
-        from movimientos.models import Movimiento
-
+        Cobro.objects.create(
+            comercio=self.a,
+            canal="qr_general",
+            monto=0,
+            concepto="Transferencia",
+            qr_string="qr",
+            pey_qr_id="qr-general-plaza",
+        )
         cobro = Cobro.objects.create(
             comercio=self.a,
             canal="qr_venta",
@@ -167,10 +245,12 @@ class DesignarDemoTests(TestCase):
             estado="pendiente",
             origen="origen_pey",
         )
-        with self.assertRaises(CommandError):
+        with self.assertRaisesMessage(CommandError, "plaza ocupada"):
             self.ejecutar("--comercio", str(self.a.pk), "--si")
+        self.a.refresh_from_db()
+        self.assertFalse(self.a.es_demo)
         Comercio.objects.filter(pk=self.a.pk).update(es_demo=True)
-        with self.assertRaises(CommandError):
+        with self.assertRaisesMessage(CommandError, "plaza ocupada"):
             self.ejecutar("--comercio", str(self.a.pk), "--quitar", "--si")
         self.a.refresh_from_db()
         self.assertTrue(self.a.es_demo)

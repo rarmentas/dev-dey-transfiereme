@@ -43,7 +43,6 @@ class Command(BaseCommand):
                 raise CommandError("Se requiere confirmación interactiva o --si.")
             if input("Teclee el id del comercio: ").strip() != str(comercio.pk):
                 raise CommandError("Confirmación incorrecta.")
-        from movimientos.models import Cobro
         from pedidos.servicios.intentos import plaza_ocupada
 
         try:
@@ -56,8 +55,6 @@ class Command(BaseCommand):
                     raise CommandError("Quita el demo actual con --quitar.")
                 if plaza_ocupada(comercio):
                     raise CommandError("El comercio tiene una plaza ocupada.")
-                if Cobro.objects.filter(comercio=comercio, canal="qr_general").exists():
-                    raise CommandError("El comercio tiene un QR general.")
                 if (
                     not quitar
                     and destino
